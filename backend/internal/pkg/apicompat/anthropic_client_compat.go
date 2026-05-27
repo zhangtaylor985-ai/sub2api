@@ -75,7 +75,7 @@ func shouldSurfaceReasoningSummaryAsThinking(kind AnthropicCompatClientKind) boo
 
 func buildVSCodeWebSearchProgressThinking(action *WebSearchAction, fallbackQuery string) string {
 	if action != nil && strings.EqualFold(strings.TrimSpace(action.Type), "search") {
-		query := strings.TrimSpace(action.Query)
+		query := sanitizeLikelySearchQuery(action.Query)
 		if query == "" {
 			query = sanitizeLikelySearchQuery(fallbackQuery)
 		}

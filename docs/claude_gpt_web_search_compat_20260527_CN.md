@@ -130,13 +130,14 @@ Sub2API 当前有两层映射。
 追加修复：
 
 - `WebSearchFallbackQuery` 进入 `ResponsesToAnthropicOptions` 时统一走 `sanitizeLikelySearchQuery`。
-- Claude CLI 合成 `<tool_call>` 文本、VSCode thinking 进度和 `server_tool_use.input.query` 都不再直接使用未经清洗的 fallback query。
+- Claude CLI 合成 `<tool_call>` 文本、VSCode thinking 进度和 `server_tool_use.input.query` 都不再直接使用未经清洗的 action/fallback query。
 - `looksLikeSearchQueryNoise` 新增 Claude Code continuation summary marker；命中时丢弃 fallback query。
 - 如果没有安全 query，Claude CLI 完成态使用 generic `Searched the web.`，不再输出 `Searched: <unsafe text>`。
 
 新增回归测试：
 
 - `TestStreamingWebSearchClaudeCLIDoesNotExposeContinuationSummaryFallback`
+- `TestStreamingWebSearchClaudeCLIDoesNotExposeContinuationSummaryActionQuery`
 - `TestStreamingWebSearchVSCodeDoesNotExposeContinuationSummaryFallback`
 - `TestInferBuiltinWebSearchQueryIgnoresContinuationSummary`
 

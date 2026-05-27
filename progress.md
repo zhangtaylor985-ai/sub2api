@@ -70,9 +70,10 @@
 - 生产公开入口验证通过：`https://cc.claudepool.com/health` 返回 ok；direct `/v1/messages` 使用 `tool_choice: WebSearch` 返回 `server_tool_use name=web_search`、`web_search_tool_result`、最终正文和 `message_stop`。
 - 线上用户反馈 WebSearch 仍不稳定：界面反复显示 `Searching the web.`，并在 `Searched:` 后露出 Claude Code continuation summary。该反馈来自线上用户 API Key 对应的近期 `/v1/messages` 请求；排查中不记录明文 key。
 - 根因确认：`InferBuiltinWebSearchQuery` / `WebSearchFallbackQuery` 在 OpenAI `web_search_call` 缺少 `action.query` 时会采用最后一条 user 文本作为 fallback；Claude Code resume/compact 场景里这个文本可能是会话 continuation summary。
-- 已修复 fallback query 安全边界：`NormalizeResponsesToAnthropicOptions`、CLI synthetic text、VSCode thinking、`server_tool_use.input.query` 都经过 `sanitizeLikelySearchQuery`；新增 continuation summary marker 检测；缺少安全 query 时使用 generic `Searched the web.`，不再拼接 `Searched: <unsafe text>`。
+- 已修复 action/fallback query 安全边界：`NormalizeResponsesToAnthropicOptions`、CLI synthetic text、VSCode thinking、`server_tool_use.input.query` 都经过 `sanitizeLikelySearchQuery`；新增 continuation summary marker 检测；缺少安全 query 时使用 generic `Searched the web.`，不再拼接 `Searched: <unsafe text>`。
 - 已新增回归测试：
   - Claude CLI 不展示 continuation summary fallback。
+  - Claude CLI 不展示 continuation summary action query。
   - VSCode thinking 不展示 continuation summary fallback。
   - 原始 `/v1/messages` fallback query 推断忽略 continuation summary。
 - 本地验证通过：`go test ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'`、`go test ./internal/handler -run 'OpenAIGateway|Messages|Gateway'`、`go test ./...`、`git diff --check`。

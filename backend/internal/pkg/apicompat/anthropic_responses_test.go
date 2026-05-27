@@ -1007,6 +1007,40 @@ func TestStreamingWebSearchClaudeCLIDoesNotExposeContinuationSummaryFallback(t *
 	assert.NotContains(t, events[5].Delta.Text, "Searched: This session")
 }
 
+func TestStreamingWebSearchClaudeCLIDoesNotExposeContinuationSummaryActionQuery(t *testing.T) {
+	unsafeQuery := "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation."
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind: AnthropicCompatClientClaudeCLI,
+	})
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_unsafe_action",
+			Action: &WebSearchAction{Type: "search", Query: unsafeQuery},
+		},
+	}, state)
+	require.Len(t, events, 3)
+	assert.Contains(t, events[1].Delta.Text, `"query":""`)
+	assert.NotContains(t, events[1].Delta.Text, unsafeQuery)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.output_item.done",
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_unsafe_action",
+			Status: "completed",
+			Action: &WebSearchAction{Type: "search", Query: unsafeQuery},
+		},
+	}, state)
+	require.Len(t, events, 7)
+	require.JSONEq(t, `{"query":""}`, string(events[0].ContentBlock.Input))
+	assert.Contains(t, events[5].Delta.Text, "Searched the web.")
+	assert.NotContains(t, events[5].Delta.Text, unsafeQuery)
+}
+
 func TestStreamingWebSearchVSCodeEmitsThinkingProgress(t *testing.T) {
 	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
 		ClientKind:             AnthropicCompatClientClaudeVSCode,

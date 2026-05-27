@@ -681,7 +681,7 @@ func webSearchActionQuery(action *WebSearchAction) string {
 	if action == nil {
 		return ""
 	}
-	return strings.TrimSpace(action.Query)
+	return sanitizeLikelySearchQuery(action.Query)
 }
 
 func webSearchQueryWithFallback(action *WebSearchAction, fallbackQuery string) string {

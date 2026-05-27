@@ -24,7 +24,7 @@ type ResponsesToAnthropicOptions struct {
 }
 
 func NormalizeResponsesToAnthropicOptions(opts ResponsesToAnthropicOptions) ResponsesToAnthropicOptions {
-	opts.WebSearchFallbackQuery = strings.TrimSpace(opts.WebSearchFallbackQuery)
+	opts.WebSearchFallbackQuery = sanitizeLikelySearchQuery(opts.WebSearchFallbackQuery)
 	switch opts.ClientKind {
 	case AnthropicCompatClientClaudeCLI, AnthropicCompatClientClaudeVSCode, AnthropicCompatClientCodexVSCode:
 	default:
@@ -77,14 +77,14 @@ func buildVSCodeWebSearchProgressThinking(action *WebSearchAction, fallbackQuery
 	if action != nil && strings.EqualFold(strings.TrimSpace(action.Type), "search") {
 		query := strings.TrimSpace(action.Query)
 		if query == "" {
-			query = strings.TrimSpace(fallbackQuery)
+			query = sanitizeLikelySearchQuery(fallbackQuery)
 		}
 		if query != "" {
 			return "Searching the web for: " + query
 		}
 	}
 
-	if query := strings.TrimSpace(fallbackQuery); query != "" {
+	if query := sanitizeLikelySearchQuery(fallbackQuery); query != "" {
 		return "Searching the web for: " + query
 	}
 	return "Searching the web."
@@ -92,10 +92,13 @@ func buildVSCodeWebSearchProgressThinking(action *WebSearchAction, fallbackQuery
 
 func buildSyntheticWebSearchToolCallText(action *WebSearchAction, fallbackQuery string, completed bool) string {
 	prefix := "Searching the web.\n\n"
+	if completed {
+		prefix = "Searched the web.\n\n"
+	}
 	args := map[string]any{}
 	query := webSearchActionQuery(action)
 	if query == "" {
-		query = strings.TrimSpace(fallbackQuery)
+		query = sanitizeLikelySearchQuery(fallbackQuery)
 	}
 	if query != "" {
 		args["query"] = query
@@ -370,6 +373,9 @@ func looksLikeSearchQueryNoise(text string) bool {
 	}
 
 	lower := strings.ToLower(trimmed)
+	if looksLikeClaudeCodeConversationMeta(lower) {
+		return true
+	}
 	noisePrefixes := []string{
 		"<system-reminder>",
 		"arguments:",
@@ -419,4 +425,23 @@ func looksLikeSearchQueryNoise(text string) bool {
 		strings.Contains(lower, "panic:") ||
 		strings.Contains(lower, "traceback ") ||
 		strings.Contains(lower, "stack trace")
+}
+
+func looksLikeClaudeCodeConversationMeta(lower string) bool {
+	metaMarkers := []string{
+		"this session is being continued from a previous conversation",
+		"the summary below covers the earlier portion of the conversation",
+		"previous conversation that ran out of context",
+		"we need continue from summary",
+		"need continue from summary",
+		"continuing from a previous conversation",
+		"conversation that ran out of context",
+		"summary below covers the earlier portion",
+	}
+	for _, marker := range metaMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }

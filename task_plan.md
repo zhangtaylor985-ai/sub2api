@@ -35,6 +35,7 @@
 | 10. 业务逻辑修复 | complete | 已修复 4 个 KnownGap |
 | 11. 上线前黑盒与发布 | complete | canary、Claude CLI 黑盒、生产部署、健康检查与生产 SSE smoke 已完成 |
 | 12. 线上 WebSearch 路径纠偏 | complete | 已补 Claude Code `WebSearch` -> OpenAI 原生 `web_search` 入口映射、单测、本地 cc1/TTY 黑盒 |
+| 13. WebSearch fallback 泄漏修复 | in_progress | 屏蔽 Claude Code continuation summary 作为搜索词；单测与本地回归已通过，待提交/部署/线上验证 |
 
 ## 决策记录
 
@@ -63,3 +64,4 @@
 | 2026-05-27 | Claude CLI 环境变量覆盖 `ANTHROPIC_BASE_URL` 未生效，仍读取 settings 中的 `127.0.0.1:8080` | 临时修改 `~/.claude_local/settings.json` 到 `127.0.0.1:18080` 测试，完成后恢复 `127.0.0.1:8080` |
 | 2026-05-27 | 固定字符串 TTY 测试触发 Claude Code debug 中非致命标题 JSON parse 噪音 | 追加自然 TTY prompt 验证正常交互无该 parse 噪音；服务端请求均为 HTTP 200 |
 | 2026-05-27 | 本地启动 Sub2API 首次使用 32 字符 `TOTP_ENCRYPTION_KEY` 失败，服务要求 64 hex 字符 | 清理临时 data dir 后使用 64 hex 字符重启，健康检查通过 |
+| 2026-05-27 | 线上用户截图显示 `Searched:` 后泄漏 Claude Code continuation summary | 根因是 OpenAI `web_search_call` 缺失 `action.query` 时使用 unsafe fallback query；已补清洗、防泄漏单测和 generic searched 文案 |

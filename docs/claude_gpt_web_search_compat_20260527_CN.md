@@ -123,6 +123,23 @@ Sub2API 当前有两层映射。
 - 上一版应用镜像：`zhangtaylor985/sub2api:main-decdc6d0`。
 - 生产公开入口 direct `/v1/messages` 使用 `tool_choice: WebSearch` 验证通过：返回 `server_tool_use name=web_search`、`web_search_tool_result`、正文与 `message_stop`。
 
+## 2026-05-27 WebSearch fallback 泄漏修复
+
+线上用户反馈显示，Claude Code 搜索进度里反复出现 `Searching the web.`，并在 `Searched:` 后露出 `This session is being continued from a previous conversation...` 这类 continuation summary。根因是 OpenAI `web_search_call` 有时没有 `action.query`，Sub2API 会从 request 的最后一条 user 文本推断 fallback query；在 Claude Code resume/compact 场景里，最后一条 user 文本可能是会话恢复摘要，而不是用户真正想搜的 query。
+
+追加修复：
+
+- `WebSearchFallbackQuery` 进入 `ResponsesToAnthropicOptions` 时统一走 `sanitizeLikelySearchQuery`。
+- Claude CLI 合成 `<tool_call>` 文本、VSCode thinking 进度和 `server_tool_use.input.query` 都不再直接使用未经清洗的 fallback query。
+- `looksLikeSearchQueryNoise` 新增 Claude Code continuation summary marker；命中时丢弃 fallback query。
+- 如果没有安全 query，Claude CLI 完成态使用 generic `Searched the web.`，不再输出 `Searched: <unsafe text>`。
+
+新增回归测试：
+
+- `TestStreamingWebSearchClaudeCLIDoesNotExposeContinuationSummaryFallback`
+- `TestStreamingWebSearchVSCodeDoesNotExposeContinuationSummaryFallback`
+- `TestInferBuiltinWebSearchQueryIgnoresContinuationSummary`
+
 ## 验证
 
 在 `backend/` 目录执行：

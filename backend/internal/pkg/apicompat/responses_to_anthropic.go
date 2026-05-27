@@ -688,7 +688,7 @@ func webSearchQueryWithFallback(action *WebSearchAction, fallbackQuery string) s
 	if query := webSearchActionQuery(action); query != "" {
 		return query
 	}
-	return strings.TrimSpace(fallbackQuery)
+	return sanitizeLikelySearchQuery(fallbackQuery)
 }
 
 func emitStandaloneTextBlock(state *ResponsesEventToAnthropicState, text string) []AnthropicStreamEvent {

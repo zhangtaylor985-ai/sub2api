@@ -973,6 +973,40 @@ func TestStreamingWebSearchClaudeCLIUsesFallbackQueryWhenActionMissing(t *testin
 	assert.Contains(t, events[5].Delta.Text, `"query":"OpenAI official website homepage title"`)
 }
 
+func TestStreamingWebSearchClaudeCLIDoesNotExposeContinuationSummaryFallback(t *testing.T) {
+	unsafeFallback := "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation."
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind:             AnthropicCompatClientClaudeCLI,
+		WebSearchFallbackQuery: unsafeFallback,
+	})
+	assert.Empty(t, state.LastWebSearchQuery)
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "web_search_call", ID: "ws_unsafe"},
+	}, state)
+	require.Len(t, events, 3)
+	assert.Contains(t, events[1].Delta.Text, "Searching the web.")
+	assert.Contains(t, events[1].Delta.Text, `"query":""`)
+	assert.NotContains(t, events[1].Delta.Text, unsafeFallback)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.output_item.done",
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_unsafe",
+			Status: "completed",
+		},
+	}, state)
+	require.Len(t, events, 7)
+	require.JSONEq(t, `{"query":""}`, string(events[0].ContentBlock.Input))
+	assert.Contains(t, events[5].Delta.Text, "Searched the web.")
+	assert.Contains(t, events[5].Delta.Text, `"query":""`)
+	assert.NotContains(t, events[5].Delta.Text, unsafeFallback)
+	assert.NotContains(t, events[5].Delta.Text, "Searched: This session")
+}
+
 func TestStreamingWebSearchVSCodeEmitsThinkingProgress(t *testing.T) {
 	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
 		ClientKind:             AnthropicCompatClientClaudeVSCode,
@@ -991,6 +1025,23 @@ func TestStreamingWebSearchVSCodeEmitsThinkingProgress(t *testing.T) {
 	assert.Equal(t, "thinking_delta", events[1].Delta.Type)
 	assert.Equal(t, "Searching the web for: latest Sub2API release", events[1].Delta.Thinking)
 	assert.Equal(t, "content_block_stop", events[2].Type)
+}
+
+func TestStreamingWebSearchVSCodeDoesNotExposeContinuationSummaryFallback(t *testing.T) {
+	unsafeFallback := "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation."
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind:             AnthropicCompatClientClaudeVSCode,
+		WebSearchFallbackQuery: unsafeFallback,
+	})
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "web_search_call", ID: "ws_vscode_unsafe"},
+	}, state)
+	require.Len(t, events, 3)
+	assert.Equal(t, "Searching the web.", events[1].Delta.Thinking)
+	assert.NotContains(t, events[1].Delta.Thinking, unsafeFallback)
 }
 
 func TestResponsesToAnthropicWithOptions_SuppressesReasoningAndAddsCLISearchText(t *testing.T) {
@@ -1037,6 +1088,14 @@ func TestInferBuiltinWebSearchQueryExtractsChineseQuery(t *testing.T) {
 		"tools":[{"type":"web_search_20250305","name":"web_search"}]
 	}`)
 	assert.Equal(t, "OpenAI official website homepage title", InferBuiltinWebSearchQuery(raw))
+}
+
+func TestInferBuiltinWebSearchQueryIgnoresContinuationSummary(t *testing.T) {
+	raw := []byte(`{
+		"messages":[{"role":"user","content":"This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation."}],
+		"tools":[{"type":"web_search_20250305","name":"web_search"}]
+	}`)
+	assert.Empty(t, InferBuiltinWebSearchQuery(raw))
 }
 
 func TestStreamingIncomplete(t *testing.T) {

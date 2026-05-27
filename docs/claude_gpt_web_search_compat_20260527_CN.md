@@ -115,6 +115,14 @@ Sub2API 当前有两层映射。
 - `cc1`/Claude Code `stream-json --include-partial-messages` 样本显示 `Searching the web.`、`server_tool_use name=web_search`、`web_search_tool_result`、`Searched:` 与最终中文回答；未出现客户端 `tool_use name=WebSearch`。
 - 真实 TTY 样本显示 `Searching the web.` / `Searched: ...` 并返回 OpenAI 官网标题；没有复现 `Web Search("...") Found 0 results`。
 
+上线记录：
+
+- 修复提交：`77dfaf2b fix(apicompat): route Claude Code WebSearch to native web search`。
+- 生产镜像：`zhangtaylor985/sub2api:main-77dfaf2b`。
+- 线上 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T134952Z`。
+- 上一版应用镜像：`zhangtaylor985/sub2api:main-decdc6d0`。
+- 生产公开入口 direct `/v1/messages` 使用 `tool_choice: WebSearch` 验证通过：返回 `server_tool_use name=web_search`、`web_search_tool_result`、正文与 `message_stop`。
+
 ## 验证
 
 在 `backend/` 目录执行：

@@ -84,6 +84,7 @@
 - 2026-05-27：已上线 `zhangtaylor985/sub2api:main-decdc6d0`。线上 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T105427Z`；上一版应用镜像为 `zhangtaylor985/sub2api:v0.1.131-claude-websearch.2`，更早回滚可切回 `weishaw/sub2api:latest`，然后 `docker compose up -d sub2api`。
 - 2026-05-27：Postgres/Redis 仍保持 Docker Compose 管理；宿主机化迁移应单独做备份、恢复演练、停写窗口和回滚方案，不与应用协议修复混发。
 - 2026-05-27：追补 WebSearch 入口修复：Claude Code/VSCode `name:"WebSearch"` 客户端工具必须在 Claude -> GPT 入口映射为 OpenAI 原生 `web_search`，否则会退回客户端原生 Web Search 并出现慢、0 results 等问题。
+- 2026-05-27：已上线追补修复镜像 `zhangtaylor985/sub2api:main-77dfaf2b`。线上 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T134952Z`；上一版应用镜像为 `zhangtaylor985/sub2api:main-decdc6d0`。
 - 任务细节见：
   - `task_plan.md`
   - `findings.md`

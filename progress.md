@@ -63,3 +63,8 @@
 - 本地 Sub2API 已按用户偏好启动在 `127.0.0.1:8080`，连接本机 Docker Postgres/Redis 与本地生产库副本；首次临时 TOTP key 长度错误已修正，验证后服务已停止且 8080 无残留监听。
 - `cc1`/Claude Code `stream-json --include-partial-messages` WebSearch 黑盒通过：JSONL 出现 `Searching the web.`、`server_tool_use name=web_search`、`web_search_tool_result`、`Searched:` 和最终中文回答；未出现客户端 `tool_use name=WebSearch`。
 - 真实 TTY WebSearch 黑盒通过：界面显示 `Searching the web.` / `Searched: ...` 并返回 OpenAI 官网标题；没有复现线上截图中的 `Web Search("...") Found 0 results` 客户端原生搜索路径。
+- 已提交并推送 `77dfaf2b fix(apicompat): route Claude Code WebSearch to native web search` 到 `origin/main`。
+- 生产机 `/root/cliapp/sub2api-src` 已 fast-forward 到 `77dfaf2b`，并构建镜像 `zhangtaylor985/sub2api:main-77dfaf2b`。
+- 生产 canary `127.0.0.1:18080` `/health` 通过后已清理；正式 `sub2api` 容器已切换到 `main-77dfaf2b`，Postgres/Redis 未替换。
+- 生产 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T134952Z`；上一版应用镜像：`zhangtaylor985/sub2api:main-decdc6d0`。
+- 生产公开入口验证通过：`https://cc.claudepool.com/health` 返回 ok；direct `/v1/messages` 使用 `tool_choice: WebSearch` 返回 `server_tool_use name=web_search`、`web_search_tool_result`、最终正文和 `message_stop`。

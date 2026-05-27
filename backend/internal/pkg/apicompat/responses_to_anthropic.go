@@ -3,6 +3,7 @@ package apicompat
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -14,6 +15,11 @@ import (
 // Anthropic Messages response. Reasoning output items are mapped to thinking
 // blocks; function_call items become tool_use blocks.
 func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicResponse {
+	return ResponsesToAnthropicWithOptions(resp, model, ResponsesToAnthropicOptions{})
+}
+
+func ResponsesToAnthropicWithOptions(resp *ResponsesResponse, model string, opts ResponsesToAnthropicOptions) *AnthropicResponse {
+	opts = NormalizeResponsesToAnthropicOptions(opts)
 	out := &AnthropicResponse{
 		ID:    resp.ID,
 		Type:  "message",
@@ -26,6 +32,9 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 	for _, item := range resp.Output {
 		switch item.Type {
 		case "reasoning":
+			if !shouldSurfaceReasoningSummaryAsThinking(opts.ClientKind) {
+				continue
+			}
 			summaryText := ""
 			for _, s := range item.Summary {
 				if s.Type == "summary_text" && s.Text != "" {
@@ -73,6 +82,11 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 				ToolUseID: toolUseID,
 				Content:   emptyResults,
 			})
+			if shouldEmitSyntheticWebSearchTag(opts.ClientKind) {
+				if syntheticText := buildSyntheticWebSearchToolCallText(item.Action); syntheticText != "" {
+					blocks = append(blocks, AnthropicContentBlock{Type: "text", Text: syntheticText})
+				}
+			}
 		}
 	}
 
@@ -188,13 +202,27 @@ type ResponsesEventToAnthropicState struct {
 	ResponseID string
 	Model      string
 	Created    int64
+
+	CompatOptions                   ResponsesToAnthropicOptions
+	LastWebSearchQuery              string
+	EmittedSyntheticWebSearchStarts map[string]struct{}
+	EmittedSyntheticWebSearchDones  map[string]struct{}
 }
 
 // NewResponsesEventToAnthropicState returns an initialised stream state.
 func NewResponsesEventToAnthropicState() *ResponsesEventToAnthropicState {
+	return NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{})
+}
+
+func NewResponsesEventToAnthropicStateWithOptions(opts ResponsesToAnthropicOptions) *ResponsesEventToAnthropicState {
+	opts = NormalizeResponsesToAnthropicOptions(opts)
 	return &ResponsesEventToAnthropicState{
-		OutputIndexToBlockIdx: make(map[int]int),
-		Created:               time.Now().Unix(),
+		OutputIndexToBlockIdx:           make(map[int]int),
+		Created:                         time.Now().Unix(),
+		CompatOptions:                   opts,
+		LastWebSearchQuery:              opts.WebSearchFallbackQuery,
+		EmittedSyntheticWebSearchStarts: make(map[string]struct{}),
+		EmittedSyntheticWebSearchDones:  make(map[string]struct{}),
 	}
 }
 
@@ -220,8 +248,14 @@ func ResponsesEventToAnthropicEvents(
 	case "response.output_item.done":
 		return resToAnthHandleOutputItemDone(evt, state)
 	case "response.reasoning_summary_text.delta":
+		if !shouldSurfaceReasoningSummaryAsThinking(state.CompatOptions.ClientKind) {
+			return nil
+		}
 		return resToAnthHandleReasoningDelta(evt, state)
 	case "response.reasoning_summary_text.done":
+		if !shouldSurfaceReasoningSummaryAsThinking(state.CompatOptions.ClientKind) {
+			return nil
+		}
 		return resToAnthHandleBlockDone(state)
 	// response.done 是 Realtime/WS 与项目透传路径使用的终止别名；
 	// 普通 Responses HTTP SSE 的公开终止事件仍以 response.completed 为主。
@@ -338,6 +372,9 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 		return events
 
 	case "reasoning":
+		if !shouldSurfaceReasoningSummaryAsThinking(state.CompatOptions.ClientKind) {
+			return nil
+		}
 		var events []AnthropicStreamEvent
 		events = append(events, closeCurrentBlock(state)...)
 
@@ -358,9 +395,55 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 
 	case "message":
 		return nil
+	case "web_search_call":
+		return resToAnthHandleWebSearchAdded(evt, state)
 	}
 
 	return nil
+}
+
+func resToAnthHandleWebSearchAdded(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if evt == nil || evt.Item == nil {
+		return nil
+	}
+	itemID := strings.TrimSpace(evt.Item.ID)
+	if query := webSearchActionQuery(evt.Item.Action); query != "" {
+		state.LastWebSearchQuery = query
+	}
+
+	switch {
+	case shouldEmitSyntheticWebSearchTag(state.CompatOptions.ClientKind):
+		if itemID != "" {
+			if _, exists := state.EmittedSyntheticWebSearchStarts[itemID]; exists {
+				return nil
+			}
+		}
+		text := buildSyntheticWebSearchToolCallText(nil)
+		if text == "" {
+			return nil
+		}
+		if itemID != "" {
+			state.EmittedSyntheticWebSearchStarts[itemID] = struct{}{}
+		}
+		return emitStandaloneTextBlock(state, text)
+
+	case shouldEmitVSCodeWebSearchProgress(state.CompatOptions.ClientKind):
+		if itemID != "" {
+			if _, exists := state.EmittedSyntheticWebSearchStarts[itemID]; exists {
+				return nil
+			}
+		}
+		thinking := buildVSCodeWebSearchProgressThinking(evt.Item.Action, state.LastWebSearchQuery)
+		if thinking == "" {
+			return nil
+		}
+		if itemID != "" {
+			state.EmittedSyntheticWebSearchStarts[itemID] = struct{}{}
+		}
+		return emitStandaloneThinkingBlock(state, thinking)
+	default:
+		return nil
+	}
 }
 
 func resToAnthHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
@@ -515,6 +598,9 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	if evt.Item.Action != nil {
 		query = evt.Item.Action.Query
 	}
+	if query = strings.TrimSpace(query); query != "" {
+		state.LastWebSearchQuery = query
+	}
 	inputJSON, _ := json.Marshal(map[string]string{"query": query})
 
 	// Emit server_tool_use block (start + stop).
@@ -555,6 +641,82 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	})
 	state.ContentBlockIndex++
 
+	if shouldEmitSyntheticWebSearchTag(state.CompatOptions.ClientKind) {
+		itemID := strings.TrimSpace(evt.Item.ID)
+		if itemID != "" {
+			if _, exists := state.EmittedSyntheticWebSearchDones[itemID]; exists {
+				return events
+			}
+		}
+		if syntheticText := buildSyntheticWebSearchToolCallText(evt.Item.Action); syntheticText != "" {
+			events = append(events, emitStandaloneTextBlock(state, syntheticText)...)
+			if itemID != "" {
+				state.EmittedSyntheticWebSearchDones[itemID] = struct{}{}
+			}
+		}
+	}
+
+	return events
+}
+
+func webSearchActionQuery(action *WebSearchAction) string {
+	if action == nil {
+		return ""
+	}
+	return strings.TrimSpace(action.Query)
+}
+
+func emitStandaloneTextBlock(state *ResponsesEventToAnthropicState, text string) []AnthropicStreamEvent {
+	events := closeCurrentBlock(state)
+	idx := state.ContentBlockIndex
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_start",
+		Index: &idx,
+		ContentBlock: &AnthropicContentBlock{
+			Type: "text",
+			Text: "",
+		},
+	})
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx,
+		Delta: &AnthropicDelta{
+			Type: "text_delta",
+			Text: text,
+		},
+	})
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: &idx,
+	})
+	state.ContentBlockIndex++
+	return events
+}
+
+func emitStandaloneThinkingBlock(state *ResponsesEventToAnthropicState, thinking string) []AnthropicStreamEvent {
+	events := closeCurrentBlock(state)
+	idx := state.ContentBlockIndex
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_start",
+		Index: &idx,
+		ContentBlock: &AnthropicContentBlock{
+			Type:     "thinking",
+			Thinking: "",
+		},
+	})
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: &idx,
+		Delta: &AnthropicDelta{
+			Type:     "thinking_delta",
+			Thinking: thinking,
+		},
+	})
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: &idx,
+	})
+	state.ContentBlockIndex++
 	return events
 }
 

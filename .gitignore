@@ -123,6 +123,7 @@ scripts
 #openspec/
 code-reviews/
 AGENTS.md
+!AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
@@ -131,8 +132,15 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/claude_gpt_web_search_compat_20260527_CN.md
 .serena/
 .codex/
+!.codex/
+!.codex/skills/
+!.codex/skills/sub2api-production-regression/
+!.codex/skills/sub2api-production-regression/SKILL.md
+!.codex/skills/sub2api-deploy/
+!.codex/skills/sub2api-deploy/SKILL.md
 frontend/coverage/
 aicodex
 output/

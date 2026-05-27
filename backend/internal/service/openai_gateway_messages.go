@@ -45,6 +45,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	applyOpenAICompatModelNormalization(&anthropicReq)
 	normalizedModel := anthropicReq.Model
 	clientStream := anthropicReq.Stream // client's original stream preference
+	compatOptions := openAIAnthropicCompatOptionsFromRequest(c, body)
 
 	// 2. Model mapping
 	billingModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)
@@ -360,10 +361,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	var result *OpenAIForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime, compatOptions)
 	} else {
 		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
-		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime, compatOptions)
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
@@ -407,6 +408,21 @@ func ensureCodexOAuthInstructionsField(reqBody map[string]any) {
 	}
 }
 
+func openAIAnthropicCompatOptionsFromRequest(c *gin.Context, body []byte) apicompat.ResponsesToAnthropicOptions {
+	if c == nil {
+		return apicompat.ResponsesToAnthropicOptions{
+			WebSearchFallbackQuery: apicompat.InferBuiltinWebSearchQuery(body),
+		}
+	}
+	return apicompat.ResponsesToAnthropicOptions{
+		ClientKind: apicompat.DetectAnthropicCompatClientKind(
+			c.GetHeader("User-Agent"),
+			c.GetHeader("Originator"),
+		),
+		WebSearchFallbackQuery: apicompat.InferBuiltinWebSearchQuery(body),
+	}
+}
+
 // handleAnthropicErrorResponse reads an upstream error and returns it in
 // Anthropic error format.
 func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
@@ -430,6 +446,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	billingModel string,
 	upstreamModel string,
 	startTime time.Time,
+	compatOptions apicompat.ResponsesToAnthropicOptions,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -447,7 +464,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	// accumulated delta events so the client receives the full content.
 	acc.SupplementResponseOutput(finalResponse)
 
-	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
+	anthropicResp := apicompat.ResponsesToAnthropicWithOptions(finalResponse, originalModel, compatOptions)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -652,6 +669,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	billingModel string,
 	upstreamModel string,
 	startTime time.Time,
+	compatOptions apicompat.ResponsesToAnthropicOptions,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -664,7 +682,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.WriteHeader(http.StatusOK)
 
-	state := apicompat.NewResponsesEventToAnthropicState()
+	state := apicompat.NewResponsesEventToAnthropicStateWithOptions(compatOptions)
 	state.Model = originalModel
 	var usage OpenAIUsage
 	responseID := ""

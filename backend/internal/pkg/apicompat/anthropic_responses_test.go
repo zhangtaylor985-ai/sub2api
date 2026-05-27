@@ -794,6 +794,131 @@ func TestStreamingReasoning(t *testing.T) {
 	assert.Equal(t, "content_block_stop", events[0].Type)
 }
 
+func TestStreamingReasoningSuppressedForClaudeCLI(t *testing.T) {
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind: AnthropicCompatClientClaudeCLI,
+	})
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "reasoning"},
+	}, state)
+	require.Empty(t, events)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.reasoning_summary_text.delta",
+		OutputIndex: 0,
+		Delta:       "post-hoc search summary",
+	}, state)
+	require.Empty(t, events)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.reasoning_summary_text.done",
+		OutputIndex: 0,
+	}, state)
+	require.Empty(t, events)
+}
+
+func TestStreamingWebSearchClaudeCLIEmitsSyntheticProgress(t *testing.T) {
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind: AnthropicCompatClientClaudeCLI,
+	})
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_search", Model: "gpt-5.5"},
+	}, state)
+	require.Len(t, events, 1)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "web_search_call", ID: "ws_1"},
+	}, state)
+	require.Len(t, events, 3)
+	assert.Equal(t, "content_block_start", events[0].Type)
+	assert.Equal(t, "text", events[0].ContentBlock.Type)
+	assert.Equal(t, "content_block_delta", events[1].Type)
+	assert.Contains(t, events[1].Delta.Text, "Searching the web.")
+	assert.Contains(t, events[1].Delta.Text, "<tool_call>")
+	assert.Equal(t, "content_block_stop", events[2].Type)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.output_item.done",
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_1",
+			Status: "completed",
+			Action: &WebSearchAction{Type: "search", Query: "official Sub2API docs"},
+		},
+	}, state)
+	require.Len(t, events, 7)
+	assert.Equal(t, "server_tool_use", events[0].ContentBlock.Type)
+	assert.Equal(t, "web_search_tool_result", events[2].ContentBlock.Type)
+	assert.Equal(t, "text", events[4].ContentBlock.Type)
+	assert.Contains(t, events[5].Delta.Text, "Searched: official Sub2API docs")
+	assert.Contains(t, events[5].Delta.Text, `"query":"official Sub2API docs"`)
+}
+
+func TestStreamingWebSearchVSCodeEmitsThinkingProgress(t *testing.T) {
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind:             AnthropicCompatClientClaudeVSCode,
+		WebSearchFallbackQuery: "latest Sub2API release",
+	})
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "web_search_call", ID: "ws_vscode"},
+	}, state)
+	require.Len(t, events, 3)
+	assert.Equal(t, "content_block_start", events[0].Type)
+	assert.Equal(t, "thinking", events[0].ContentBlock.Type)
+	assert.Equal(t, "content_block_delta", events[1].Type)
+	assert.Equal(t, "thinking_delta", events[1].Delta.Type)
+	assert.Equal(t, "Searching the web for: latest Sub2API release", events[1].Delta.Thinking)
+	assert.Equal(t, "content_block_stop", events[2].Type)
+}
+
+func TestResponsesToAnthropicWithOptions_SuppressesReasoningAndAddsCLISearchText(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID:     "resp_non_stream_search",
+		Model:  "gpt-5.5",
+		Status: "completed",
+		Output: []ResponsesOutput{
+			{
+				Type:    "reasoning",
+				Summary: []ResponsesSummary{{Type: "summary_text", Text: "searched internally"}},
+			},
+			{
+				Type:   "web_search_call",
+				ID:     "ws_non_stream",
+				Status: "completed",
+				Action: &WebSearchAction{Type: "search", Query: "Sub2API web search"},
+			},
+			{
+				Type: "message",
+				Content: []ResponsesContentPart{{
+					Type: "output_text",
+					Text: "Found the answer.",
+				}},
+			},
+		},
+	}
+
+	anth := ResponsesToAnthropicWithOptions(resp, "claude-sonnet-4-6", ResponsesToAnthropicOptions{
+		ClientKind: AnthropicCompatClientClaudeCLI,
+	})
+	require.Len(t, anth.Content, 4)
+	assert.Equal(t, "server_tool_use", anth.Content[0].Type)
+	assert.Equal(t, "web_search_tool_result", anth.Content[1].Type)
+	assert.Equal(t, "text", anth.Content[2].Type)
+	assert.Contains(t, anth.Content[2].Text, "Searched: Sub2API web search")
+	assert.Equal(t, "text", anth.Content[3].Type)
+	assert.Equal(t, "Found the answer.", anth.Content[3].Text)
+}
+
 func TestStreamingIncomplete(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 

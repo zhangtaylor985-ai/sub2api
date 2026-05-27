@@ -93,6 +93,8 @@ Sub2API 当前有两层映射。
   - 将兼容选项传入流式和非流式 Responses -> Anthropic 转换。
 - `backend/internal/pkg/apicompat/anthropic_responses_test.go`
   - 覆盖 Claude CLI 搜索进度文本。
+  - 覆盖 OpenAI `web_search_call` 缺失 `action.query` 时使用 request fallback query。
+  - 覆盖中文 `请使用 web search 查询 ...，并...` 查询提取。
   - 覆盖 VSCode thinking 搜索进度。
   - 覆盖 reasoning summary 抑制。
   - 覆盖非流式 CLI 搜索文本补齐。
@@ -105,6 +107,7 @@ Sub2API 当前有两层映射。
 go test ./internal/pkg/apicompat
 go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'
 go test ./internal/handler -run 'OpenAIGateway|Messages|Gateway'
+go test ./...
 ```
 
 结果：
@@ -112,9 +115,36 @@ go test ./internal/handler -run 'OpenAIGateway|Messages|Gateway'
 - `github.com/Wei-Shaw/sub2api/internal/pkg/apicompat` 通过。
 - `github.com/Wei-Shaw/sub2api/internal/service` 定向测试通过。
 - `github.com/Wei-Shaw/sub2api/internal/handler` 定向测试通过。
+- `go test ./...` 通过。
+
+## 上线记录
+
+- 发布提交：
+  - `ee377355`：方案一主体实现与文档。
+  - `3e8f76bd`：修复 OpenAI `web_search_call` 没有 `action.query` 时 query 为空的问题。
+- 发布 tag：`v0.1.131-claude-websearch.2`
+- 生产镜像：`zhangtaylor985/sub2api:v0.1.131-claude-websearch.2`
+- 线上 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T063700Z`
+- 正式容器：`sub2api` 已切到新镜像，`/health` 返回 `{"status":"ok"}`。
+- 未迁移数据层：`sub2api-postgres` 与 `sub2api-redis` 仍由 Docker Compose 管理。
+
+上线前后黑盒验证：
+
+- canary 容器 `sub2api-canary-websearch` 曾在宿主机 `127.0.0.1:18080` 验证，验证后已删除。
+- `cc1`/Claude Code 非交互 smoke 命中 canary，返回 `SUB2API_CANARY_OK`。
+- canary direct `/v1/messages` WebSearch 验证通过：`Searching the web`、`server_tool_use.input.query`、`Searched` 三处均保留 `OpenAI official website homepage title`。
+- `cc1`/Claude Code WebSearch 验证通过，禁用 Bash 后无额外通知工具干扰，最终 result 为 success。
+- `cc1`/Claude Code 真实 TTY 连续两轮验证通过：同一 PTY 内返回 `TTY_ONE`、`TTY_TWO`。
+- 生产域名 `https://cc.claudepool.com/v1/messages` direct WebSearch 验证通过，最终正文正常返回。
+- 生产域名 `cc1` smoke 验证通过，返回 `SUB2API_PROD_OK`。
+
+发布观察：
+
+- 新容器启动和健康检查通过，没有发现 panic、terminal-missing 或 WebSearch 相关错误。
+- 观察到若干既有业务侧 `glm-4.6 no available accounts` 和 `/v1/messages/count_tokens` 404，不属于本次 WebSearch 兼容改动；后续可单独排查路由能力和 count_tokens 兼容。
 
 ## 剩余事项
 
-- 明确 Sub2API 镜像发布流程：本地源码如何构建镜像、推送到哪个 registry、线上如何拉取和回滚。
-- 如需上线本次代码，建议先确定镜像 tag，不要继续使用不可追溯的 `latest` 作为唯一发布标识。
+- 将线上 GitHub clone/pull 链路修好：本次生产机 HTTPS clone 曾长时间卡住并 early EOF，最终使用本地 `git archive` 传固定 tag 源码构建。
+- 将 Postgres/Redis 宿主机化作为独立迁移项目处理，不并入本次应用协议修复。
 - 若未来仍希望看到真实搜索结果列表，可单独评估 Brave/Tavily emulation fallback，但不应作为本次默认路径。

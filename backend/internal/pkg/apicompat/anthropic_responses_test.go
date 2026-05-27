@@ -1052,6 +1052,16 @@ func TestStreamingWebSearchSuppressesUnsafeTextualToolCall(t *testing.T) {
 		Delta: text,
 	}, state)
 	require.Empty(t, events)
+
+	sse, err := ResponsesAnthropicEventToSSE(AnthropicStreamEvent{
+		Type: "content_block_delta",
+		Delta: &AnthropicDelta{
+			Type: "text_delta",
+			Text: text,
+		},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, sse)
 }
 
 func TestStreamingWebSearchVSCodeEmitsThinkingProgress(t *testing.T) {

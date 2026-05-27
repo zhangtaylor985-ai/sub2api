@@ -303,6 +303,10 @@ func FinalizeResponsesAnthropicStream(state *ResponsesEventToAnthropicState) []A
 
 // ResponsesAnthropicEventToSSE formats an AnthropicStreamEvent as an SSE line pair.
 func ResponsesAnthropicEventToSSE(evt AnthropicStreamEvent) (string, error) {
+	if evt.Type == "content_block_delta" && evt.Delta != nil && suppressUnsafeWebSearchToolCallText(evt.Delta.Text) {
+		return "", nil
+	}
+
 	data, err := json.Marshal(evt)
 	if err != nil {
 		return "", err

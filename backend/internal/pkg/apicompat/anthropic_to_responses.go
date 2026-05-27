@@ -1,6 +1,7 @@
 package apicompat
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -359,24 +360,44 @@ func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesConten
 		return s, nil
 	}
 
-	// Array of content blocks — may contain text and/or images.
-	var inner []AnthropicContentBlock
-	if err := json.Unmarshal(b.Content, &inner); err != nil {
+	// Array of content blocks — may contain text, images, or custom Claude Code
+	// tool result blocks. Preserve unknown blocks as JSON text instead of
+	// silently dropping them, otherwise future turns lose tool context.
+	var rawInner []json.RawMessage
+	if err := json.Unmarshal(b.Content, &rawInner); err != nil {
 		return "(empty)", nil
 	}
 
 	// Separate text (for function_call_output) from images (for user message).
 	var textParts []string
 	var imageParts []ResponsesContentPart
-	for _, ib := range inner {
-		switch ib.Type {
+	for _, raw := range rawInner {
+		var header struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &header); err != nil {
+			continue
+		}
+		switch header.Type {
 		case "text":
+			var ib AnthropicContentBlock
+			if err := json.Unmarshal(raw, &ib); err != nil {
+				continue
+			}
 			if ib.Text != "" {
 				textParts = append(textParts, ib.Text)
 			}
 		case "image":
+			var ib AnthropicContentBlock
+			if err := json.Unmarshal(raw, &ib); err != nil {
+				continue
+			}
 			if uri := anthropicImageToDataURI(ib.Source); uri != "" {
 				imageParts = append(imageParts, ResponsesContentPart{Type: "input_image", ImageURL: uri})
+			}
+		default:
+			if preserved := compactJSON(raw); preserved != "" {
+				textParts = append(textParts, preserved)
 			}
 		}
 	}
@@ -386,6 +407,18 @@ func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesConten
 		text = "(empty)"
 	}
 	return text, imageParts
+}
+
+func compactJSON(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, raw); err != nil {
+		return string(raw)
+	}
+	return buf.String()
 }
 
 // extractAnthropicTextFromBlocks joins all text blocks, ignoring thinking/

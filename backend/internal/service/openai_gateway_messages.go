@@ -452,12 +452,18 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai messages buffered", requestID)
 	if err != nil {
+		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream error")
 		return nil, err
 	}
 
 	if finalResponse == nil {
 		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
+	}
+	if strings.EqualFold(finalResponse.Status, "failed") {
+		msg := openAICompatResponseFailureMessage(finalResponse, "")
+		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream response failed")
+		return nil, fmt.Errorf("upstream response failed: %s", msg)
 	}
 
 	// When the terminal event has an empty output array, reconstruct from
@@ -495,6 +501,58 @@ func isOpenAICompatResponsesTerminalEvent(eventType string) bool {
 func isOpenAICompatDoneSentinelLine(line string) bool {
 	payload, ok := extractOpenAISSEDataLine(line)
 	return ok && strings.TrimSpace(payload) == "[DONE]"
+}
+
+func openAICompatSSEPayloadErrorMessage(payload string) string {
+	payload = strings.TrimSpace(payload)
+	if payload == "" || payload == "[DONE]" {
+		return ""
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(payload), &obj); err != nil {
+		return ""
+	}
+	if _, ok := obj["error"]; !ok {
+		return ""
+	}
+	eventType := ""
+	if rawType, ok := obj["type"]; ok {
+		_ = json.Unmarshal(rawType, &eventType)
+	}
+	if eventType != "" && eventType != "error" {
+		return ""
+	}
+	msg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage([]byte(payload))))
+	if msg == "" {
+		msg = "upstream stream error"
+	}
+	return msg
+}
+
+func openAICompatResponseFailureMessage(resp *apicompat.ResponsesResponse, payload string) string {
+	if resp != nil && resp.Error != nil {
+		if msg := sanitizeUpstreamErrorMessage(strings.TrimSpace(resp.Error.Message)); msg != "" {
+			return msg
+		}
+	}
+	if msg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage([]byte(payload)))); msg != "" {
+		return msg
+	}
+	return "upstream response failed"
+}
+
+func writeAnthropicStreamErrorEvent(w io.Writer, errType, message string) {
+	if w == nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]string{
+			"type":    errType,
+			"message": message,
+		},
+	})
+	_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", payload)
 }
 
 func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
@@ -583,6 +641,9 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			if !ok {
 				if frame, ok := parser.Finish(); ok {
 					payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+					if msg := openAICompatSSEPayloadErrorMessage(payload); msg != "" {
+						return nil, usage, acc, fmt.Errorf("upstream SSE error: %s", msg)
+					}
 					var event apicompat.ResponsesStreamEvent
 					if err := json.Unmarshal([]byte(payload), &event); err == nil {
 						acc.ProcessEvent(&event)
@@ -621,6 +682,9 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				continue
 			}
 			payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+			if msg := openAICompatSSEPayloadErrorMessage(payload); msg != "" {
+				return nil, usage, acc, fmt.Errorf("upstream SSE error: %s", msg)
+			}
 
 			var event apicompat.ResponsesStreamEvent
 			if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -727,11 +791,21 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	}
 
 	// processDataLine handles a single "data: ..." SSE line from upstream.
+	var terminalErr error
 	processDataLine := func(payload string) bool {
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
+		}
+
+		if msg := openAICompatSSEPayloadErrorMessage(payload); msg != "" {
+			terminalErr = fmt.Errorf("upstream SSE error: %s", msg)
+			if !clientDisconnected {
+				writeAnthropicStreamErrorEvent(c.Writer, "api_error", "Upstream stream error")
+				c.Writer.Flush()
+			}
+			return true
 		}
 
 		var event apicompat.ResponsesStreamEvent
@@ -741,6 +815,27 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				zap.String("request_id", requestID),
 			)
 			return false
+		}
+
+		if event.Type == "response.failed" {
+			if event.Response != nil {
+				if id := strings.TrimSpace(event.Response.ID); id != "" {
+					responseID = id
+				}
+				if event.Response.Usage != nil {
+					usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+				}
+			}
+			if event.Usage != nil {
+				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+			}
+			msg := openAICompatResponseFailureMessage(event.Response, payload)
+			terminalErr = fmt.Errorf("upstream response failed: %s", msg)
+			if !clientDisconnected {
+				writeAnthropicStreamErrorEvent(c.Writer, "api_error", "Upstream response failed")
+				c.Writer.Flush()
+			}
+			return true
 		}
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
@@ -787,6 +882,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 	// finalizeStream sends any remaining Anthropic events and returns the result.
 	finalizeStream := func() (*OpenAIForwardResult, error) {
+		if terminalErr != nil {
+			return resultWithUsage(), terminalErr
+		}
 		if finalEvents := apicompat.FinalizeResponsesAnthropicStream(state); len(finalEvents) > 0 && !clientDisconnected {
 			for _, evt := range finalEvents {
 				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)

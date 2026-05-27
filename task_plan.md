@@ -29,7 +29,11 @@
 | 4. 方案一设计落地 | complete | 代码实现与单测 |
 | 5. 本地回归验证 | complete | Go/前端相关测试结果 |
 | 6. 文档归档 | complete | `docs/` 任务记录 |
-| 7. 线上发布/验证决策 | in_progress | 先 canary + cc1 黑盒，再决定是否切生产 |
+| 7. 线上发布/验证决策 | paused | 用户暂停上线，先做稳定性迁移评估 |
+| 8. 旧项目稳定性经验迁移矩阵 | complete | `docs/claude_gpt_stability_migration_matrix_20260527_CN.md` |
+| 9. 测试缺口清单 | complete | 文档矩阵与 KnownGap characterization tests |
+| 10. 业务逻辑修复 | complete | 已修复 4 个 KnownGap |
+| 11. 上线前黑盒与发布 | in_progress | canary 与 Claude CLI 黑盒已完成；待 push 后进入正式部署/重启判断 |
 
 ## 决策记录
 
@@ -37,6 +41,8 @@
 - 2026-05-27：Sub2API 将作为后续主要维护项目，旧 CLIProxyAPI 项目只作为参考来源。
 - 2026-05-27：线上 Sub2API 使用 `weishaw/sub2api:latest` 镜像，宿主机不是源码 Git 工作区；本次先完成本地实现、测试和文档，线上发布需先确定镜像 tag/registry/回滚流程。
 - 2026-05-27：因 Postgres/Redis 仍在 Docker 网络内，短期生产发布采用应用容器替换/重启；宿主机 systemd 直跑作为后续独立迁移任务。
+- 2026-05-27：用户要求先完成旧项目 Claude -> GPT 稳定性经验的迁移矩阵与测试缺口清单；第二步允许补测试代码，但不改业务逻辑。
+- 2026-05-27：用户要求后续黑盒优先使用本地启动 Sub2API 并在本地授权 Codex auth file；远端 canary 只作为生产同配置验证手段。
 
 ## 错误记录
 
@@ -47,3 +53,9 @@
 | 2026-05-27 | 在仓库根目录运行 Go test 导致 module 解析失败 | 改到 `backend/` 模块目录运行测试 |
 | 2026-05-27 | 在 `backend/` 目录执行 gofmt 时误带 `backend/` 路径前缀 | 使用模块内相对路径重跑 |
 | 2026-05-27 | `python3 tools/secret_scan.py` 不存在 | 记录门禁缺口，本次改用改动范围敏感词扫描兜底 |
+| 2026-05-27 | `git push origin main` 被 GitHub 拒绝，当前 SSH 身份 `DevDynamo2024` 对 `zhangtaylor985-ai/sub2api.git` 无写权限 | 本地 commit/tag 已完成；继续检查本机是否有可用 GitHub 凭据或 host alias，若没有则先用线上可拉取方式做 canary/生产验证 |
+| 2026-05-27 | 线上 HTTPS clone `zhangtaylor985-ai/sub2api` 长时间未完成并早退 | 已中断该 canary 拉取；后续改用本地打包传输或 SSH 方案，避免阻塞生产验证 |
+| 2026-05-27 | 在 `backend/` 目录执行 gofmt 时误用 `backend/internal/...` 路径 | 改用模块内 `internal/...` 相对路径重跑，测试通过 |
+| 2026-05-27 | 远端轻量 canary 首次启动进入 setup wizard | 改为按生产容器形态挂载 `/root/cliapp/sub2api/data` 并设置生产 env，`/health` 通过 |
+| 2026-05-27 | Claude CLI 环境变量覆盖 `ANTHROPIC_BASE_URL` 未生效，仍读取 settings 中的 `127.0.0.1:8080` | 临时修改 `~/.claude_local/settings.json` 到 `127.0.0.1:18080` 测试，完成后恢复 `127.0.0.1:8080` |
+| 2026-05-27 | 固定字符串 TTY 测试触发 Claude Code debug 中非致命标题 JSON parse 噪音 | 追加自然 TTY prompt 验证正常交互无该 parse 噪音；服务端请求均为 HTTP 200 |

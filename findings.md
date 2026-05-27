@@ -18,6 +18,47 @@
 
 - 线上镜像更新/构建/回滚流程。
 
+## 黑盒验证记录
+
+- 2026-05-27：本轮未打 tag，使用本地 `HEAD` 打包上传到生产机并启动临时 canary 容器验证。
+- canary 只监听远端 `127.0.0.1:18080`，本机通过 SSH 隧道访问 `127.0.0.1:18080`；正式线上 `sub2api:8080` 未被替换。
+- Claude CLI `-p` smoke、`stream-json` WebSearch、真实 TTY 多轮均能经 `/v1/messages` 完成。
+- WebSearch 覆盖到客户端 `WebSearch` 工具调用、工具结果回传、继续回答和来源链接输出。
+- 固定字符串 TTY 测试会让 Claude Code 的会话标题解析在 debug log 中记录非致命 JSON parse 噪音；自然语言 TTY prompt 未复现。
+- 用户要求后续黑盒优先本地启动 Sub2API 并本地授权 Codex auth file；远端 canary 仅用于需要生产同配置验证的场景。
+
+## Claude -> GPT 稳定性迁移评估
+
+- 2026-05-27：已完成第一轮只读评估，详见 `docs/claude_gpt_stability_migration_matrix_20260527_CN.md`。
+- 迁移原则：不整包迁移 CLIProxyAPI 架构，只迁移稳定性经验、测试矩阵和小范围兼容边界。
+- Sub2API 已有能力：
+  - `/v1/messages` 到 OpenAI Responses 的模型映射和账号调度。
+  - `prompt_cache_key`、digest 复用、`previous_response_id` 绑定与失效重试。
+  - 缺失 terminal event 的基本错误识别。
+  - tool-call arguments done 兜底、Read `pages:""` 清理和 tool_use stop_reason 保持。
+  - 原生 `web_search` 映射与本地方案一客户端分流实现。
+- 主要缺口候选：
+  - HTTP 200 SSE 内嵌 `{"error":...}` 错误帧未明确分类。
+  - `response.failed` 当前可能被转换成普通 `end_turn` 成功结束。
+  - streaming `response.output_item.done` 中直接携带完整 message content 时，缺少 text fallback。
+  - Claude `tool_result.content[]` 中未知 block 目前可能退化为 `(empty)`，有上下文丢失风险。
+  - 已有 terminal/EOF 检测需要补“已写出部分 text/tool_use 后断流”的端到端测试。
+- 已补测试并完成业务修复：
+  - partial text 后 EOF -> `missing terminal event`。
+  - open tool_use 后 EOF -> `missing terminal event`。
+  - `output_item.done` message-only 现在会补 text fallback。
+  - unknown `tool_result` block 现在保留为压缩 JSON 文本。
+  - 200/SSE error frame 现在返回 upstream stream error，不再退化为 terminal missing。
+  - `response.failed` before output 现在返回 stream error，不再伪装为成功流。
+- 验证通过：`go test ./internal/pkg/apicompat`、`go test ./internal/service`、`go test ./internal/handler -run 'OpenAIGateway|Messages|Gateway'`、`go test ./...`。
+
+## 宿主机化迁移判断
+
+- 结论：长期建议把 Sub2API 应用、Postgres、Redis 都迁到宿主机 systemd 管理，但不建议和本次 Web search 兼容修复混成同一次上线。
+- 原因：本次改动是应用协议兼容，回滚可以做到切回旧镜像；Postgres/Redis 宿主机化涉及数据目录、备份恢复、端口监听、认证、连接配置、systemd、健康检查与回滚窗口，风险级别明显更高。
+- 性能判断：宿主机 Postgres/Redis 会减少 Docker 网络/volume 的一点开销，排查与监控也更直观；但对当前 API 网关类请求，主要延迟通常来自上游模型与流式链路，DB/Redis 宿主机化不应作为当前 Web search 兼容修复的阻塞项。
+- 建议路径：当前发布先保持 Postgres/Redis Docker，不碰数据层；下一阶段单独做“数据层宿主机化迁移”，包含全量备份、恢复演练、只读校验、短暂停写切换、健康检查和明确 rollback。
+
 ## 模型映射关系
 
 - 分组层入口：`backend/internal/handler/openai_gateway_handler.go` 的 `OpenAIGatewayHandler.Messages`。

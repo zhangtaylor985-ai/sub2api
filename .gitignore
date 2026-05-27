@@ -133,6 +133,7 @@ docs/*
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/claude_gpt_web_search_compat_20260527_CN.md
+!docs/claude_gpt_stability_migration_matrix_20260527_CN.md
 .serena/
 .codex/
 !.codex/

@@ -51,6 +51,17 @@
 - 可以查询 group/account 的非敏感字段，例如 `groups.name/platform/allow_messages_dispatch/messages_dispatch_model_config`、账号状态与 `credentials.model_mapping`。
 - 不要在未确认发布流程前直接进入容器修改文件；当前线上应用代码来自镜像，不是宿主机 Git 工作区。
 
+## 黑盒测试偏好
+
+- 后续 Sub2API Claude/Codex auth file 黑盒测试，优先本地启动 Sub2API，并在本地授权测试用 Codex auth file。
+- 只有需要生产同配置验证时，再使用生产机临时 canary；canary 必须只绑定远端 `127.0.0.1` 非正式端口，验证结束后清理容器、镜像、临时源码和本机 SSH 隧道。
+
+## 项目级 Skills
+
+- 线上地址库、容器状态、生产库只读查询、用户/API Key/分组关系、生图权限与模型映射排查：优先使用 `.codex/skills/sub2api-production-inspection/SKILL.md`。
+- 生产部署、Docker app 容器替换、回滚与 systemd/Docker 取舍：使用 `.codex/skills/sub2api-deploy/SKILL.md`。
+- 上线前回归、Claude/OpenAI/Codex 协议兼容、Web search、streaming、cc1 黑盒：使用 `.codex/skills/sub2api-production-regression/SKILL.md`。
+
 ## Claude -> GPT 模型映射
 
 - OpenAI 分组开启 `allow_messages_dispatch=true` 后，Claude `/v1/messages` 可调度到 OpenAI/Codex 账号。

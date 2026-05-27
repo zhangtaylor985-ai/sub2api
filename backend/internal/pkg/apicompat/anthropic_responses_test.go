@@ -690,6 +690,36 @@ func TestStreamingToolCallStopReasonSurvivesLaterText(t *testing.T) {
 	assert.Equal(t, "message_stop", events[2].Type)
 }
 
+func TestStreamingMessageOutputItemDoneWithoutDeltaEmitsTextFallback(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_msg_done", Model: "gpt-5.5"},
+	}, state)
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "message",
+			Status: "completed",
+			Content: []ResponsesContentPart{
+				{Type: "output_text", Text: "complete text only in output_item.done"},
+			},
+		},
+	}, state)
+
+	require.Len(t, events, 3)
+	assert.Equal(t, "content_block_start", events[0].Type)
+	require.NotNil(t, events[0].ContentBlock)
+	assert.Equal(t, "text", events[0].ContentBlock.Type)
+	assert.Equal(t, "content_block_delta", events[1].Type)
+	require.NotNil(t, events[1].Delta)
+	assert.Equal(t, "complete text only in output_item.done", events[1].Delta.Text)
+	assert.Equal(t, "content_block_stop", events[2].Type)
+}
+
 func TestStreamingToolCallDoneWithoutDeltaEmitsArguments(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 
@@ -1575,6 +1605,31 @@ func TestAnthropicToResponses_TextOnlyToolResultBackwardCompat(t *testing.T) {
 
 	// Text-only tool_result should produce a plain string.
 	assert.Equal(t, "Sunny, 72°F", items[2].Output)
+}
+
+func TestAnthropicToResponses_ToolResultUnknownBlockPreservedAsJSONText(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Track task state"`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"tool_use","id":"toolu_task","name":"TaskUpdate","input":{"id":"1"}}]`)},
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"toolu_task","content":[
+					{"type":"task_update","status":"done","summary":"finished"}
+				]}
+			]`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 3)
+	require.Equal(t, "function_call_output", items[2].Type)
+	assert.Equal(t, `{"type":"task_update","status":"done","summary":"finished"}`, items[2].Output)
 }
 
 func TestAnthropicToResponses_ImageEmptyMediaType(t *testing.T) {

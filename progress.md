@@ -23,3 +23,27 @@
 - 生产门禁执行中：`python3 tools/secret_scan.py` 失败，因为 Sub2API 仓库当前没有该脚本；本次先用改动范围 `rg` 扫描敏感词兜底，后续应补项目级 secret-scan 工具。
 - 上下文恢复：已确认变更暂存状态、任务计划和 Sub2API 生产回归 skill；下一步进入 Git 提交/tag、线上 canary、`cc1` 黑盒与正式切换判断。
 - 生产回归本地门禁复跑通过：`cd backend && go test ./...` 全量通过；`git diff --check` 通过；改动范围敏感词兜底扫描仅命中文档中的门禁描述与代码变量名，没有发现明文密钥。
+- 已创建本地发布提交 `ee377355` 与 tag `v0.1.131-claude-websearch.1`。
+- `git push origin main` 失败：GitHub 当前 SSH 身份 `DevDynamo2024` 对 `zhangtaylor985-ai/sub2api.git` 没有写权限；本地提交/tag 暂未进入远端。
+- 用户暂停上线与生产代码修改，要求先完成前两步：迁移矩阵与测试缺口清单，并允许第二步补测试代码。
+- 已新增 `docs/claude_gpt_stability_migration_matrix_20260527_CN.md`，本阶段文档先行，不修改业务逻辑。
+- 已补 Claude -> GPT 稳定性 P1 回归测试与 KnownGap characterization tests；未改业务逻辑。
+- 验证通过：`go test ./internal/pkg/apicompat`、`go test ./internal/service`。
+- 用户要求继续后，已修复 4 个 KnownGap：message-only output_item.done fallback、unknown tool_result JSON 保留、200/SSE error frame 分类、response.failed 不再返回成功流。
+- 追加验证通过：`go test ./internal/handler -run 'OpenAIGateway|Messages|Gateway'` 与 `cd backend && go test ./...`。
+- 已通过显式 SSH key 推送 `main` 和 tag `v0.1.131-claude-websearch.1` 到 `zhangtaylor985-ai/sub2api`。
+- 用户提出是否把 Docker 内 Redis/Postgres 迁到宿主机；当前判断：长期建议，但不并入本次 Web search 修复上线，数据层迁移需要独立计划、备份恢复演练和回滚窗口。
+- 线上 canary 的一次 HTTPS clone 长时间未完成，已中断并记录为远端拉取不稳定；下一步改用本地打包传输或 GitHub SSH 方案构建 canary。
+- canary direct `/v1/messages` web_search 黑盒暴露问题：OpenAI `web_search_call` 未携带 `action.query` 时，Claude CLI 合成 `<tool_call>` 与 `server_tool_use.input.query` 为空。
+- 已修复 query fallback：CLI 合成搜索开始/完成、`server_tool_use`、非流式转换均使用 request fallback query；新增中文 `请使用 web search 查询 ...，并...` 查询提取测试。
+- 验证通过：`go test ./internal/pkg/apicompat`、定向 service/handler、`go test ./...`；已推送修复提交 `3e8f76bd` 和 tag `v0.1.131-claude-websearch.2`。
+- 本轮稳定性修复完成后，创建本地提交 `0b80308c`（未打 tag，未推送时先做黑盒）。
+- 线上临时 canary 采用本地 `git archive HEAD` 打包上传，在生产 Docker network 中启动 `sub2api-canary-0b80308c727b`，仅绑定远端 `127.0.0.1:18080`，通过 SSH 隧道映射到本机 `127.0.0.1:18080`。
+- `~/.claude_local/settings.json` 临时切到 canary 后完成黑盒，随后已恢复为 `http://127.0.0.1:8080`。
+- canary 黑盒结果：
+  - `claude -p` smoke 返回精确 `SUB2API_CANARY_OK`，debug 显示 `/v1/messages` stream started。
+  - `stream-json --include-partial-messages` WebSearch 成功覆盖 `WebSearch -> tool_result -> 继续回答` 三轮链路，JSONL 全部可解析，最终包含来源链接。
+  - 真实 TTY 连续两轮返回 `TTY_ONE_OK` / `TTY_TWO_OK`；固定字符串测试触发 Claude Code 会话标题解析的非致命 `JSON Parse error` 噪音。
+  - 追加自然 TTY prompt 成功返回中文解释，未再出现标题 JSON parse 噪音。
+- 远端临时 canary 容器、镜像、源码目录与本机 SSH 隧道已清理。
+- 用户要求后续 Sub2API 黑盒优先采用本地启动服务、本地授权 Codex auth file 的方式；远端 canary 仅在需要生产同配置验证时使用。

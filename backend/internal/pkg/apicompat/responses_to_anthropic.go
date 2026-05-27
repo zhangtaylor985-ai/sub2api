@@ -204,6 +204,7 @@ type ResponsesEventToAnthropicState struct {
 	LastWebSearchQuery              string
 	EmittedSyntheticWebSearchStarts map[string]struct{}
 	EmittedSyntheticWebSearchDones  map[string]struct{}
+	TextOutputIndexes               map[int]struct{}
 }
 
 // NewResponsesEventToAnthropicState returns an initialised stream state.
@@ -220,6 +221,7 @@ func NewResponsesEventToAnthropicStateWithOptions(opts ResponsesToAnthropicOptio
 		LastWebSearchQuery:              opts.WebSearchFallbackQuery,
 		EmittedSyntheticWebSearchStarts: make(map[string]struct{}),
 		EmittedSyntheticWebSearchDones:  make(map[string]struct{}),
+		TextOutputIndexes:               make(map[int]struct{}),
 	}
 }
 
@@ -447,6 +449,7 @@ func resToAnthHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	if evt.Delta == "" {
 		return nil
 	}
+	state.TextOutputIndexes[evt.OutputIndex] = struct{}{}
 
 	var events []AnthropicStreamEvent
 
@@ -576,11 +579,32 @@ func resToAnthHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEv
 	if evt.Item.Type == "web_search_call" && evt.Item.Status == "completed" {
 		return resToAnthHandleWebSearchDone(evt, state)
 	}
+	if evt.Item.Type == "message" {
+		if _, sawDelta := state.TextOutputIndexes[evt.OutputIndex]; !sawDelta {
+			if text := responsesOutputMessageText(evt.Item); text != "" {
+				state.TextOutputIndexes[evt.OutputIndex] = struct{}{}
+				return emitStandaloneTextBlock(state, text)
+			}
+		}
+	}
 
 	if state.ContentBlockOpen {
 		return closeCurrentBlock(state)
 	}
 	return nil
+}
+
+func responsesOutputMessageText(item *ResponsesOutput) string {
+	if item == nil || item.Type != "message" {
+		return ""
+	}
+	var parts []string
+	for _, part := range item.Content {
+		if part.Type == "output_text" && strings.TrimSpace(part.Text) != "" {
+			parts = append(parts, part.Text)
+		}
+	}
+	return strings.Join(parts, "")
 }
 
 // resToAnthHandleWebSearchDone converts an OpenAI web_search_call output item

@@ -90,17 +90,21 @@ func buildVSCodeWebSearchProgressThinking(action *WebSearchAction, fallbackQuery
 	return "Searching the web."
 }
 
-func buildSyntheticWebSearchToolCallText(action *WebSearchAction) string {
+func buildSyntheticWebSearchToolCallText(action *WebSearchAction, fallbackQuery string, completed bool) string {
 	prefix := "Searching the web.\n\n"
 	args := map[string]any{}
-	if action != nil {
+	query := webSearchActionQuery(action)
+	if query == "" {
+		query = strings.TrimSpace(fallbackQuery)
+	}
+	if query != "" {
+		args["query"] = query
+		if completed {
+			prefix = "Searched: " + query + "\n\n"
+		}
+	} else if action != nil {
 		switch strings.ToLower(strings.TrimSpace(action.Type)) {
 		case "search":
-			query := strings.TrimSpace(action.Query)
-			if query != "" {
-				prefix = "Searched: " + query + "\n\n"
-				args["query"] = query
-			}
 		default:
 			if action.Type != "" || action.Query != "" {
 				args["action"] = map[string]string{
@@ -234,13 +238,23 @@ func normalizeLikelyWebSearchQuery(text string) string {
 		"perform a web search for the query:",
 		"perform web search for the query:",
 		"perform a web search for:",
+		"please use web search to look up",
+		"use web search to look up",
+		"please search the web for",
+		"search the web for",
 		"web search for the query:",
 		"web search for:",
 		"search for:",
+		"请使用 web search 查询",
+		"使用 web search 查询",
+		"用 web search 查询",
+		"web search 查询",
 		"搜索：",
 		"搜索:",
 		"请搜索：",
 		"请搜索:",
+		"请查询",
+		"查询",
 	}
 
 	lower := strings.ToLower(text)
@@ -308,6 +322,7 @@ func sanitizeLikelySearchQuery(text string) string {
 	query := strings.Join(parts, " ")
 	query = strings.Join(strings.Fields(query), " ")
 	query = strings.Trim(query, " \t\r\n\"'“”‘’")
+	query = trimSearchQueryInstructionSuffix(query)
 	queryLower := strings.ToLower(query)
 	switch {
 	case strings.HasPrefix(queryLower, "web search "):
@@ -319,6 +334,33 @@ func sanitizeLikelySearchQuery(text string) string {
 		return ""
 	}
 	return query
+}
+
+func trimSearchQueryInstructionSuffix(query string) string {
+	cutMarkers := []string{
+		"，并",
+		"，然后",
+		"，用",
+		"，请",
+		", and ",
+		", then ",
+		" and answer",
+		" then answer",
+		"并用",
+		"然后",
+	}
+	lower := strings.ToLower(query)
+	cut := len(query)
+	for _, marker := range cutMarkers {
+		searchIn := query
+		if strings.IndexFunc(marker, func(r rune) bool { return r > 127 }) == -1 {
+			searchIn = lower
+		}
+		if idx := strings.Index(searchIn, marker); idx >= 0 && idx < cut {
+			cut = idx
+		}
+	}
+	return strings.TrimSpace(query[:cut])
 }
 
 func looksLikeSearchQueryNoise(text string) bool {

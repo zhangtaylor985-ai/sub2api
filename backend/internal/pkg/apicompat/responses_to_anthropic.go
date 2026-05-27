@@ -65,10 +65,7 @@ func ResponsesToAnthropicWithOptions(resp *ResponsesResponse, model string, opts
 			})
 		case "web_search_call":
 			toolUseID := "srvtoolu_" + item.ID
-			query := ""
-			if item.Action != nil {
-				query = item.Action.Query
-			}
+			query := webSearchQueryWithFallback(item.Action, opts.WebSearchFallbackQuery)
 			inputJSON, _ := json.Marshal(map[string]string{"query": query})
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:  "server_tool_use",
@@ -83,7 +80,7 @@ func ResponsesToAnthropicWithOptions(resp *ResponsesResponse, model string, opts
 				Content:   emptyResults,
 			})
 			if shouldEmitSyntheticWebSearchTag(opts.ClientKind) {
-				if syntheticText := buildSyntheticWebSearchToolCallText(item.Action); syntheticText != "" {
+				if syntheticText := buildSyntheticWebSearchToolCallText(item.Action, opts.WebSearchFallbackQuery, true); syntheticText != "" {
 					blocks = append(blocks, AnthropicContentBlock{Type: "text", Text: syntheticText})
 				}
 			}
@@ -418,7 +415,7 @@ func resToAnthHandleWebSearchAdded(evt *ResponsesStreamEvent, state *ResponsesEv
 				return nil
 			}
 		}
-		text := buildSyntheticWebSearchToolCallText(nil)
+		text := buildSyntheticWebSearchToolCallText(evt.Item.Action, state.LastWebSearchQuery, false)
 		if text == "" {
 			return nil
 		}
@@ -594,11 +591,8 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	events = append(events, closeCurrentBlock(state)...)
 
 	toolUseID := "srvtoolu_" + evt.Item.ID
-	query := ""
-	if evt.Item.Action != nil {
-		query = evt.Item.Action.Query
-	}
-	if query = strings.TrimSpace(query); query != "" {
+	query := webSearchQueryWithFallback(evt.Item.Action, state.LastWebSearchQuery)
+	if query != "" {
 		state.LastWebSearchQuery = query
 	}
 	inputJSON, _ := json.Marshal(map[string]string{"query": query})
@@ -648,7 +642,7 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 				return events
 			}
 		}
-		if syntheticText := buildSyntheticWebSearchToolCallText(evt.Item.Action); syntheticText != "" {
+		if syntheticText := buildSyntheticWebSearchToolCallText(evt.Item.Action, state.LastWebSearchQuery, true); syntheticText != "" {
 			events = append(events, emitStandaloneTextBlock(state, syntheticText)...)
 			if itemID != "" {
 				state.EmittedSyntheticWebSearchDones[itemID] = struct{}{}
@@ -664,6 +658,13 @@ func webSearchActionQuery(action *WebSearchAction) string {
 		return ""
 	}
 	return strings.TrimSpace(action.Query)
+}
+
+func webSearchQueryWithFallback(action *WebSearchAction, fallbackQuery string) string {
+	if query := webSearchActionQuery(action); query != "" {
+		return query
+	}
+	return strings.TrimSpace(fallbackQuery)
 }
 
 func emitStandaloneTextBlock(state *ResponsesEventToAnthropicState, text string) []AnthropicStreamEvent {

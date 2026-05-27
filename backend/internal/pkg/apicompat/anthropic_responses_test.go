@@ -861,6 +861,35 @@ func TestStreamingWebSearchClaudeCLIEmitsSyntheticProgress(t *testing.T) {
 	assert.Contains(t, events[5].Delta.Text, `"query":"official Sub2API docs"`)
 }
 
+func TestStreamingWebSearchClaudeCLIUsesFallbackQueryWhenActionMissing(t *testing.T) {
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind:             AnthropicCompatClientClaudeCLI,
+		WebSearchFallbackQuery: "OpenAI official website homepage title",
+	})
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "web_search_call", ID: "ws_fallback"},
+	}, state)
+	require.Len(t, events, 3)
+	assert.Contains(t, events[1].Delta.Text, "Searching the web.")
+	assert.Contains(t, events[1].Delta.Text, `"query":"OpenAI official website homepage title"`)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.output_item.done",
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_fallback",
+			Status: "completed",
+		},
+	}, state)
+	require.Len(t, events, 7)
+	require.JSONEq(t, `{"query":"OpenAI official website homepage title"}`, string(events[0].ContentBlock.Input))
+	assert.Contains(t, events[5].Delta.Text, "Searched: OpenAI official website homepage title")
+	assert.Contains(t, events[5].Delta.Text, `"query":"OpenAI official website homepage title"`)
+}
+
 func TestStreamingWebSearchVSCodeEmitsThinkingProgress(t *testing.T) {
 	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
 		ClientKind:             AnthropicCompatClientClaudeVSCode,
@@ -917,6 +946,14 @@ func TestResponsesToAnthropicWithOptions_SuppressesReasoningAndAddsCLISearchText
 	assert.Contains(t, anth.Content[2].Text, "Searched: Sub2API web search")
 	assert.Equal(t, "text", anth.Content[3].Type)
 	assert.Equal(t, "Found the answer.", anth.Content[3].Text)
+}
+
+func TestInferBuiltinWebSearchQueryExtractsChineseQuery(t *testing.T) {
+	raw := []byte(`{
+		"messages":[{"role":"user","content":"请使用 web search 查询 OpenAI official website homepage title，并用一句中文回答。"}],
+		"tools":[{"type":"web_search_20250305","name":"web_search"}]
+	}`)
+	assert.Equal(t, "OpenAI official website homepage title", InferBuiltinWebSearchQuery(raw))
 }
 
 func TestStreamingIncomplete(t *testing.T) {

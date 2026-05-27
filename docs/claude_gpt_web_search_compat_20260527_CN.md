@@ -99,6 +99,22 @@ Sub2API 当前有两层映射。
   - 覆盖 reasoning summary 抑制。
   - 覆盖非流式 CLI 搜索文本补齐。
 
+## 2026-05-27 线上 WebSearch 路径纠偏
+
+线上截图显示 Claude Code/VSCode 仍在展示 `Web Search("...")` 与 `Found 0 results`，并且请求耗时约 4 分钟。复查后确认这是另一条入口：Claude Code 提供的是 `name:"WebSearch"` 的客户端 function tool，不是 Anthropic server tool `web_search_20250305`。当它被当成普通 function 透传给 GPT 时，GPT 会调用客户端 `WebSearch`，于是实际执行的是 Claude Code 原生搜索，而不是 OpenAI Responses 原生 `web_search`。
+
+追加修复：
+
+- `convertAnthropicToolsToResponses` 同时识别 `web_search_20250305` 和 Claude Code `WebSearch`，统一映射为 OpenAI Responses `{"type":"web_search"}`。
+- 同一请求里如果同时存在 server web_search 与客户端 WebSearch，只保留一个 OpenAI `web_search`，避免重复工具。
+- `tool_choice: {"type":"tool","name":"WebSearch"}` 会映射为 `{"type":"web_search"}`，避免强制调用不存在的普通 function。
+
+本地黑盒验证：
+
+- 本地启动 Sub2API 于 `127.0.0.1:8080`，使用本机生产库副本和本地 Docker Postgres/Redis，验证后已停止。
+- `cc1`/Claude Code `stream-json --include-partial-messages` 样本显示 `Searching the web.`、`server_tool_use name=web_search`、`web_search_tool_result`、`Searched:` 与最终中文回答；未出现客户端 `tool_use name=WebSearch`。
+- 真实 TTY 样本显示 `Searching the web.` / `Searched: ...` 并返回 OpenAI 官网标题；没有复现 `Web Search("...") Found 0 results`。
+
 ## 验证
 
 在 `backend/` 目录执行：

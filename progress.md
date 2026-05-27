@@ -53,5 +53,13 @@
 - 生产部署验证：
   - Docker `sub2api` 容器运行镜像 `zhangtaylor985/sub2api:main-decdc6d0`，状态 healthy。
   - 宿主机与公开入口 `/health` 均返回 `{"status":"ok"}`。
-  - 公开入口 Claude CLI smoke 最终返回 `SUB2API_PROD_OK`；期间一次上游 SSE error 被正确转换为错误事件，Claude CLI 自动 fallback 到非流式成功。
-  - 公开入口原始 `/v1/messages` streaming curl 成功收到 `RAW_PROD_OK` 与 `message_stop`，无 error event。
+- 公开入口 Claude CLI smoke 最终返回 `SUB2API_PROD_OK`；期间一次上游 SSE error 被正确转换为错误事件，Claude CLI 自动 fallback 到非流式成功。
+- 公开入口原始 `/v1/messages` streaming curl 成功收到 `RAW_PROD_OK` 与 `message_stop`，无 error event。
+- 用户反馈线上 Claude Code/VSCode 搜索仍显示 `Web Search(...)`、`Found 0 results` 且耗时约 4 分钟；重新排查确认当前请求走的是 Claude Code 客户端 `WebSearch` function 工具，不是 OpenAI 原生 `web_search_call`。
+- 生产日志只读观察到截图时段 `/v1/messages` 存在约 247-262 秒级请求，匹配慢搜索体验；未在当前日志中看到 OpenAI `web_search_call` 类型输出，说明入口转换没有触发原生 GPT web search。
+- 已开始修复入口映射：Claude Code `name:"WebSearch"` 工具现在映射到 OpenAI Responses `{"type":"web_search"}`，同时补充去重和强制 `tool_choice` 回归测试。
+- 定向单测通过：`go test ./internal/pkg/apicompat -run 'AnthropicToResponses_(ClaudeCodeWebSearch|WebSearchToolDedupes|ToolChoiceSpecificClaudeCodeWebSearch|ToolUse|ToolChoiceSpecific)$'`。
+- 协议层与后端回归通过：`go test ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'`、`go test ./internal/handler -run 'OpenAIGateway|Messages|Gateway'`、`go test ./...`、`git diff --check`。
+- 本地 Sub2API 已按用户偏好启动在 `127.0.0.1:8080`，连接本机 Docker Postgres/Redis 与本地生产库副本；首次临时 TOTP key 长度错误已修正，验证后服务已停止且 8080 无残留监听。
+- `cc1`/Claude Code `stream-json --include-partial-messages` WebSearch 黑盒通过：JSONL 出现 `Searching the web.`、`server_tool_use name=web_search`、`web_search_tool_result`、`Searched:` 和最终中文回答；未出现客户端 `tool_use name=WebSearch`。
+- 真实 TTY WebSearch 黑盒通过：界面显示 `Searching the web.` / `Searched: ...` 并返回 OpenAI 官网标题；没有复现线上截图中的 `Web Search("...") Found 0 results` 客户端原生搜索路径。

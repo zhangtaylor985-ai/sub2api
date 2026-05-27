@@ -90,6 +90,8 @@
 ## Web Search 兼容关系
 
 - Claude `/v1/messages` -> OpenAI Responses 转换在 `backend/internal/pkg/apicompat/anthropic_to_responses.go`：Anthropic `web_search_20250305` 会映射为 OpenAI Responses `{"type":"web_search"}`。
+- 2026-05-27 线上截图排查补充：Claude Code/VSCode 常见的搜索工具不是 server tool，而是 `name:"WebSearch"` 的客户端 function tool。当前线上 `convertAnthropicToolsToResponses` 只识别 `type` 前缀为 `web_search` 的工具，因此这类请求会把 `WebSearch` 作为普通 function 交给 GPT；GPT 调用后由 Claude Code 客户端执行原生 Web Search，界面会显示 `Web Search("...")` 和 `Found 0 results`，没有进入 OpenAI 原生 `web_search_call` 兼容层。
+- 修复方向：在 Claude -> GPT 入口处将 Claude Code `WebSearch` 工具也映射为 OpenAI Responses `{"type":"web_search"}`，并避免同时保留普通 `WebSearch` function；后续 OpenAI 返回的 `web_search_call` 继续走既有 `server_tool_use` / `web_search_tool_result` / CLI/VSCode 进度兼容。
 - OpenAI Responses -> Anthropic 转换在 `backend/internal/pkg/apicompat/responses_to_anthropic.go`：
   - 非流式 `web_search_call` 当前生成 `server_tool_use` 和空的 `web_search_tool_result`。
   - 流式 `response.output_item.done` 且 item 为 `web_search_call` 时，也生成 `server_tool_use` 和空的 `web_search_tool_result`。

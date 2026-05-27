@@ -146,6 +146,59 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	assert.Equal(t, "Sunny, 72°F", items[3].Output)
 }
 
+func TestAnthropicToResponses_ClaudeCodeWebSearchToolMapsToNativeResponsesTool(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Search today's AI news"`)},
+		},
+		Tools: []AnthropicTool{
+			{
+				Name:        "Bash",
+				Description: "Run a shell command",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+			},
+			{
+				Name:        "WebSearch",
+				Description: "Search the web",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`),
+			},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 2)
+	assert.Equal(t, "function", resp.Tools[0].Type)
+	assert.Equal(t, "Bash", resp.Tools[0].Name)
+	assert.Equal(t, "web_search", resp.Tools[1].Type)
+	assert.Empty(t, resp.Tools[1].Name)
+}
+
+func TestAnthropicToResponses_WebSearchToolDedupesServerAndClaudeCodeForms(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Search today's AI news"`)},
+		},
+		Tools: []AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search"},
+			{
+				Name:        "WebSearch",
+				Description: "Search the web",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`),
+			},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 1)
+	assert.Equal(t, "web_search", resp.Tools[0].Type)
+}
+
 func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
@@ -1414,6 +1467,28 @@ func TestAnthropicToResponses_ToolChoiceSpecific(t *testing.T) {
 	assert.Equal(t, "function", tc["type"])
 	assert.Equal(t, "get_weather", tc["name"])
 	assert.NotContains(t, tc, "function")
+}
+
+func TestAnthropicToResponses_ToolChoiceSpecificClaudeCodeWebSearch(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:      "gpt-5.2",
+		MaxTokens:  1024,
+		Messages:   []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Search today's AI news"`)}},
+		ToolChoice: json.RawMessage(`{"type":"tool","name":"WebSearch"}`),
+		Tools: []AnthropicTool{{
+			Name:        "WebSearch",
+			Description: "Search the web",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`),
+		}},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var tc map[string]any
+	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
+	assert.Equal(t, "web_search", tc["type"])
+	assert.NotContains(t, tc, "name")
 }
 
 func TestResponsesToAnthropicRequest_ToolChoiceFunctionName(t *testing.T) {

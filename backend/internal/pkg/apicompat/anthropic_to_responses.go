@@ -71,7 +71,7 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 
 	// Convert tool_choice
 	if len(req.ToolChoice) > 0 {
-		tc, err := convertAnthropicToolChoiceToResponses(req.ToolChoice)
+		tc, err := convertAnthropicToolChoiceToResponses(req.ToolChoice, req.Tools)
 		if err != nil {
 			return nil, fmt.Errorf("convert tool_choice: %w", err)
 		}
@@ -86,8 +86,9 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 //	{"type":"auto"}            → "auto"
 //	{"type":"any"}             → "required"
 //	{"type":"none"}            → "none"
-//	{"type":"tool","name":"X"} → {"type":"function","name":"X"}
-func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage, error) {
+//	{"type":"tool","name":"X"}         → {"type":"function","name":"X"}
+//	{"type":"tool","name":"WebSearch"} → {"type":"web_search"}
+func convertAnthropicToolChoiceToResponses(raw json.RawMessage, tools []AnthropicTool) (json.RawMessage, error) {
 	var tc struct {
 		Type string `json:"type"`
 		Name string `json:"name"`
@@ -104,6 +105,11 @@ func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage
 	case "none":
 		return json.Marshal("none")
 	case "tool":
+		if isAnthropicBuiltinWebSearchToolName(tc.Name, tools) {
+			return json.Marshal(map[string]any{
+				"type": "web_search",
+			})
+		}
 		return json.Marshal(map[string]any{
 			"type": "function",
 			"name": tc.Name,
@@ -456,10 +462,15 @@ func mapAnthropicEffortToResponses(effort string) string {
 // OpenAI equivalents; regular tools become function tools.
 func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 	var out []ResponsesTool
+	hasWebSearch := false
 	for _, t := range tools {
-		// Anthropic server tools like "web_search_20250305" → OpenAI {"type":"web_search"}
-		if strings.HasPrefix(t.Type, "web_search") {
-			out = append(out, ResponsesTool{Type: "web_search"})
+		// Anthropic server tools like "web_search_20250305" and Claude Code's
+		// generic "WebSearch" client tool both map to OpenAI native web_search.
+		if isAnthropicBuiltinWebSearchTool(t) {
+			if !hasWebSearch {
+				out = append(out, ResponsesTool{Type: "web_search"})
+				hasWebSearch = true
+			}
 			continue
 		}
 		out = append(out, ResponsesTool{
@@ -471,6 +482,56 @@ func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 		})
 	}
 	return out
+}
+
+func isAnthropicBuiltinWebSearchToolName(name string, tools []AnthropicTool) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, t := range tools {
+		if strings.EqualFold(strings.TrimSpace(t.Name), name) && isAnthropicBuiltinWebSearchTool(t) {
+			return true
+		}
+	}
+	return false
+}
+
+func isAnthropicBuiltinWebSearchTool(t AnthropicTool) bool {
+	toolType := strings.TrimSpace(t.Type)
+	if strings.HasPrefix(strings.ToLower(toolType), "web_search") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(t.Name), "web_search") && toolType != "" {
+		return true
+	}
+	if !strings.EqualFold(strings.TrimSpace(t.Name), "WebSearch") {
+		return false
+	}
+	return anthropicToolSchemaLooksLikeWebSearch(t.InputSchema)
+}
+
+func anthropicToolSchemaLooksLikeWebSearch(schema json.RawMessage) bool {
+	if len(schema) == 0 || bytes.Equal(bytes.TrimSpace(schema), []byte("null")) {
+		return true
+	}
+
+	var obj struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Required   []string                   `json:"required"`
+	}
+	if err := json.Unmarshal(schema, &obj); err != nil {
+		return false
+	}
+	if _, ok := obj.Properties["query"]; ok {
+		return true
+	}
+	for _, field := range obj.Required {
+		if strings.EqualFold(strings.TrimSpace(field), "query") {
+			return true
+		}
+	}
+	return false
 }
 
 func boolPtr(v bool) *bool {

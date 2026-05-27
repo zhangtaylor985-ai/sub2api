@@ -133,6 +133,16 @@ func buildSyntheticWebSearchToolCallText(action *WebSearchAction, fallbackQuery 
 	return prefix + "<tool_call>\n" + string(body) + "\n</tool_call>"
 }
 
+func suppressUnsafeWebSearchToolCallText(text string) bool {
+	lower := strings.ToLower(text)
+	if !strings.Contains(lower, "<tool_call>") ||
+		!strings.Contains(lower, "</tool_call>") ||
+		!strings.Contains(lower, "web_search") {
+		return false
+	}
+	return looksLikeClaudeCodeConversationMeta(lower)
+}
+
 // InferBuiltinWebSearchQuery extracts a likely search label from the latest
 // user message when the request declares a built-in web search tool.
 func InferBuiltinWebSearchQuery(rawJSON []byte) string {

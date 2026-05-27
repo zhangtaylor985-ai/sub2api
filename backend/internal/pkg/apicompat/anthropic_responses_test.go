@@ -1041,6 +1041,19 @@ func TestStreamingWebSearchClaudeCLIDoesNotExposeContinuationSummaryActionQuery(
 	assert.NotContains(t, events[5].Delta.Text, unsafeQuery)
 }
 
+func TestStreamingWebSearchSuppressesUnsafeTextualToolCall(t *testing.T) {
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind: AnthropicCompatClientClaudeCLI,
+	})
+	text := "Searching the web.\n\n<tool_call>\n{\"arguments\":{\"queries\":[\"This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\"]},\"name\":\"web_search\"}\n</tool_call>"
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:  "response.output_text.delta",
+		Delta: text,
+	}, state)
+	require.Empty(t, events)
+}
+
 func TestStreamingWebSearchVSCodeEmitsThinkingProgress(t *testing.T) {
 	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
 		ClientKind:             AnthropicCompatClientClaudeVSCode,

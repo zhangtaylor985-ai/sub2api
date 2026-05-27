@@ -50,6 +50,9 @@ func ResponsesToAnthropicWithOptions(resp *ResponsesResponse, model string, opts
 		case "message":
 			for _, part := range item.Content {
 				if part.Type == "output_text" && part.Text != "" {
+					if suppressUnsafeWebSearchToolCallText(part.Text) {
+						continue
+					}
 					blocks = append(blocks, AnthropicContentBlock{
 						Type: "text",
 						Text: part.Text,
@@ -449,6 +452,9 @@ func resToAnthHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	if evt.Delta == "" {
 		return nil
 	}
+	if suppressUnsafeWebSearchToolCallText(evt.Delta) {
+		return nil
+	}
 	state.TextOutputIndexes[evt.OutputIndex] = struct{}{}
 
 	var events []AnthropicStreamEvent
@@ -601,6 +607,9 @@ func responsesOutputMessageText(item *ResponsesOutput) string {
 	var parts []string
 	for _, part := range item.Content {
 		if part.Type == "output_text" && strings.TrimSpace(part.Text) != "" {
+			if suppressUnsafeWebSearchToolCallText(part.Text) {
+				continue
+			}
 			parts = append(parts, part.Text)
 		}
 	}

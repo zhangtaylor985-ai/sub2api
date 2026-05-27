@@ -14,9 +14,14 @@
 - 线上 `/root/cliapp/sub2api` 当前未确认是 Git 工作区，初步检查未输出 Git 状态。
 - 线上 Caddy active，`cc.claudepool.com` 反代到 `127.0.0.1:8080`；Nginx inactive。
 
-## 待确认问题
+## 已确认发布流程
 
-- 线上镜像更新/构建/回滚流程。
+- 线上生产机可用 `root` 用户的 GitHub SSH key 拉取 `git@github.com:zhangtaylor985-ai/sub2api.git`。
+- 生产源码目录：`/root/cliapp/sub2api-src`。
+- 本次生产镜像在生产机使用完整根目录 Dockerfile 构建：`zhangtaylor985/sub2api:main-decdc6d0`。
+- 生产 Compose 只替换 app 容器 `sub2api`，Postgres/Redis 容器不动。
+- 本次 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T105427Z`。
+- 回滚优先切回上一版 app 镜像 `zhangtaylor985/sub2api:v0.1.131-claude-websearch.2` 并执行 `docker compose up -d sub2api`。
 
 ## 黑盒验证记录
 

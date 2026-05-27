@@ -33,7 +33,7 @@
 | 8. 旧项目稳定性经验迁移矩阵 | complete | `docs/claude_gpt_stability_migration_matrix_20260527_CN.md` |
 | 9. 测试缺口清单 | complete | 文档矩阵与 KnownGap characterization tests |
 | 10. 业务逻辑修复 | complete | 已修复 4 个 KnownGap |
-| 11. 上线前黑盒与发布 | in_progress | canary 与 Claude CLI 黑盒已完成；待 push 后进入正式部署/重启判断 |
+| 11. 上线前黑盒与发布 | complete | canary、Claude CLI 黑盒、生产部署、健康检查与生产 SSE smoke 已完成 |
 
 ## 决策记录
 
@@ -43,6 +43,7 @@
 - 2026-05-27：因 Postgres/Redis 仍在 Docker 网络内，短期生产发布采用应用容器替换/重启；宿主机 systemd 直跑作为后续独立迁移任务。
 - 2026-05-27：用户要求先完成旧项目 Claude -> GPT 稳定性经验的迁移矩阵与测试缺口清单；第二步允许补测试代码，但不改业务逻辑。
 - 2026-05-27：用户要求后续黑盒优先使用本地启动 Sub2API 并在本地授权 Codex auth file；远端 canary 只作为生产同配置验证手段。
+- 2026-05-27：本次发布不打 Git tag；生产 Docker 镜像使用 `zhangtaylor985/sub2api:main-decdc6d0`。
 
 ## 错误记录
 

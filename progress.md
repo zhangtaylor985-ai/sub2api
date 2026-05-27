@@ -47,3 +47,11 @@
   - 追加自然 TTY prompt 成功返回中文解释，未再出现标题 JSON parse 噪音。
 - 远端临时 canary 容器、镜像、源码目录与本机 SSH 隧道已清理。
 - 用户要求后续 Sub2API 黑盒优先采用本地启动服务、本地授权 Codex auth file 的方式；远端 canary 仅在需要生产同配置验证时使用。
+- 已推送 `main` 到 `decdc6d0`。默认 `origin` push 会命中本机默认 GitHub 身份无权限；本次使用 `github-zhangtaylor985-ai` SSH host alias 成功推送。
+- 生产机已从 GitHub clone `decdc6d0` 到 `/root/cliapp/sub2api-src`，并构建完整生产镜像 `zhangtaylor985/sub2api:main-decdc6d0`。
+- 已备份并更新线上 Compose：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T105427Z`；只重建 `sub2api` app 容器，Postgres/Redis 未重建。
+- 生产部署验证：
+  - Docker `sub2api` 容器运行镜像 `zhangtaylor985/sub2api:main-decdc6d0`，状态 healthy。
+  - 宿主机与公开入口 `/health` 均返回 `{"status":"ok"}`。
+  - 公开入口 Claude CLI smoke 最终返回 `SUB2API_PROD_OK`；期间一次上游 SSE error 被正确转换为错误事件，Claude CLI 自动 fallback 到非流式成功。
+  - 公开入口原始 `/v1/messages` streaming curl 成功收到 `RAW_PROD_OK` 与 `message_stop`，无 error event。

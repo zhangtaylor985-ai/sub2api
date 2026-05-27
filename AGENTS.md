@@ -24,7 +24,7 @@
 - 线上运行方式：Docker Compose
 - Compose 文件：`/root/cliapp/sub2api/docker-compose.yml`
 - 当前容器：
-  - `sub2api`，镜像 `zhangtaylor985/sub2api:v0.1.131-claude-websearch.2`，健康检查通过，宿主机 `0.0.0.0:8080 -> 8080/tcp`
+  - `sub2api`，镜像 `zhangtaylor985/sub2api:main-decdc6d0`，健康检查通过，宿主机 `0.0.0.0:8080 -> 8080/tcp`
   - `sub2api-postgres`，镜像 `postgres:18-alpine`
   - `sub2api-redis`，镜像 `redis:8-alpine`
 - 线上挂载：
@@ -81,7 +81,7 @@
 
 - 2026-05-27：已将线上 OpenAI 分组 `allow_messages_dispatch` 调整为 `true`。
 - 2026-05-27：确认后续只做 Web search 方案一：参考 CLIProxyAPI 的 Claude -> GPT 兼容层，改善 Claude CLI / VSCode 对 OpenAI `web_search_call` 的展示；不默认改用 Brave/Tavily 模拟。
-- 2026-05-27：已上线 `v0.1.131-claude-websearch.2`。线上 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T063700Z`；回滚时可将 app 镜像切回 `weishaw/sub2api:latest` 后 `docker compose up -d sub2api`。
+- 2026-05-27：已上线 `zhangtaylor985/sub2api:main-decdc6d0`。线上 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T105427Z`；上一版应用镜像为 `zhangtaylor985/sub2api:v0.1.131-claude-websearch.2`，更早回滚可切回 `weishaw/sub2api:latest`，然后 `docker compose up -d sub2api`。
 - 2026-05-27：Postgres/Redis 仍保持 Docker Compose 管理；宿主机化迁移应单独做备份、恢复演练、停写窗口和回滚方案，不与应用协议修复混发。
 - 任务细节见：
   - `task_plan.md`

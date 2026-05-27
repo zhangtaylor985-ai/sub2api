@@ -79,3 +79,13 @@
   - VSCode thinking 不展示 continuation summary fallback。
   - 原始 `/v1/messages` fallback query 推断忽略 continuation summary。
 - 本地验证通过：`go test ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'`、`go test ./internal/handler -run 'OpenAIGateway|Messages|Gateway'`、`go test ./...`、`git diff --check`。
+- 已按主线发布到线上，不做远程手改：最终运行镜像 `zhangtaylor985/sub2api:main-2e01e876`，线上 source clone 为 `2e01e876`，容器 health 为 healthy，公开 `/health` 返回 ok。
+- 本轮新增生产 Compose 备份：
+  - `/root/cliapp/sub2api/docker-compose.yml.bak.20260527T150329Z`
+  - `/root/cliapp/sub2api/docker-compose.yml.bak.20260527T151031Z`
+  - `/root/cliapp/sub2api/docker-compose.yml.bak.20260527T152109Z`
+  - `/root/cliapp/sub2api/docker-compose.yml.bak.20260527T153049Z`
+- 生产 smoke 结果：
+  - continuation summary 作为普通 user text 时，未触发 `Searched: This session` 泄漏。
+  - 强制搜索 exact continuation phrase 时，最终 `main-2e01e876` 版本未再命中 `Searched:` / `Searching the web for:` / `query` 形式的进度泄漏；一次 smoke 中模型本身没有继续发搜索 tool-call，说明该场景仍需后续用可控 fake upstream 做确定性集成测试。
+- 工程判断：本轮已收口线上暴露问题的防线和回归，但不应继续在生产 smoke 中无限追补；下一阶段应把 WebSearch 兼容拆成可维护的“事件级 web_search 状态机 + fake upstream 黑盒矩阵”，覆盖 split delta、多个 web_search_call、普通文本误杀边界和 VSCode/Claude CLI 差异。

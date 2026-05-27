@@ -143,6 +143,18 @@ Sub2API 当前有两层映射。
 - `TestStreamingWebSearchVSCodeDoesNotExposeContinuationSummaryFallback`
 - `TestInferBuiltinWebSearchQueryIgnoresContinuationSummary`
 
+上线记录：
+
+- 最终运行镜像：`zhangtaylor985/sub2api:main-2e01e876`。
+- 最终代码提交：`2e01e876 fix(apicompat): gate unsafe web search text at sse output`。
+- 线上 source clone：`/root/cliapp/sub2api-src` 已 fast-forward 到 `2e01e876`。
+- 线上应用容器 `sub2api` health 为 healthy，公开 `https://cc.claudepool.com/health` 返回 ok。
+
+阶段判断：
+
+- 本轮先收住已观察到的 continuation summary 泄漏面：fallback query、action query、文本型 `web_search` `<tool_call>` 和最终 SSE 出口。
+- 后续不应继续靠生产真实模型 smoke 追随机输出；需要补 fake upstream / deterministic SSE fixture，专门覆盖 split delta、重复 web_search_call、普通最终答案包含同类短语、VSCode/Claude CLI 分流差异。
+
 ## 验证
 
 在 `backend/` 目录执行：

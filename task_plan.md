@@ -35,7 +35,7 @@
 | 10. 业务逻辑修复 | complete | 已修复 4 个 KnownGap |
 | 11. 上线前黑盒与发布 | complete | canary、Claude CLI 黑盒、生产部署、健康检查与生产 SSE smoke 已完成 |
 | 12. 线上 WebSearch 路径纠偏 | complete | 已补 Claude Code `WebSearch` -> OpenAI 原生 `web_search` 入口映射、单测、本地 cc1/TTY 黑盒 |
-| 13. WebSearch query 泄漏修复 | in_progress | 屏蔽 Claude Code continuation summary 作为 action/fallback 搜索词；单测与本地回归已通过，待提交/部署/线上验证 |
+| 13. WebSearch query 泄漏修复 | complete | 已屏蔽 continuation summary 作为 action/fallback 搜索词，并在 SSE 出口抑制文本型 web_search tool_call 泄漏；生产镜像 `main-2e01e876` 已 healthy |
 
 ## 决策记录
 

@@ -16,6 +16,14 @@
               <div class="mb-1 flex items-center gap-2"><span class="font-medium text-gray-900 dark:text-white">{{ key.name }}</span><span :class="['badge text-xs', key.status === 'active' ? 'badge-success' : 'badge-danger']">{{ key.status }}</span></div>
               <p class="truncate font-mono text-sm text-gray-500">{{ key.key.substring(0, 20) }}...{{ key.key.substring(key.key.length - 8) }}</p>
             </div>
+            <button
+              type="button"
+              class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+              @click="togglePolicyEditor(key)"
+            >
+              <Icon :name="editingKeyId === key.id ? 'x' : 'edit'" size="sm" />
+              <span>{{ editingKeyId === key.id ? '关闭' : '编辑策略' }}</span>
+            </button>
           </div>
           <div class="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
             <div class="flex items-center gap-1">
@@ -39,7 +47,66 @@
               </button>
             </div>
             <div class="flex items-center gap-1"><span>{{ t('admin.users.columns.created') }}: {{ formatDateTime(key.created_at) }}</span></div>
+            <div class="flex items-center gap-1"><span>过期: {{ key.expires_at ? formatDateTime(key.expires_at) : '永久有效' }}</span></div>
+            <div class="flex items-center gap-1"><span>总额度: {{ key.quota > 0 ? `$${key.quota.toFixed(2)}` : '不限' }}</span></div>
+            <div class="flex items-center gap-1"><span>日限额: {{ key.rate_limit_1d > 0 ? `$${key.rate_limit_1d.toFixed(2)}` : '不限' }}</span></div>
           </div>
+          <form
+            v-if="editingKeyId === key.id"
+            class="mt-4 space-y-4 rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/40"
+            @submit.prevent="savePolicy(key)"
+          >
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">状态</span>
+                <select v-model="policyForm.status" class="input">
+                  <option value="active">active</option>
+                  <option value="inactive">inactive</option>
+                </select>
+              </label>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">总额度 USD，0 = 不限</span>
+                <input v-model.number="policyForm.quota" type="number" min="0" step="0.0001" class="input" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">5 小时限额 USD，0 = 不限</span>
+                <input v-model.number="policyForm.rate_limit_5h" type="number" min="0" step="0.0001" class="input" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">日限额 USD，0 = 不限</span>
+                <input v-model.number="policyForm.rate_limit_1d" type="number" min="0" step="0.0001" class="input" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">周限额 USD，0 = 不限</span>
+                <input v-model.number="policyForm.rate_limit_7d" type="number" min="0" step="0.0001" class="input" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">过期时间</span>
+                <input v-model="policyForm.expires_at_local" type="datetime-local" class="input" :disabled="policyForm.clear_expires_at" />
+              </label>
+            </div>
+            <div class="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-dark-300">
+              <label class="inline-flex items-center gap-2">
+                <input v-model="policyForm.clear_expires_at" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>清空过期时间</span>
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input v-model="policyForm.reset_quota" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>重置总额度用量</span>
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input v-model="policyForm.reset_rate_limit_usage" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>重置限速窗口用量</span>
+              </label>
+            </div>
+            <div class="flex justify-end gap-2">
+              <button type="button" class="btn btn-secondary btn-sm" @click="cancelPolicyEditor">取消</button>
+              <button type="submit" class="btn btn-primary btn-sm" :disabled="savingPolicy">
+                <Icon v-if="!savingPolicy" name="check" size="sm" />
+                <span>{{ savingPolicy ? '保存中...' : '保存策略' }}</span>
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -107,6 +174,7 @@ import type { AdminUser, AdminGroup, ApiKey } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{ show: boolean; user: AdminUser | null }>()
 const emit = defineEmits(['close'])
@@ -122,6 +190,19 @@ const dropdownPosition = ref<{ top: number; left: number } | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const scrollContainerRef = ref<HTMLElement | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+const editingKeyId = ref<number | null>(null)
+const savingPolicy = ref(false)
+const policyForm = ref({
+  status: 'active' as 'active' | 'inactive',
+  quota: 0 as number | null,
+  rate_limit_5h: 0 as number | null,
+  rate_limit_1d: 0 as number | null,
+  rate_limit_7d: 0 as number | null,
+  expires_at_local: '',
+  clear_expires_at: false,
+  reset_quota: false,
+  reset_rate_limit_usage: false
+})
 
 const selectedKeyForGroup = computed(() => {
   if (groupSelectorKeyId.value === null) return null
@@ -142,6 +223,7 @@ watch(() => props.show, (v) => {
     loadGroups()
   } else {
     closeGroupSelector()
+    cancelPolicyEditor()
   }
 })
 
@@ -192,6 +274,82 @@ const openGroupSelector = (key: ApiKey) => {
 const closeGroupSelector = () => {
   groupSelectorKeyId.value = null
   dropdownPosition.value = null
+}
+
+const toDateTimeLocal = (value?: string | null) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
+}
+
+const numberOrZero = (value: unknown) => {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+const togglePolicyEditor = (key: ApiKey) => {
+  closeGroupSelector()
+  if (editingKeyId.value === key.id) {
+    cancelPolicyEditor()
+    return
+  }
+  editingKeyId.value = key.id
+  policyForm.value = {
+    status: key.status === 'inactive' ? 'inactive' : 'active',
+    quota: key.quota || 0,
+    rate_limit_5h: key.rate_limit_5h || 0,
+    rate_limit_1d: key.rate_limit_1d || 0,
+    rate_limit_7d: key.rate_limit_7d || 0,
+    expires_at_local: toDateTimeLocal(key.expires_at),
+    clear_expires_at: false,
+    reset_quota: false,
+    reset_rate_limit_usage: false
+  }
+}
+
+const cancelPolicyEditor = () => {
+  editingKeyId.value = null
+  savingPolicy.value = false
+}
+
+const savePolicy = async (key: ApiKey) => {
+  if (savingPolicy.value) return
+
+  let expiresAt = ''
+  if (!policyForm.value.clear_expires_at && policyForm.value.expires_at_local) {
+    const date = new Date(policyForm.value.expires_at_local)
+    if (Number.isNaN(date.getTime())) {
+      appStore.showError('过期时间格式无效')
+      return
+    }
+    expiresAt = date.toISOString()
+  }
+
+  savingPolicy.value = true
+  try {
+    const result = await adminAPI.apiKeys.updateApiKeyPolicy(key.id, {
+      status: policyForm.value.status,
+      quota: numberOrZero(policyForm.value.quota),
+      rate_limit_5h: numberOrZero(policyForm.value.rate_limit_5h),
+      rate_limit_1d: numberOrZero(policyForm.value.rate_limit_1d),
+      rate_limit_7d: numberOrZero(policyForm.value.rate_limit_7d),
+      expires_at: policyForm.value.clear_expires_at || !policyForm.value.expires_at_local ? '' : expiresAt,
+      reset_quota: policyForm.value.reset_quota,
+      reset_rate_limit_usage: policyForm.value.reset_rate_limit_usage
+    })
+    const idx = apiKeys.value.findIndex((k) => k.id === key.id)
+    if (idx !== -1) {
+      apiKeys.value[idx] = result.api_key
+    }
+    appStore.showSuccess('API Key 策略已更新')
+    cancelPolicyEditor()
+  } catch (error: any) {
+    appStore.showError(error?.message || '更新 API Key 策略失败')
+  } finally {
+    savingPolicy.value = false
+  }
 }
 
 const changeGroup = async (key: ApiKey, newGroupId: number | null) => {

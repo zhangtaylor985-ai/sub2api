@@ -1,3 +1,38 @@
+# Sub2API Admin API Key 策略管理增强计划
+
+## 当前目标
+
+增强 admin 侧能力，让管理员可以在“用户管理 -> 用户 API 密钥”中直接控制每个 API Key 的运营策略，包括过期时间、总额度、日/周/5h 限额、状态、重置用量与分组；普通用户侧暂不修改。
+
+## 当前范围
+
+- 后端 admin API 支持更新 API Key 策略字段。
+- 前端 admin 用户 API Key 弹窗支持编辑策略字段。
+- 保持用户侧 `/keys` 页面不变。
+- 添加必要测试与本地验证。
+
+## 当前阶段
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 现状确认 | complete | admin/user API Key 能力边界 |
+| 2. 后端 admin API 增强 | complete | service/handler/API contract |
+| 3. 前端 admin UI 增强 | complete | `UserApiKeysModal.vue` 与 admin API client |
+| 4. 验证 | complete | Go/前端定向测试与类型检查 |
+
+## 当前决策
+
+- 2026-05-28：保持“一 API Key 一用户”模型，用用户隔离并发/RPM，用 API Key 字段管理过期时间和额度。
+- 2026-05-28：本轮只改 admin 管理面；用户侧目前未开放登录，暂不收紧 `/keys` 页面。
+
+## 当前错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-05-28 | 本机没有直接可用 `pnpm`；`corepack pnpm` 触发 pnpm 11 依赖状态检查并生成 lockfile 噪音 | 改用已安装的 `frontend/node_modules/.bin/vue-tsc --noEmit`，并清理本次生成的 lockfile/workspace 文件 |
+
+---
+
 # Sub2API Claude -> GPT Web Search 兼容任务计划
 
 ## 目标

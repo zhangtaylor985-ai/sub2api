@@ -577,6 +577,47 @@ func (s *stubAdminService) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	return nil, service.ErrAPIKeyNotFound
 }
 
+func (s *stubAdminService) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID int64, input service.AdminUpdateAPIKeyPolicyInput) (*service.APIKey, error) {
+	for i := range s.apiKeys {
+		if s.apiKeys[i].ID == keyID {
+			if input.Status != nil {
+				s.apiKeys[i].Status = *input.Status
+			}
+			if input.Quota != nil {
+				s.apiKeys[i].Quota = *input.Quota
+			}
+			if input.ResetQuota {
+				s.apiKeys[i].QuotaUsed = 0
+			}
+			if input.ClearExpires {
+				s.apiKeys[i].ExpiresAt = nil
+			} else if input.ExpiresAt != nil {
+				s.apiKeys[i].ExpiresAt = input.ExpiresAt
+			}
+			if input.RateLimit5h != nil {
+				s.apiKeys[i].RateLimit5h = *input.RateLimit5h
+			}
+			if input.RateLimit1d != nil {
+				s.apiKeys[i].RateLimit1d = *input.RateLimit1d
+			}
+			if input.RateLimit7d != nil {
+				s.apiKeys[i].RateLimit7d = *input.RateLimit7d
+			}
+			if input.ResetRateLimitUsage {
+				s.apiKeys[i].Usage5h = 0
+				s.apiKeys[i].Usage1d = 0
+				s.apiKeys[i].Usage7d = 0
+				s.apiKeys[i].Window5hStart = nil
+				s.apiKeys[i].Window1dStart = nil
+				s.apiKeys[i].Window7dStart = nil
+			}
+			k := s.apiKeys[i]
+			return &k, nil
+		}
+	}
+	return nil, service.ErrAPIKeyNotFound
+}
+
 func (s *stubAdminService) AdminResetAPIKeyRateLimitUsage(ctx context.Context, keyID int64) (*service.APIKey, error) {
 	for i := range s.apiKeys {
 		if s.apiKeys[i].ID == keyID {

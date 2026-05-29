@@ -89,3 +89,9 @@
   - continuation summary 作为普通 user text 时，未触发 `Searched: This session` 泄漏。
   - 强制搜索 exact continuation phrase 时，最终 `main-2e01e876` 版本未再命中 `Searched:` / `Searching the web for:` / `query` 形式的进度泄漏；一次 smoke 中模型本身没有继续发搜索 tool-call，说明该场景仍需后续用可控 fake upstream 做确定性集成测试。
 - 工程判断：本轮已收口线上暴露问题的防线和回归，但不应继续在生产 smoke 中无限追补；下一阶段应把 WebSearch 兼容拆成可维护的“事件级 web_search 状态机 + fake upstream 黑盒矩阵”，覆盖 split delta、多个 web_search_call、普通文本误杀边界和 VSCode/Claude CLI 差异。
+- 2026-05-28：开始 admin API Key 策略管理增强任务；新建 worktree `/Users/taylor/sdk/sub2api-admin-api-key-policy`，分支 `codex/admin-api-key-policy`。
+- 2026-05-28：确认只改 admin 侧，用户侧 `/keys` 暂不修改。
+- 2026-05-28：初步发现后端用户侧已支持编辑 key 策略，admin 侧目前仅支持改分组/重置限速用量。
+- 2026-05-28：已新增 `AdminUpdateAPIKeyPolicy`，admin API 支持更新状态、总额度、过期时间、5h/日/周限额、重置总额度用量和重置限速窗口用量。
+- 2026-05-28：已在 admin 用户 API Key 弹窗加入“编辑策略”内联表单；用户侧页面未修改。
+- 2026-05-28：验证通过：`go test ./internal/handler/admin -run 'TestAdminAPIKeyHandler'`、`go test -tags unit ./internal/service -run AdminUpdateAPIKeyPolicy -count=1`、`frontend/node_modules/.bin/vue-tsc --noEmit`、`git diff --check`。

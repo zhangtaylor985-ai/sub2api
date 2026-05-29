@@ -69,8 +69,12 @@ func (s *userRepoStubForGroupUpdate) UpdateConcurrency(context.Context, int64, i
 	panic("unexpected")
 }
 
-func (s *userRepoStubForGroupUpdate) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
-func (s *userRepoStubForGroupUpdate) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (s *userRepoStubForGroupUpdate) BatchSetConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+}
+func (s *userRepoStubForGroupUpdate) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+}
 func (s *userRepoStubForGroupUpdate) ExistsByEmail(context.Context, string) (bool, error) {
 	panic("unexpected")
 }
@@ -412,6 +416,69 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_NilCacheInvalidator(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, got.APIKey.GroupID)
 	require.Equal(t, int64(7), *got.APIKey.GroupID)
+}
+
+func TestAdminService_AdminUpdateAPIKeyPolicy_UpdatesManagedFields(t *testing.T) {
+	now := time.Now()
+	expiresAt := now.Add(48 * time.Hour)
+	existing := &APIKey{
+		ID:            1,
+		Key:           "sk-test",
+		Status:        StatusAPIKeyQuotaExhausted,
+		Quota:         10,
+		QuotaUsed:     9,
+		RateLimit1d:   3,
+		Usage1d:       2,
+		Window1dStart: &now,
+		Window5hStart: &now,
+		Window7dStart: &now,
+		Usage5h:       1,
+		Usage7d:       4,
+	}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	cache := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, authCacheInvalidator: cache}
+
+	got, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{
+		Quota:               testPtrFloat64(25),
+		ExpiresAt:           &expiresAt,
+		RateLimit1d:         testPtrFloat64(8),
+		ResetQuota:          true,
+		ResetRateLimitUsage: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, StatusActive, got.Status)
+	require.Equal(t, 25.0, got.Quota)
+	require.Zero(t, got.QuotaUsed)
+	require.Equal(t, &expiresAt, got.ExpiresAt)
+	require.Equal(t, 8.0, got.RateLimit1d)
+	require.Zero(t, got.Usage1d)
+	require.Nil(t, got.Window1dStart)
+	require.Equal(t, []string{"sk-test"}, cache.keys)
+	require.NotNil(t, apiKeyRepo.updated)
+}
+
+func TestAdminService_AdminUpdateAPIKeyPolicy_RejectsInvalidStatus(t *testing.T) {
+	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusActive}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	_, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{Status: testPtrString("expired")})
+	require.Error(t, err)
+	require.Equal(t, "INVALID_API_KEY_STATUS", infraerrors.Reason(err))
+	require.Nil(t, apiKeyRepo.updated)
+}
+
+func TestAdminService_AdminUpdateAPIKeyPolicy_ClearsExpiration(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour)
+	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusAPIKeyExpired, ExpiresAt: &expiresAt}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	got, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{ClearExpires: true})
+	require.NoError(t, err)
+	require.Nil(t, got.ExpiresAt)
+	require.Equal(t, StatusActive, got.Status)
 }
 
 // ---------------------------------------------------------------------------

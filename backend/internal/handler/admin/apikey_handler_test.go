@@ -157,6 +157,93 @@ func TestAdminAPIKeyHandler_ResetRateLimitUsage(t *testing.T) {
 	require.Nil(t, resp.Data.APIKey.Window7dStart)
 }
 
+func TestAdminAPIKeyHandler_UpdatePolicyFields(t *testing.T) {
+	svc := newStubAdminService()
+	svc.apiKeys[0].QuotaUsed = 9.5
+	svc.apiKeys[0].Usage1d = 2.4
+	router := setupAPIKeyHandler(svc)
+	expiresAt := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second)
+	body := `{"status":"inactive","quota":25.5,"expires_at":"` + expiresAt.Format(time.RFC3339) + `","reset_quota":true,"rate_limit_1d":8,"reset_rate_limit_usage":true}`
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data struct {
+			APIKey struct {
+				Status      string     `json:"status"`
+				Quota       float64    `json:"quota"`
+				QuotaUsed   float64    `json:"quota_used"`
+				ExpiresAt   *time.Time `json:"expires_at"`
+				RateLimit1d float64    `json:"rate_limit_1d"`
+				Usage1d     float64    `json:"usage_1d"`
+			} `json:"api_key"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "inactive", resp.Data.APIKey.Status)
+	require.Equal(t, 25.5, resp.Data.APIKey.Quota)
+	require.Zero(t, resp.Data.APIKey.QuotaUsed)
+	require.NotNil(t, resp.Data.APIKey.ExpiresAt)
+	require.True(t, resp.Data.APIKey.ExpiresAt.Equal(expiresAt))
+	require.Equal(t, 8.0, resp.Data.APIKey.RateLimit1d)
+	require.Zero(t, resp.Data.APIKey.Usage1d)
+}
+
+func TestAdminAPIKeyHandler_UpdatePolicyClearsExpiration(t *testing.T) {
+	svc := newStubAdminService()
+	expiresAt := time.Now().UTC().Add(24 * time.Hour)
+	svc.apiKeys[0].ExpiresAt = &expiresAt
+	router := setupAPIKeyHandler(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString(`{"expires_at":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data struct {
+			APIKey struct {
+				ExpiresAt *time.Time `json:"expires_at"`
+			} `json:"api_key"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Nil(t, resp.Data.APIKey.ExpiresAt)
+}
+
+func TestAdminAPIKeyHandler_UpdatePolicyRejectsInvalidExpiresBeforeGroupUpdate(t *testing.T) {
+	svc := newStubAdminService()
+	router := setupAPIKeyHandler(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString(`{"group_id":2,"expires_at":"bad-date"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Nil(t, svc.apiKeys[0].GroupID)
+}
+
+func TestAdminAPIKeyHandler_UpdatePolicyRejectsInvalidStatusBeforeGroupUpdate(t *testing.T) {
+	svc := newStubAdminService()
+	router := setupAPIKeyHandler(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString(`{"group_id":2,"status":"expired"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Nil(t, svc.apiKeys[0].GroupID)
+}
+
 func TestAdminAPIKeyHandler_UpdateGroup_ServiceError(t *testing.T) {
 	svc := &failingUpdateGroupService{
 		stubAdminService: newStubAdminService(),

@@ -1,3 +1,18 @@
+# Sub2API Admin API Key 策略管理发现记录
+
+## 2026-05-28 当前任务事实
+
+- 业务目标：管理员托管 API Key 策略，普通用户只是隔离容器。
+- 推荐模型：一 API Key 一用户；`users.concurrency` / `users.rpm_limit` 做用户级隔离，`api_keys.expires_at` / `quota` / `rate_limit_*` 做 key 级策略。
+- 线上检查已确认：legacy API Key 的 `api_keys.expires_at` 没有丢；`users` 表本身没有 `expires_at`。
+- 后端已有用户侧 `PUT /api/v1/api-keys/:id` 能更新 `quota`、`expires_at`、`rate_limit_5h/1d/7d`、重置用量等字段。
+- 现有 admin 侧 `PUT /api/v1/admin/api-keys/:id` 只支持改分组和重置限速用量，缺少过期时间/额度/状态等策略字段。
+- 现有 admin UI `UserApiKeysModal.vue` 只能在用户 API Key 弹窗里查看 key 和改分组，没有策略编辑入口。
+- 本次实现后，admin 侧同一个接口支持 `status`、`quota`、`expires_at`、`reset_quota`、`rate_limit_5h/1d/7d`、`reset_rate_limit_usage`。
+- 为避免部分更新，handler 会先解析/校验策略字段，再执行分组更新。
+
+---
+
 # Sub2API Claude -> GPT Web Search 兼容发现记录
 
 ## 已确认事实

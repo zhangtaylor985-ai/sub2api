@@ -61,6 +61,7 @@ type AdminService interface {
 
 	// API Key management (admin)
 	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
+	AdminUpdateAPIKeyPolicy(ctx context.Context, keyID int64, input AdminUpdateAPIKeyPolicyInput) (*APIKey, error)
 	AdminResetAPIKeyRateLimitUsage(ctx context.Context, keyID int64) (*APIKey, error)
 
 	// ReplaceUserGroup 替换用户的专属分组：授予新分组权限、迁移 Key、移除旧分组权限
@@ -343,6 +344,21 @@ type AdminUpdateAPIKeyGroupIDResult struct {
 	AutoGrantedGroupAccess bool   // true if a new exclusive group permission was auto-added
 	GrantedGroupID         *int64 // the group ID that was auto-granted
 	GrantedGroupName       string // the group name that was auto-granted
+}
+
+// AdminUpdateAPIKeyPolicyInput captures admin-managed API key policy fields.
+type AdminUpdateAPIKeyPolicyInput struct {
+	Status       *string
+	Quota        *float64
+	ExpiresAt    *time.Time
+	ClearExpires bool
+
+	RateLimit5h *float64
+	RateLimit1d *float64
+	RateLimit7d *float64
+
+	ResetQuota          bool
+	ResetRateLimitUsage bool
 }
 
 // ReplaceUserGroupResult 分组替换操作的结果
@@ -2240,6 +2256,92 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 
 	result.APIKey = apiKey
 	return result, nil
+}
+
+// AdminUpdateAPIKeyPolicy updates admin-managed API key policy fields.
+func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID int64, input AdminUpdateAPIKeyPolicyInput) (*APIKey, error) {
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
+	if err != nil {
+		return nil, err
+	}
+
+	if input.Status != nil {
+		switch *input.Status {
+		case StatusActive, "inactive", StatusAPIKeyDisabled:
+			apiKey.Status = *input.Status
+		default:
+			return nil, infraerrors.BadRequest("INVALID_API_KEY_STATUS", "status must be active, inactive, or disabled")
+		}
+	}
+	if input.Quota != nil {
+		if *input.Quota < 0 {
+			return nil, infraerrors.BadRequest("INVALID_API_KEY_QUOTA", "quota must be non-negative")
+		}
+		apiKey.Quota = *input.Quota
+		if apiKey.Status == StatusAPIKeyQuotaExhausted && *input.Quota > apiKey.QuotaUsed {
+			apiKey.Status = StatusActive
+		}
+	}
+	if input.ResetQuota {
+		apiKey.QuotaUsed = 0
+		if apiKey.Status == StatusAPIKeyQuotaExhausted {
+			apiKey.Status = StatusActive
+		}
+	}
+	if input.ClearExpires {
+		apiKey.ExpiresAt = nil
+		if apiKey.Status == StatusAPIKeyExpired {
+			apiKey.Status = StatusActive
+		}
+	} else if input.ExpiresAt != nil {
+		apiKey.ExpiresAt = input.ExpiresAt
+		if apiKey.Status == StatusAPIKeyExpired && time.Now().Before(*input.ExpiresAt) {
+			apiKey.Status = StatusActive
+		}
+	}
+
+	rateLimitChanged := false
+	if input.RateLimit5h != nil {
+		if *input.RateLimit5h < 0 {
+			return nil, infraerrors.BadRequest("INVALID_RATE_LIMIT", "rate_limit_5h must be non-negative")
+		}
+		apiKey.RateLimit5h = *input.RateLimit5h
+		rateLimitChanged = true
+	}
+	if input.RateLimit1d != nil {
+		if *input.RateLimit1d < 0 {
+			return nil, infraerrors.BadRequest("INVALID_RATE_LIMIT", "rate_limit_1d must be non-negative")
+		}
+		apiKey.RateLimit1d = *input.RateLimit1d
+		rateLimitChanged = true
+	}
+	if input.RateLimit7d != nil {
+		if *input.RateLimit7d < 0 {
+			return nil, infraerrors.BadRequest("INVALID_RATE_LIMIT", "rate_limit_7d must be non-negative")
+		}
+		apiKey.RateLimit7d = *input.RateLimit7d
+		rateLimitChanged = true
+	}
+	if input.ResetRateLimitUsage {
+		apiKey.Usage5h = 0
+		apiKey.Usage1d = 0
+		apiKey.Usage7d = 0
+		apiKey.Window5hStart = nil
+		apiKey.Window1dStart = nil
+		apiKey.Window7dStart = nil
+		rateLimitChanged = true
+	}
+
+	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+		return nil, fmt.Errorf("update api key policy: %w", err)
+	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	}
+	if rateLimitChanged && s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateAPIKeyRateLimit(ctx, apiKey.ID)
+	}
+	return apiKey, nil
 }
 
 // AdminResetAPIKeyRateLimitUsage resets all API key rate-limit usage windows.

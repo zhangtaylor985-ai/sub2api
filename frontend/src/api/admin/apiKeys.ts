@@ -13,6 +13,18 @@ export interface UpdateApiKeyGroupResult {
   granted_group_name?: string
 }
 
+export interface AdminUpdateApiKeyPolicyPayload {
+  group_id?: number | null
+  status?: 'active' | 'inactive'
+  quota?: number
+  expires_at?: string
+  reset_quota?: boolean
+  rate_limit_5h?: number
+  rate_limit_1d?: number
+  rate_limit_7d?: number
+  reset_rate_limit_usage?: boolean
+}
+
 /**
  * Update an API key's group binding
  * @param id - API Key ID
@@ -26,8 +38,14 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
   return data
 }
 
+export async function updateApiKeyPolicy(id: number, payload: AdminUpdateApiKeyPolicyPayload): Promise<UpdateApiKeyGroupResult> {
+  const { data } = await apiClient.put<UpdateApiKeyGroupResult>(`/admin/api-keys/${id}`, payload)
+  return data
+}
+
 export const apiKeysAPI = {
-  updateApiKeyGroup
+  updateApiKeyGroup,
+  updateApiKeyPolicy
 }
 
 export default apiKeysAPI

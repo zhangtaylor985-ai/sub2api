@@ -1411,7 +1411,7 @@ export default {
         dailyLimit: 'Daily Limit USD',
         weeklyLimit: 'Weekly Limit USD',
         weeklyWindowStart: 'Weekly window start',
-        weeklyWindowHint: 'Leave empty to let the system initialize it on the next usage write; the end time is always 7 days after the start',
+        weeklyWindowHint: 'Changing this resets weekly rate-limit usage; the end time is always 7 days after the start',
         fiveHourLimit: '5-hour Limit USD',
         concurrency: 'Concurrency Limit',
         expiresAt: 'Expires At',

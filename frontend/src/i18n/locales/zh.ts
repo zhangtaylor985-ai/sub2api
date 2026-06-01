@@ -1415,7 +1415,7 @@ export default {
         dailyLimit: '日限额 USD',
         weeklyLimit: '周限额 USD',
         weeklyWindowStart: '周限额周期起点',
-        weeklyWindowHint: '留空则由系统在下次用量写入时自动初始化；结束时间固定为起点后 7 天',
+        weeklyWindowHint: '修改后会重置周限额用量；结束时间固定为起点后 7 天',
         fiveHourLimit: '5 小时限额 USD',
         concurrency: '并发上限',
         expiresAt: '过期时间',

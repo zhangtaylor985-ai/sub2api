@@ -2555,6 +2555,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 		rateLimitChanged = true
 	}
 	if input.ClearWindow7dStart {
+		apiKey.Usage7d = 0
 		apiKey.Window7dStart = nil
 		rateLimitChanged = true
 	} else if input.Window7dStart != nil {
@@ -2565,6 +2566,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 		if IsWindowExpired(input.Window7dStart, RateLimitWindow7d) {
 			return nil, infraerrors.BadRequest("INVALID_RATE_LIMIT_WINDOW", "window_7d_start must be within the current 7-day window")
 		}
+		apiKey.Usage7d = 0
 		apiKey.Window7dStart = input.Window7dStart
 		rateLimitChanged = true
 	}

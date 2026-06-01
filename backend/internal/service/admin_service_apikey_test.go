@@ -482,13 +482,15 @@ func TestAdminService_AdminUpdateAPIKeyPolicy_ClearsExpiration(t *testing.T) {
 }
 
 func TestAdminService_AdminUpdateAPIKeyPolicy_UpdatesWeeklyWindowStart(t *testing.T) {
+	oldWindowStart := time.Now().UTC().Add(-24 * time.Hour)
 	windowStart := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
-	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusActive}
+	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusActive, Usage7d: 88.8, Window7dStart: &oldWindowStart}
 	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
 	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
 
 	got, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{Window7dStart: &windowStart})
 	require.NoError(t, err)
+	require.Zero(t, got.Usage7d)
 	require.NotNil(t, got.Window7dStart)
 	require.Equal(t, windowStart, got.Window7dStart.UTC())
 	require.NotNil(t, apiKeyRepo.updated)

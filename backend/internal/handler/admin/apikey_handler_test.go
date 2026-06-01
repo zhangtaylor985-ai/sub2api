@@ -196,6 +196,7 @@ func TestAdminAPIKeyHandler_UpdatePolicyFields(t *testing.T) {
 
 func TestAdminAPIKeyHandler_UpdateWeeklyWindowStart(t *testing.T) {
 	svc := newStubAdminService()
+	svc.apiKeys[0].Usage7d = 500
 	router := setupAPIKeyHandler(svc)
 	windowStart := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
 	body := `{"window_7d_start":"` + windowStart.Format(time.RFC3339) + `"}`
@@ -212,10 +213,12 @@ func TestAdminAPIKeyHandler_UpdateWeeklyWindowStart(t *testing.T) {
 			APIKey struct {
 				Window7dStart *time.Time `json:"window_7d_start"`
 				Reset7dAt     *time.Time `json:"reset_7d_at"`
+				Usage7d       float64    `json:"usage_7d"`
 			} `json:"api_key"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Zero(t, resp.Data.APIKey.Usage7d)
 	require.NotNil(t, resp.Data.APIKey.Window7dStart)
 	require.Equal(t, windowStart, resp.Data.APIKey.Window7dStart.UTC())
 	require.NotNil(t, resp.Data.APIKey.Reset7dAt)

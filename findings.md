@@ -190,3 +190,14 @@
 - 自动化测试通过：`git diff --check`、`go test ./internal/pkg/claudegptcompat ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'`、`go test -tags=unit ./internal/repository`、`go test ./...`、`pnpm 9 lint:check/typecheck/build`。
 - 本地噪音：本地后台 `AccountExpiry` 曾记录一次 Postgres `Cannot allocate memory`，判定为本机 Docker/OrbStack 资源噪音；不影响请求链路通过，但生产发布后仍要观察容器日志和健康状态。
 - 生产发布判断：当前变更达到本地上线门禁，下一步应先把本地分支安全合入最新 `origin/main`，再走 GitHub 主线和 Docker app 容器 canary/替换流程；数据层保持不动。
+
+## 2026-06-01 生产发布结论
+
+- 已上线镜像：`zhangtaylor985/sub2api:main-19663655`。
+- 上一版镜像：`zhangtaylor985/sub2api:main-853b8019`。
+- Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260601T065530Z`。
+- 发布方式：生产 `/root/cliapp/sub2api-src` fast-forward 到 `19663655`，在生产机本地构建镜像，先起 `sub2api-canary-19663655` 绑定远端 `127.0.0.1:18080`，canary smoke 通过后替换正式 `sub2api` app 容器；Postgres/Redis 未重启。
+- 验证结果：canary `/health` 通过，canary 直接 `/v1/messages` 返回 `SUB2API_CANARY_19663655_OK` / `SUB2API_CANARY_OPUS47_OK`；正式容器 Docker health 为 healthy，宿主机和公开 `https://cc.claudepool.com/health` 均返回 ok，正式 `/v1/messages` 返回 `SUB2API_PROD_19663655_OK`。
+- canary 的非流式强制 `WebSearch` 样本只返回最终文本，没有暴露中间 `server_tool_use`；因此本次 WebSearch 展示验收仍以本地真实 Claude CLI `stream-json` 黑盒为主证据，不把该非流式样本当作失败。
+- 生产配置发现：测试 key `id=313` 当前所在分组/账号链路把 `claude-opus-4-6` 和 `claude-opus-4-7` 都映射到 `gpt-5.4`；这是生产模型映射配置，不是本次代码发布导致。后续若要“所有 Opus -> GPT-5.5”，需要单独做生产分组和账号映射整理。
+- 观察到真实用户大上下文请求仍可能触发上游 `context window` 502；该日志与本次 smoke 无关，后续应归入长上下文/模型窗口治理。

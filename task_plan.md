@@ -88,7 +88,7 @@
 | 17. Claude -> GPT 兼容库边界 | complete | 新增 `internal/pkg/claudegptcompat`，把客户端识别、WebSearch query 清洗、synthetic 搜索进度、sources/url/citation 辅助从 `apicompat` 抽出 |
 | 18. 本地黑盒沙盒与维护边界固化 | complete | 本地 Sub2API dev 镜像重建；本地 Opus->GPT-5.5 分组/API Key 配置；直接 API smoke、Claude CLI `-p`、WebSearch stream-json 黑盒通过；两个项目 `AGENTS.md` 和回归 skill 已更新 |
 | 19. 2026-06-01 本地黑盒复验与上线门禁 | complete | 直接 API、Claude CLI `-p`、WebSearch stream-json、真实 TTY 连续两轮、Go 全量测试、前端 lint/typecheck/build 均通过 |
-| 20. 2026-06-01 生产发布与上线观察 | in_progress | 本地上线门禁已通过；当前本地 `main` 落后远端，需要先合入远端最新提交，再提交、推送、构建生产镜像、canary smoke 和正式切换 |
+| 20. 2026-06-01 生产发布与上线观察 | complete | 已推送主线、构建并上线 `zhangtaylor985/sub2api:main-19663655`；canary 与正式 `/health`、直接 `/v1/messages` smoke 通过，canary 已清理 |
 
 ## 决策记录
 
@@ -108,6 +108,7 @@
 - 2026-05-29：Claude->GPT 黑盒优先本地沙盒：直接 API smoke 先验证分组/API Key/模型映射，再用 Claude CLI/`cc1` 验证真实客户端；生产 canary 只作为上线前同配置验证。
 - 2026-06-01：本地 Docker 环境缺失旧 dev compose 容器时，可以用“Postgres/Redis Docker 依赖 + 当前源码 tmux 直跑后端”的沙盒形态完成黑盒；该形态需要单独记录端口和数据目录，避免误认为只能使用 `sub2api-dev`。
 - 2026-06-01：本次上线门禁采用“本地真实 Codex auth file 黑盒 + 全量自动化测试 + 生产 canary”三段式；生产只在 canary health/smoke 通过后替换 app 容器，Postgres/Redis 不随应用协议修复一起迁移。
+- 2026-06-01：本次发布只替换 Sub2API app 容器；运行镜像从 `main-853b8019` 切到 `main-19663655`，Postgres/Redis 不动。生产测试 key 所在分组当前仍把 `claude-opus-4-7` 映射到 `gpt-5.4`，该配置问题不在本次代码发布中修改。
 
 ## 错误记录
 

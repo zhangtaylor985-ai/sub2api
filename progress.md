@@ -209,3 +209,14 @@
   - 后端复验通过：`go test ./internal/pkg/claudegptcompat ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'`、`go test -tags=unit ./internal/repository`、`go test ./...`。
   - 前端复验通过：`corepack pnpm@9.15.9 run lint:check`、`corepack pnpm@9.15.9 run typecheck`、`corepack pnpm@9.15.9 run build`；Vite 仅保留既有 dynamic import/chunk size/Browserslist 警告。
   - 本地健康检查：`http://127.0.0.1:8080/health` 返回 ok。
+- 2026-06-01：生产发布 `19663655`：
+  - 默认 `git push origin main` 仍命中无权限 GitHub 身份 `DevDynamo2024`；改用 `git@github-zhangtaylor985-ai:zhangtaylor985-ai/sub2api.git` 成功推送 `main`。
+  - 生产机 `/root/cliapp/sub2api-src` 已 fast-forward 到 `19663655`，并构建镜像 `zhangtaylor985/sub2api:main-19663655`。
+  - 生产 canary `sub2api-canary-19663655` 绑定远端 `127.0.0.1:18080`，`/health` 通过，直接 `/v1/messages` smoke 通过。
+  - canary 非流式强制 `WebSearch` 样本返回最终文本 `OpenAI`，但未暴露中间 `server_tool_use`；该样本不作为 WebSearch 展示验收，展示验收仍以本地真实 Claude CLI `stream-json` 黑盒为主。
+  - 正式 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260601T065530Z`；运行镜像已从 `main-853b8019` 切到 `main-19663655`。
+  - 正式容器 Docker health 为 healthy；宿主机 `127.0.0.1:8080/health` 和公开 `https://cc.claudepool.com/health` 均返回 ok。
+  - 正式 `/v1/messages` smoke 通过：`claude-opus-4-7` 返回 `SUB2API_PROD_19663655_OK`。
+  - canary 已清理，Postgres/Redis 未重启。
+  - 生产配置发现：测试 key `id=313` 当前把 `claude-opus-4-6/4-7` 映射到 `gpt-5.4`；后续若要强制所有 Opus 到 `gpt-5.5`，需要单独整理生产分组与账号级映射。
+  - 发布后日志中仍可看到真实用户大上下文请求触发上游 context-window 502，与本次 smoke 无关，后续单独纳入长上下文治理。

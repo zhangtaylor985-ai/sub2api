@@ -263,7 +263,7 @@ func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 		{
 			name:    "expired local API key",
 			errType: "api_error",
-			message: "API key 已过期",
+			message: "API key has expired",
 			code:    "API_KEY_EXPIRED",
 			status:  http.StatusForbidden,
 		},
@@ -384,7 +384,7 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 		{
 			name:        "standard API key quota exhausted",
 			errType:     "api_error",
-			message:     "API key 额度已用完",
+			message:     "API key quota has been exhausted",
 			code:        "API_KEY_QUOTA_EXHAUSTED",
 			status:      http.StatusTooManyRequests,
 			wantErrType: "api_error",
@@ -456,9 +456,9 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 		{
 			name:        "gateway API key 5h rate limit",
 			errType:     "api_error",
-			message:     "api key 5小时限额已用完",
-			code:        "rate_limit_exceeded",
-			status:      http.StatusTooManyRequests,
+			message:     "API key 5-hour quota has been exhausted",
+			code:        "API_KEY_RATE_5H_EXCEEDED",
+			status:      http.StatusForbidden,
 			wantErrType: "api_error",
 			wantPhase:   "request",
 		},
@@ -758,7 +758,7 @@ func TestClassifyOpsUpstreamAuthTextStillCountsForSLA(t *testing.T) {
 		},
 		{
 			name:    "provider quota error",
-			message: "api key 额度已用完",
+			message: "API key quota has been exhausted",
 			code:    "API_KEY_QUOTA_EXHAUSTED",
 			status:  http.StatusTooManyRequests,
 		},

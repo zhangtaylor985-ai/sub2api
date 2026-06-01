@@ -1224,6 +1224,10 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		strings.Contains(msg, opsErrInsufficientBalance) ||
 		strings.Contains(msg, "insufficient account balance") ||
 		strings.Contains(msg, "api key group platform is not gemini") ||
+		strings.Contains(msg, "api key quota has been exhausted") ||
+		strings.Contains(msg, "api key 5-hour quota has been exhausted") ||
+		strings.Contains(msg, "api key daily quota has been exhausted") ||
+		strings.Contains(msg, "api key 7-day quota has been exhausted") ||
 		strings.Contains(msg, "api key 额度已用完") ||
 		strings.Contains(msg, "api key 5小时限额已用完") ||
 		strings.Contains(msg, "api key 日限额已用完") ||

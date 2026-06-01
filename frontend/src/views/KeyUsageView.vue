@@ -192,9 +192,9 @@
                   <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
                 </svg>
               </div>
-              <div class="flex justify-center">
-                <div class="relative">
-                  <svg class="w-44 h-44" viewBox="0 0 160 160">
+              <div class="flex flex-col items-center">
+                <div class="relative h-44 w-44">
+                  <svg class="h-full w-full" viewBox="0 0 160 160">
                     <circle cx="80" cy="80" r="68" fill="none" :stroke="ringTrackColor" stroke-width="10"/>
                     <circle
                       class="progress-ring"
@@ -211,9 +211,9 @@
                       </linearGradient>
                     </defs>
                   </svg>
-                  <div class="absolute inset-0 flex flex-col items-center justify-center">
+                  <div class="absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
                     <template v-if="ring.isBalance">
-                      <span class="text-2xl font-bold tabular-nums" :style="{ color: RING_GRADIENTS[i % 4].from }">
+                      <span class="max-w-full truncate text-2xl font-bold tabular-nums" :style="{ color: RING_GRADIENTS[i % 4].from }">
                         {{ ring.amount }}
                       </span>
                     </template>
@@ -221,19 +221,25 @@
                       <span class="text-3xl font-bold tabular-nums text-gray-900 dark:text-white">
                         {{ displayPcts[i] ?? 0 }}%
                       </span>
-                      <span class="text-xs text-gray-500 dark:text-dark-400 mt-0.5">{{ t('keyUsage.used') }}</span>
+                      <span class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">{{ t('keyUsage.used') }}</span>
                       <span
-                        class="text-sm font-semibold mt-1 tabular-nums"
+                        class="mt-1 max-w-[8.5rem] truncate text-sm font-semibold tabular-nums"
                         :style="{ color: RING_GRADIENTS[i % 4].from }"
+                        :title="ring.amount"
                       >{{ ring.amount }}</span>
-                      <p v-if="ring.resetAt && formatResetTime(ring.resetAt)" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
-                        ⟳ {{ formatResetTime(ring.resetAt) }}
-                      </p>
-                      <p v-if="ring.periodText" class="px-2 text-[10px] leading-tight text-center text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
-                        {{ t('keyUsage.windowPeriod') }} {{ ring.periodText }}
-                      </p>
                     </template>
                   </div>
+                </div>
+                <div
+                  v-if="!ring.isBalance && ((ring.resetAt && formatResetTime(ring.resetAt)) || ring.periodText)"
+                  class="mt-4 min-h-[3.25rem] w-full rounded-xl border border-gray-200 bg-gray-50/70 px-3 py-2 text-center dark:border-dark-700 dark:bg-dark-950/40"
+                >
+                  <p v-if="ring.resetAt && formatResetTime(ring.resetAt)" class="text-xs font-medium text-gray-500 dark:text-dark-400 tabular-nums">
+                    ⟳ {{ formatResetTime(ring.resetAt) }}
+                  </p>
+                  <p v-if="ring.periodText" class="mt-1 text-[11px] leading-4 text-gray-500 dark:text-dark-400 tabular-nums">
+                    {{ t('keyUsage.windowPeriod') }} {{ ring.periodText }}
+                  </p>
                 </div>
               </div>
             </div>

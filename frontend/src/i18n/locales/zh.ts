@@ -157,6 +157,7 @@ export default {
     todayExpires: '(今日到期)',
     daysLeft: '({days} 天)',
     usedQuota: '已用额度',
+    windowPeriod: '周期',
     resetNow: '即将重置',
     subscriptionType: '订阅类型',
     subscriptionExpires: '订阅到期',
@@ -1388,6 +1389,7 @@ export default {
       unlimited: '不限',
       neverExpires: '永久有效',
       generated: '自动生成',
+      weeklyPeriod: '周周期',
       columns: {
         key: 'API Key',
         owner: '归属用户',
@@ -1412,6 +1414,8 @@ export default {
         totalQuota: '总额度 USD',
         dailyLimit: '日限额 USD',
         weeklyLimit: '周限额 USD',
+        weeklyWindowStart: '周限额周期起点',
+        weeklyWindowHint: '留空则由系统在下次用量写入时自动初始化；结束时间固定为起点后 7 天',
         fiveHourLimit: '5 小时限额 USD',
         concurrency: '并发上限',
         expiresAt: '过期时间',
@@ -1427,7 +1431,9 @@ export default {
         loadFailed: '加载 API Key 失败',
         createFailed: '创建 API Key 失败',
         updateFailed: '更新 API Key 失败',
-        invalidExpiresAt: '过期时间格式无效'
+        invalidExpiresAt: '过期时间格式无效',
+        invalidWeeklyWindowStart: '周限额周期起点格式无效',
+        invalidWeeklyWindowRange: '周限额周期起点必须在过去 7 天内，且不能晚于当前时间'
       },
       created: 'API Key 已创建',
       updated: 'API Key 策略已更新'

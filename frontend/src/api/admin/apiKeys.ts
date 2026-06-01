@@ -23,6 +23,7 @@ export interface AdminUpdateApiKeyPolicyPayload {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  window_7d_start?: string
   reset_rate_limit_usage?: boolean
 }
 

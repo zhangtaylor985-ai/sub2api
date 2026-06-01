@@ -385,9 +385,11 @@ type AdminUpdateAPIKeyPolicyInput struct {
 	ClearExpires bool
 	Concurrency  *int
 
-	RateLimit5h *float64
-	RateLimit1d *float64
-	RateLimit7d *float64
+	RateLimit5h        *float64
+	RateLimit1d        *float64
+	RateLimit7d        *float64
+	Window7dStart      *time.Time
+	ClearWindow7dStart bool
 
 	ResetQuota          bool
 	ResetRateLimitUsage bool
@@ -2550,6 +2552,20 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 		apiKey.Window5hStart = nil
 		apiKey.Window1dStart = nil
 		apiKey.Window7dStart = nil
+		rateLimitChanged = true
+	}
+	if input.ClearWindow7dStart {
+		apiKey.Window7dStart = nil
+		rateLimitChanged = true
+	} else if input.Window7dStart != nil {
+		now := time.Now()
+		if input.Window7dStart.After(now.Add(time.Minute)) {
+			return nil, infraerrors.BadRequest("INVALID_RATE_LIMIT_WINDOW", "window_7d_start must not be in the future")
+		}
+		if IsWindowExpired(input.Window7dStart, RateLimitWindow7d) {
+			return nil, infraerrors.BadRequest("INVALID_RATE_LIMIT_WINDOW", "window_7d_start must be within the current 7-day window")
+		}
+		apiKey.Window7dStart = input.Window7dStart
 		rateLimitChanged = true
 	}
 

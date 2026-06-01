@@ -113,6 +113,9 @@
               <div>Total: ${{ formatMoney(row.quota_used) }}</div>
               <div>1d: ${{ formatMoney(row.usage_1d) }}</div>
               <div>7d: ${{ formatMoney(row.usage_7d) }}</div>
+              <div v-if="weeklyWindowPeriod(row)" class="text-gray-400 dark:text-dark-500">
+                {{ t('admin.apiKeys.weeklyPeriod') }}: {{ weeklyWindowPeriod(row) }}
+              </div>
             </div>
           </template>
 
@@ -305,6 +308,16 @@
               :disabled="editForm.clear_expires_at"
             />
           </label>
+          <label class="space-y-1 md:col-span-2">
+            <span class="input-label">{{ t('admin.apiKeys.form.weeklyWindowStart') }}</span>
+            <input v-model="editForm.window_7d_start_local" type="datetime-local" class="input" />
+            <span class="input-hint">
+              {{ t('admin.apiKeys.form.weeklyWindowHint') }}
+              <template v-if="editWeeklyWindowPeriod">
+                · {{ t('admin.apiKeys.weeklyPeriod') }}: {{ editWeeklyWindowPeriod }}
+              </template>
+            </span>
+          </label>
         </div>
         <div class="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-dark-300">
           <label class="inline-flex items-center gap-2">
@@ -408,6 +421,7 @@ const editForm = reactive({
   rate_limit_7d: 0,
   concurrency: 0,
   expires_at_local: '',
+  window_7d_start_local: '',
   clear_expires_at: false,
   reset_quota: false,
   reset_rate_limit_usage: false
@@ -486,6 +500,43 @@ const toISOStringOrEmpty = (value: string) => {
   }
   return date.toISOString()
 }
+
+const toWeeklyWindowISOStringOrEmpty = (value: string) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(t('admin.apiKeys.errors.invalidWeeklyWindowStart'))
+  }
+  const now = Date.now()
+  if (date.getTime() > now + 60_000 || date.getTime() < now - 7 * 24 * 60 * 60 * 1000) {
+    throw new Error(t('admin.apiKeys.errors.invalidWeeklyWindowRange'))
+  }
+  return date.toISOString()
+}
+
+const formatWindowBoundary = (value?: string | null) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+const formatWindowPeriod = (start?: string | null, end?: string | null) => {
+  const s = formatWindowBoundary(start)
+  const e = formatWindowBoundary(end)
+  return s && e ? `${s} - ${e}` : ''
+}
+
+const weeklyWindowPeriod = (key: ApiKey) => formatWindowPeriod(key.window_7d_start, key.reset_7d_at)
+
+const editWeeklyWindowPeriod = computed(() => {
+  if (!editForm.window_7d_start_local) return ''
+  const date = new Date(editForm.window_7d_start_local)
+  if (Number.isNaN(date.getTime())) return ''
+  const end = new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000)
+  return formatWindowPeriod(date.toISOString(), end.toISOString())
+})
 
 const maskKey = (key: string) => {
   if (!key) return ''
@@ -630,6 +681,7 @@ const openEditDialog = (key: ApiKey) => {
   editForm.rate_limit_7d = key.rate_limit_7d || 0
   editForm.concurrency = key.concurrency || 0
   editForm.expires_at_local = toDateTimeLocal(key.expires_at)
+  editForm.window_7d_start_local = toDateTimeLocal(key.window_7d_start)
   editForm.clear_expires_at = false
   editForm.reset_quota = false
   editForm.reset_rate_limit_usage = false
@@ -679,6 +731,11 @@ const handleUpdate = async () => {
   submitting.value = true
   try {
     const expiresAt = editForm.clear_expires_at ? '' : toISOStringOrEmpty(editForm.expires_at_local)
+    const originalWeeklyWindowStartLocal = toDateTimeLocal(editingKey.value.window_7d_start)
+    const weeklyWindowStart =
+      editForm.window_7d_start_local !== originalWeeklyWindowStartLocal
+        ? toWeeklyWindowISOStringOrEmpty(editForm.window_7d_start_local)
+        : undefined
     const result = await adminAPI.apiKeys.updateApiKeyPolicy(editingKey.value.id, {
       group_id: selectedPolicyGroupID(editForm.group_id),
       status: editForm.status,
@@ -688,6 +745,7 @@ const handleUpdate = async () => {
       rate_limit_7d: numericValue(editForm.rate_limit_7d),
       concurrency: numericValue(editForm.concurrency),
       expires_at: editForm.clear_expires_at || editForm.expires_at_local ? expiresAt : undefined,
+      window_7d_start: weeklyWindowStart,
       reset_quota: editForm.reset_quota,
       reset_rate_limit_usage: editForm.reset_rate_limit_usage
     })

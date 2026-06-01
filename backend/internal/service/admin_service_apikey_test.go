@@ -481,6 +481,48 @@ func TestAdminService_AdminUpdateAPIKeyPolicy_ClearsExpiration(t *testing.T) {
 	require.Equal(t, StatusActive, got.Status)
 }
 
+func TestAdminService_AdminUpdateAPIKeyPolicy_UpdatesWeeklyWindowStart(t *testing.T) {
+	windowStart := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
+	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusActive}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	got, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{Window7dStart: &windowStart})
+	require.NoError(t, err)
+	require.NotNil(t, got.Window7dStart)
+	require.Equal(t, windowStart, got.Window7dStart.UTC())
+	require.NotNil(t, apiKeyRepo.updated)
+}
+
+func TestAdminService_AdminUpdateAPIKeyPolicy_ResetUsageThenSetsWeeklyWindowStart(t *testing.T) {
+	oldWindowStart := time.Now().UTC().Add(-24 * time.Hour)
+	newWindowStart := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusActive, Usage7d: 12.3, Window7dStart: &oldWindowStart}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	got, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{
+		ResetRateLimitUsage: true,
+		Window7dStart:       &newWindowStart,
+	})
+	require.NoError(t, err)
+	require.Zero(t, got.Usage7d)
+	require.NotNil(t, got.Window7dStart)
+	require.Equal(t, newWindowStart, got.Window7dStart.UTC())
+}
+
+func TestAdminService_AdminUpdateAPIKeyPolicy_RejectsExpiredWeeklyWindowStart(t *testing.T) {
+	windowStart := time.Now().UTC().Add(-8 * 24 * time.Hour)
+	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusActive}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	_, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{Window7dStart: &windowStart})
+	require.Error(t, err)
+	require.Equal(t, "INVALID_RATE_LIMIT_WINDOW", infraerrors.Reason(err))
+	require.Nil(t, apiKeyRepo.updated)
+}
+
 // ---------------------------------------------------------------------------
 // Tests: AllowedGroup auto-sync
 // ---------------------------------------------------------------------------

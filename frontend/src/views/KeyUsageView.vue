@@ -229,6 +229,9 @@
                       <p v-if="ring.resetAt && formatResetTime(ring.resetAt)" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
                         ⟳ {{ formatResetTime(ring.resetAt) }}
                       </p>
+                      <p v-if="ring.periodText" class="px-2 text-[10px] leading-tight text-center text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
+                        {{ t('keyUsage.windowPeriod') }} {{ ring.periodText }}
+                      </p>
                     </template>
                   </div>
                 </div>
@@ -543,6 +546,7 @@ interface RingItem {
   isBalance?: boolean
   iconType: 'clock' | 'calendar' | 'dollar'
   resetAt?: string | null
+  periodText?: string
 }
 
 function getRingOffset(ring: RingItem): number {
@@ -627,6 +631,7 @@ const ringItems = computed<RingItem[]>(() => {
           amount: `${usd(rl.used)} / ${usd(rl.limit)}`,
           iconType: windowIcons[rl.window] || 'clock',
           resetAt: rl.reset_at,
+          periodText: rl.window === '7d' ? formatWindowPeriod(rl.window_start, rl.reset_at) : '',
         })
       }
     }
@@ -714,6 +719,10 @@ const detailRows = computed<DetailRow[]>(() => {
         const resetStr = formatResetTime(rl.reset_at)
         if (resetStr) {
           valueStr += ` (⟳ ${resetStr})`
+        }
+        const periodStr = rl.window === '7d' ? formatWindowPeriod(rl.window_start, rl.reset_at) : ''
+        if (periodStr) {
+          valueStr += ` · ${t('keyUsage.windowPeriod')} ${periodStr}`
         }
         rows.push({
           iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
@@ -842,6 +851,20 @@ function formatDate(iso: string | null | undefined): string {
   const d = new Date(iso)
   const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
   return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+function formatWindowBoundary(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatWindowPeriod(start: string | null | undefined, end: string | null | undefined): string {
+  const s = formatWindowBoundary(start)
+  const e = formatWindowBoundary(end)
+  return s && e ? `${s} - ${e}` : ''
 }
 
 function getBrowserTimezone(): string {

@@ -641,6 +641,11 @@ func (s *stubAdminService) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 			if input.RateLimit7d != nil {
 				s.apiKeys[i].RateLimit7d = *input.RateLimit7d
 			}
+			if input.ClearWindow7dStart {
+				s.apiKeys[i].Window7dStart = nil
+			} else if input.Window7dStart != nil {
+				s.apiKeys[i].Window7dStart = input.Window7dStart
+			}
 			if input.Concurrency != nil {
 				s.apiKeys[i].Concurrency = *input.Concurrency
 			}

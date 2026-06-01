@@ -157,6 +157,7 @@ export default {
     todayExpires: '(expires today)',
     daysLeft: '({days} days)',
     usedQuota: 'Used Quota',
+    windowPeriod: 'Period',
     resetNow: 'Resetting soon',
     subscriptionType: 'Subscription Type',
     subscriptionExpires: 'Subscription Expires',
@@ -1384,6 +1385,7 @@ export default {
       unlimited: 'Unlimited',
       neverExpires: 'Never Expires',
       generated: 'Auto-generate',
+      weeklyPeriod: 'Weekly period',
       columns: {
         key: 'API Key',
         owner: 'Owner',
@@ -1408,6 +1410,8 @@ export default {
         totalQuota: 'Total Quota USD',
         dailyLimit: 'Daily Limit USD',
         weeklyLimit: 'Weekly Limit USD',
+        weeklyWindowStart: 'Weekly window start',
+        weeklyWindowHint: 'Leave empty to let the system initialize it on the next usage write; the end time is always 7 days after the start',
         fiveHourLimit: '5-hour Limit USD',
         concurrency: 'Concurrency Limit',
         expiresAt: 'Expires At',
@@ -1423,7 +1427,9 @@ export default {
         loadFailed: 'Failed to load API keys',
         createFailed: 'Failed to create API key',
         updateFailed: 'Failed to update API key',
-        invalidExpiresAt: 'Invalid expiration time'
+        invalidExpiresAt: 'Invalid expiration time',
+        invalidWeeklyWindowStart: 'Invalid weekly window start time',
+        invalidWeeklyWindowRange: 'Weekly window start must be within the past 7 days and not later than now'
       },
       created: 'API key created',
       updated: 'API key policy updated'

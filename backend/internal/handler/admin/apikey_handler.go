@@ -36,6 +36,7 @@ type AdminUpdateAPIKeyGroupRequest struct {
 	RateLimit5h         *float64 `json:"rate_limit_5h"`          // nil=不修改, 0=不限制
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
+	Window7dStart       *string  `json:"window_7d_start"` // nil=不修改, ""=清空, RFC3339=设置当前 7d 窗口起点
 }
 
 type AdminCreateAPIKeyRequest struct {
@@ -234,6 +235,17 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 			input.ExpiresAt = &expiresAt
 		}
 	}
+	if req.Window7dStart != nil {
+		if *req.Window7dStart == "" {
+			input.ClearWindow7dStart = true
+		} else {
+			window7dStart, err := time.Parse(time.RFC3339, *req.Window7dStart)
+			if err != nil {
+				return service.AdminUpdateAPIKeyPolicyInput{}, false, err
+			}
+			input.Window7dStart = &window7dStart
+		}
+	}
 
 	set := req.Status != nil ||
 		req.Quota != nil ||
@@ -243,6 +255,7 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 		req.RateLimit5h != nil ||
 		req.RateLimit1d != nil ||
 		req.RateLimit7d != nil ||
+		req.Window7dStart != nil ||
 		req.ResetRateLimitUsage != nil
 	return input, set, nil
 }

@@ -46,6 +46,7 @@ const messages: Record<string, string> = {
   'keyUsage.limitMonthly': 'Monthly Limit',
   'keyUsage.remainingQuota': 'Remaining Quota',
   'keyUsage.usedQuota': 'Used Quota',
+  'keyUsage.windowPeriod': 'Period',
   'keyUsage.subscriptionType': 'Subscription Type',
   'keyUsage.todayRequests': 'Today Requests',
   'keyUsage.todayInputTokens': 'Today Input',
@@ -122,6 +123,16 @@ describe('KeyUsageView daily detail', () => {
           remaining: 9,
           unit: 'USD',
         },
+        rate_limits: [
+          {
+            window: '7d',
+            limit: 500,
+            used: 125,
+            remaining: 375,
+            window_start: '2026-05-28T22:14:00+08:00',
+            reset_at: '2026-06-04T22:14:00+08:00',
+          },
+        ],
         usage: {
           today: {
             requests: 1,
@@ -202,6 +213,9 @@ describe('KeyUsageView daily detail', () => {
     expect(text).toContain('30')
     expect(text).toContain('10')
     expect(text).toContain('$0.12')
+    expect(text).toContain('Period')
+    expect(text).toContain('05-28')
+    expect(text).toContain('06-04')
 
     wrapper.unmount()
   })

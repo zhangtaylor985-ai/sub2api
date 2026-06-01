@@ -194,6 +194,34 @@ func TestAdminAPIKeyHandler_UpdatePolicyFields(t *testing.T) {
 	require.Zero(t, resp.Data.APIKey.Usage1d)
 }
 
+func TestAdminAPIKeyHandler_UpdateWeeklyWindowStart(t *testing.T) {
+	svc := newStubAdminService()
+	router := setupAPIKeyHandler(svc)
+	windowStart := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
+	body := `{"window_7d_start":"` + windowStart.Format(time.RFC3339) + `"}`
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data struct {
+			APIKey struct {
+				Window7dStart *time.Time `json:"window_7d_start"`
+				Reset7dAt     *time.Time `json:"reset_7d_at"`
+			} `json:"api_key"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Data.APIKey.Window7dStart)
+	require.Equal(t, windowStart, resp.Data.APIKey.Window7dStart.UTC())
+	require.NotNil(t, resp.Data.APIKey.Reset7dAt)
+	require.Equal(t, windowStart.Add(7*24*time.Hour), resp.Data.APIKey.Reset7dAt.UTC())
+}
+
 func TestAdminAPIKeyHandler_UpdatePolicyClearsExpiration(t *testing.T) {
 	svc := newStubAdminService()
 	expiresAt := time.Now().UTC().Add(24 * time.Hour)

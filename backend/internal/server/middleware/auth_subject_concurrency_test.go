@@ -36,7 +36,7 @@ func TestAuthSubjectFromAPIKeyConcurrencyScope(t *testing.T) {
 			wantResolvedID:    11,
 		},
 		{
-			name: "group inheritance",
+			name: "group inherited limit uses api key scope",
 			key: &service.APIKey{
 				ID:      12,
 				User:    user,
@@ -44,10 +44,10 @@ func TestAuthSubjectFromAPIKeyConcurrencyScope(t *testing.T) {
 				Group:   &service.Group{ID: groupID, Concurrency: 2},
 			},
 			wantConcurrency:   2,
-			wantScope:         ConcurrencyScopeGroup,
-			wantScopeID:       groupID,
-			wantResolvedScope: ConcurrencyScopeGroup,
-			wantResolvedID:    groupID,
+			wantScope:         ConcurrencyScopeAPIKey,
+			wantScopeID:       12,
+			wantResolvedScope: ConcurrencyScopeAPIKey,
+			wantResolvedID:    12,
 		},
 		{
 			name: "user fallback",

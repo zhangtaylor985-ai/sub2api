@@ -52,6 +52,14 @@ type ConcurrencyCache interface {
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
 }
 
+type scopedConcurrencyCache interface {
+	AcquireScopedSlot(ctx context.Context, scope string, id int64, maxConcurrency int, requestID string) (bool, error)
+	ReleaseScopedSlot(ctx context.Context, scope string, id int64, requestID string) error
+	GetScopedConcurrency(ctx context.Context, scope string, id int64) (int, error)
+	IncrementScopedWaitCount(ctx context.Context, scope string, id int64, maxWait int) (bool, error)
+	DecrementScopedWaitCount(ctx context.Context, scope string, id int64) error
+}
+
 var (
 	requestIDPrefix  = initRequestIDPrefix()
 	requestIDCounter atomic.Uint64
@@ -237,6 +245,43 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 	}, nil
 }
 
+// AcquireScopedSlot acquires a slot for user, group, or API-key scoped concurrency limits.
+func (s *ConcurrencyService) AcquireScopedSlot(ctx context.Context, scope string, id int64, maxConcurrency int) (*AcquireResult, error) {
+	if scope == "" || scope == "user" {
+		return s.AcquireUserSlot(ctx, id, maxConcurrency)
+	}
+	if maxConcurrency <= 0 {
+		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+	}
+	if s.cache == nil {
+		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+	}
+	scoped, ok := s.cache.(scopedConcurrencyCache)
+	if !ok {
+		logger.LegacyPrintf("service.concurrency", "Warning: scoped concurrency cache unavailable for %s %d", scope, id)
+		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+	}
+
+	requestID := generateRequestID()
+	acquired, err := scoped.AcquireScopedSlot(ctx, scope, id, maxConcurrency, requestID)
+	if err != nil {
+		return nil, err
+	}
+	if acquired {
+		return &AcquireResult{
+			Acquired: true,
+			ReleaseFunc: func() {
+				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := scoped.ReleaseScopedSlot(bgCtx, scope, id, requestID); err != nil {
+					logger.LegacyPrintf("service.concurrency", "Warning: failed to release %s slot for %d (req=%s): %v", scope, id, requestID, err)
+				}
+			},
+		}, nil
+	}
+	return &AcquireResult{Acquired: false}, nil
+}
+
 // ============================================
 // Wait Queue Count Methods
 // ============================================
@@ -272,6 +317,46 @@ func (s *ConcurrencyService) DecrementWaitCount(ctx context.Context, userID int6
 
 	if err := s.cache.DecrementWaitCount(bgCtx, userID); err != nil {
 		logger.LegacyPrintf("service.concurrency", "Warning: decrement wait count failed for user %d: %v", userID, err)
+	}
+}
+
+// IncrementScopedWaitCount increments the wait counter for user, group, or API-key scoped limits.
+func (s *ConcurrencyService) IncrementScopedWaitCount(ctx context.Context, scope string, id int64, maxWait int) (bool, error) {
+	if scope == "" || scope == "user" {
+		return s.IncrementWaitCount(ctx, id, maxWait)
+	}
+	if s.cache == nil {
+		return true, nil
+	}
+	scoped, ok := s.cache.(scopedConcurrencyCache)
+	if !ok {
+		return true, nil
+	}
+	result, err := scoped.IncrementScopedWaitCount(ctx, scope, id, maxWait)
+	if err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: increment wait count failed for %s %d: %v", scope, id, err)
+		return true, nil
+	}
+	return result, nil
+}
+
+// DecrementScopedWaitCount decrements the wait counter for user, group, or API-key scoped limits.
+func (s *ConcurrencyService) DecrementScopedWaitCount(ctx context.Context, scope string, id int64) {
+	if scope == "" || scope == "user" {
+		s.DecrementWaitCount(ctx, id)
+		return
+	}
+	if s.cache == nil {
+		return
+	}
+	scoped, ok := s.cache.(scopedConcurrencyCache)
+	if !ok {
+		return
+	}
+	bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := scoped.DecrementScopedWaitCount(bgCtx, scope, id); err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: decrement wait count failed for %s %d: %v", scope, id, err)
 	}
 }
 

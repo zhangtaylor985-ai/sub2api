@@ -84,6 +84,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Name:          k.Name,
 		GroupID:       k.GroupID,
 		Status:        k.Status,
+		Concurrency:   k.Concurrency,
 		IPWhitelist:   k.IPWhitelist,
 		IPBlacklist:   k.IPBlacklist,
 		LastUsedAt:    k.LastUsedAt,
@@ -189,6 +190,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		RequireOAuthOnly:                g.RequireOAuthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
 		RPMLimit:                        g.RPMLimit,
+		Concurrency:                     g.Concurrency,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

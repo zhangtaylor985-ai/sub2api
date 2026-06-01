@@ -359,6 +359,7 @@ export default {
     profile: '个人资料',
     users: '用户管理',
     groups: '分组管理',
+    adminApiKeys: 'API Key 管理',
     channels: '渠道管理',
     availableChannels: '可用渠道',
     subscriptions: '订阅管理',
@@ -1373,6 +1374,64 @@ export default {
 
   // Admin
   admin: {
+    apiKeys: {
+      title: 'API Key 管理',
+      description: '由管理员直接创建和维护 API Key 的额度、限速和并发',
+      searchPlaceholder: '搜索 Key、名称、用户邮箱或用户名...',
+      create: '新建 API Key',
+      editPolicy: '编辑策略',
+      allStatus: '全部状态',
+      allGroups: '全部分组',
+      ungrouped: '未绑定分组',
+      systemOwner: '系统托管用户',
+      inherited: '继承',
+      unlimited: '不限',
+      neverExpires: '永久有效',
+      generated: '自动生成',
+      columns: {
+        key: 'API Key',
+        owner: '归属用户',
+        group: '分组',
+        limits: '额度 / 限速',
+        usage: '用量',
+        concurrency: '并发',
+        status: '状态',
+        expiresAt: '过期时间',
+        createdAt: '创建时间',
+        actions: '操作'
+      },
+      form: {
+        name: '名称',
+        namePlaceholder: '例如：四人车过渡 Key',
+        customKey: '自定义 Key',
+        customKeyPlaceholder: '留空自动生成',
+        ownerUserId: '用户 ID',
+        ownerUserIdPlaceholder: '留空使用系统托管用户',
+        group: '分组',
+        status: '状态',
+        totalQuota: '总额度 USD',
+        dailyLimit: '日限额 USD',
+        weeklyLimit: '周限额 USD',
+        fiveHourLimit: '5 小时限额 USD',
+        concurrency: '并发上限',
+        expiresAt: '过期时间',
+        zeroUnlimited: '0 表示不限',
+        zeroInheritConcurrency: '0 表示继承分组 / 用户并发',
+        resetQuota: '重置总额度用量',
+        resetRateUsage: '重置限速窗口用量',
+        clearExpires: '清空过期时间'
+      },
+      errors: {
+        nameRequired: '请输入 API Key 名称',
+        loadFailed: '加载 API Key 失败',
+        createFailed: '创建 API Key 失败',
+        updateFailed: '更新 API Key 失败',
+        invalidExpiresAt: '过期时间格式无效'
+      },
+      created: 'API Key 已创建',
+      updated: 'API Key 策略已更新'
+    },
+
     // Dashboard
     dashboard: {
       title: '管理控制台',
@@ -2105,6 +2164,7 @@ export default {
         name: '名称',
         platform: '平台',
         rateMultiplier: '费率倍数',
+        concurrency: '并发',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
         rateDefault: '默认',
@@ -2146,6 +2206,9 @@ export default {
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
+        concurrency: 'API Key 并发',
+        concurrencyPlaceholder: '0 表示沿用用户并发',
+        concurrencyHint: '本分组下 API Key 的默认并发上限，0 = 沿用用户并发；单个 API Key 可继续覆盖',
         exclusiveLabel: '专属分组',
         exclusiveHint: '专属分组，可以手动指定给用户',
         platformLabel: '平台限制',
@@ -2171,6 +2234,7 @@ export default {
           '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
       },
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
+      inheritUserConcurrency: '沿用用户',
       platforms: {
         all: '全部平台',
         anthropic: 'Anthropic',

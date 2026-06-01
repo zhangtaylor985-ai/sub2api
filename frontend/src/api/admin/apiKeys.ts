@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { ApiKey } from '@/types'
+import type { ApiKey, PaginatedResponse } from '@/types'
 
 export interface UpdateApiKeyGroupResult {
   api_key: ApiKey
@@ -17,12 +17,67 @@ export interface AdminUpdateApiKeyPolicyPayload {
   group_id?: number | null
   status?: 'active' | 'inactive'
   quota?: number
+  concurrency?: number
   expires_at?: string
   reset_quota?: boolean
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+}
+
+export interface AdminAPIKeyFilters {
+  search?: string
+  status?: string
+  group_id?: number | null
+  user_id?: number | null
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
+}
+
+export interface AdminCreateAPIKeyPayload {
+  user_id?: number | null
+  name: string
+  custom_key?: string
+  group_id?: number | null
+  status?: 'active' | 'inactive'
+  quota?: number
+  expires_at?: string
+  rate_limit_5h?: number
+  rate_limit_1d?: number
+  rate_limit_7d?: number
+  concurrency?: number
+}
+
+export async function listApiKeys(
+  page: number = 1,
+  pageSize: number = 20,
+  filters?: AdminAPIKeyFilters,
+  options?: {
+    signal?: AbortSignal
+  }
+): Promise<PaginatedResponse<ApiKey>> {
+  const params: Record<string, unknown> = {
+    page,
+    page_size: pageSize,
+    ...filters
+  }
+  if (params.group_id === null || params.group_id === undefined || params.group_id === '') {
+    delete params.group_id
+  }
+  if (params.user_id === null || params.user_id === undefined || params.user_id === '') {
+    delete params.user_id
+  }
+  const { data } = await apiClient.get<PaginatedResponse<ApiKey>>('/admin/api-keys', {
+    params,
+    signal: options?.signal
+  })
+  return data
+}
+
+export async function createApiKey(payload: AdminCreateAPIKeyPayload): Promise<UpdateApiKeyGroupResult> {
+  const { data } = await apiClient.post<UpdateApiKeyGroupResult>('/admin/api-keys', payload)
+  return data
 }
 
 /**
@@ -44,6 +99,8 @@ export async function updateApiKeyPolicy(id: number, payload: AdminUpdateApiKeyP
 }
 
 export const apiKeysAPI = {
+  list: listApiKeys,
+  create: createApiKey,
   updateApiKeyGroup,
   updateApiKeyPolicy
 }

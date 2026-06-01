@@ -50,6 +50,7 @@
             <div class="flex items-center gap-1"><span>过期: {{ key.expires_at ? formatDateTime(key.expires_at) : '永久有效' }}</span></div>
             <div class="flex items-center gap-1"><span>总额度: {{ key.quota > 0 ? `$${key.quota.toFixed(2)}` : '不限' }}</span></div>
             <div class="flex items-center gap-1"><span>日限额: {{ key.rate_limit_1d > 0 ? `$${key.rate_limit_1d.toFixed(2)}` : '不限' }}</span></div>
+            <div class="flex items-center gap-1"><span>并发: {{ key.concurrency > 0 ? key.concurrency : '继承' }}</span></div>
           </div>
           <form
             v-if="editingKeyId === key.id"
@@ -79,6 +80,10 @@
               <label class="space-y-1">
                 <span class="text-xs font-medium text-gray-600 dark:text-dark-300">周限额 USD，0 = 不限</span>
                 <input v-model.number="policyForm.rate_limit_7d" type="number" min="0" step="0.0001" class="input" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">并发上限，0 = 继承分组 / 用户</span>
+                <input v-model.number="policyForm.concurrency" type="number" min="0" step="1" class="input" />
               </label>
               <label class="space-y-1">
                 <span class="text-xs font-medium text-gray-600 dark:text-dark-300">过期时间</span>
@@ -198,6 +203,7 @@ const policyForm = ref({
   rate_limit_5h: 0 as number | null,
   rate_limit_1d: 0 as number | null,
   rate_limit_7d: 0 as number | null,
+  concurrency: 0 as number | null,
   expires_at_local: '',
   clear_expires_at: false,
   reset_quota: false,
@@ -302,6 +308,7 @@ const togglePolicyEditor = (key: ApiKey) => {
     rate_limit_5h: key.rate_limit_5h || 0,
     rate_limit_1d: key.rate_limit_1d || 0,
     rate_limit_7d: key.rate_limit_7d || 0,
+    concurrency: key.concurrency || 0,
     expires_at_local: toDateTimeLocal(key.expires_at),
     clear_expires_at: false,
     reset_quota: false,
@@ -335,6 +342,7 @@ const savePolicy = async (key: ApiKey) => {
       rate_limit_5h: numberOrZero(policyForm.value.rate_limit_5h),
       rate_limit_1d: numberOrZero(policyForm.value.rate_limit_1d),
       rate_limit_7d: numberOrZero(policyForm.value.rate_limit_7d),
+      concurrency: numberOrZero(policyForm.value.concurrency),
       expires_at: policyForm.value.clear_expires_at || !policyForm.value.expires_at_local ? '' : expiresAt,
       reset_quota: policyForm.value.reset_quota,
       reset_rate_limit_usage: policyForm.value.reset_rate_limit_usage

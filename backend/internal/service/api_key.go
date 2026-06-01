@@ -34,6 +34,7 @@ type APIKey struct {
 	Name        string
 	GroupID     *int64
 	Status      string
+	Concurrency int
 	IPWhitelist []string
 	IPBlacklist []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
@@ -69,6 +70,23 @@ func (k *APIKey) IsActive() bool {
 // HasRateLimits returns true if any rate limit window is configured
 func (k *APIKey) HasRateLimits() bool {
 	return k.RateLimit5h > 0 || k.RateLimit1d > 0 || k.RateLimit7d > 0
+}
+
+// EffectiveConcurrency resolves API key concurrency from key override, group default, then user fallback.
+func (k *APIKey) EffectiveConcurrency() int {
+	if k == nil {
+		return 0
+	}
+	if k.Concurrency > 0 {
+		return k.Concurrency
+	}
+	if k.Group != nil && k.Group.Concurrency > 0 {
+		return k.Group.Concurrency
+	}
+	if k.User != nil {
+		return k.User.Concurrency
+	}
+	return 0
 }
 
 // IsExpired checks if the API key has expired

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -205,6 +206,16 @@ func (h *ConcurrencyHelper) DecrementWaitCount(ctx context.Context, userID int64
 	h.concurrencyService.DecrementWaitCount(ctx, userID)
 }
 
+func (h *ConcurrencyHelper) IncrementSubjectWaitCount(ctx context.Context, subject middleware2.AuthSubject, maxWait int) (bool, error) {
+	scope, id := subject.ResolvedConcurrencyScope()
+	return h.concurrencyService.IncrementScopedWaitCount(ctx, string(scope), id, maxWait)
+}
+
+func (h *ConcurrencyHelper) DecrementSubjectWaitCount(ctx context.Context, subject middleware2.AuthSubject) {
+	scope, id := subject.ResolvedConcurrencyScope()
+	h.concurrencyService.DecrementScopedWaitCount(ctx, string(scope), id)
+}
+
 // IncrementAccountWaitCount increments the wait count for an account
 func (h *ConcurrencyHelper) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
 	return h.concurrencyService.IncrementAccountWaitCount(ctx, accountID, maxWait)
@@ -219,6 +230,19 @@ func (h *ConcurrencyHelper) DecrementAccountWaitCount(ctx context.Context, accou
 // 返回值: (releaseFunc, acquired, error)
 func (h *ConcurrencyHelper) TryAcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int) (func(), bool, error) {
 	result, err := h.concurrencyService.AcquireUserSlot(ctx, userID, maxConcurrency)
+	if err != nil {
+		return nil, false, err
+	}
+	if !result.Acquired {
+		return nil, false, nil
+	}
+	return result.ReleaseFunc, true, nil
+}
+
+// TryAcquireSubjectSlot tries to acquire the effective authenticated subject slot.
+func (h *ConcurrencyHelper) TryAcquireSubjectSlot(ctx context.Context, subject middleware2.AuthSubject) (func(), bool, error) {
+	scope, id := subject.ResolvedConcurrencyScope()
+	result, err := h.concurrencyService.AcquireScopedSlot(ctx, string(scope), id, subject.Concurrency)
 	if err != nil {
 		return nil, false, err
 	}
@@ -261,6 +285,20 @@ func (h *ConcurrencyHelper) AcquireUserSlotWithWait(c *gin.Context, userID int64
 	return h.waitForSlotWithPing(c, "user", userID, maxConcurrency, isStream, streamStarted)
 }
 
+// AcquireSubjectSlotWithWait acquires the effective authenticated subject slot, waiting if necessary.
+func (h *ConcurrencyHelper) AcquireSubjectSlotWithWait(c *gin.Context, subject middleware2.AuthSubject, isStream bool, streamStarted *bool) (func(), error) {
+	ctx := c.Request.Context()
+	releaseFunc, acquired, err := h.TryAcquireSubjectSlot(ctx, subject)
+	if err != nil {
+		return nil, err
+	}
+	if acquired {
+		return releaseFunc, nil
+	}
+	scope, id := subject.ResolvedConcurrencyScope()
+	return h.waitForSlotWithPing(c, string(scope), id, subject.Concurrency, isStream, streamStarted)
+}
+
 // AcquireAccountSlotWithWait acquires an account concurrency slot, waiting if necessary.
 // For streaming requests, sends ping events during the wait.
 // streamStarted is updated if streaming response has begun.
@@ -293,10 +331,14 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 	defer cancel()
 
 	acquireSlot := func() (*service.AcquireResult, error) {
-		if slotType == "user" {
+		switch slotType {
+		case "user":
 			return h.concurrencyService.AcquireUserSlot(ctx, id, maxConcurrency)
+		case "account":
+			return h.concurrencyService.AcquireAccountSlot(ctx, id, maxConcurrency)
+		default:
+			return h.concurrencyService.AcquireScopedSlot(ctx, slotType, id, maxConcurrency)
 		}
-		return h.concurrencyService.AcquireAccountSlot(ctx, id, maxConcurrency)
 	}
 
 	if tryImmediate {

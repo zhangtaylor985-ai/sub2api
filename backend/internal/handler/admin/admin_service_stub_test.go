@@ -577,6 +577,44 @@ func (s *stubAdminService) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	return nil, service.ErrAPIKeyNotFound
 }
 
+func (s *stubAdminService) AdminListAPIKeys(ctx context.Context, page, pageSize int, filters service.AdminAPIKeyListFilters, sortBy, sortOrder string) ([]service.APIKey, int64, error) {
+	return s.apiKeys, int64(len(s.apiKeys)), nil
+}
+
+func (s *stubAdminService) AdminCreateAPIKey(ctx context.Context, input service.AdminCreateAPIKeyInput) (*service.AdminUpdateAPIKeyGroupIDResult, error) {
+	id := int64(10 + len(s.apiKeys) + 1)
+	userID := int64(1)
+	if input.UserID != nil && *input.UserID > 0 {
+		userID = *input.UserID
+	}
+	key := "sk-created-test-key"
+	if input.CustomKey != nil && *input.CustomKey != "" {
+		key = *input.CustomKey
+	}
+	status := service.StatusActive
+	if input.Status != nil && *input.Status != "" {
+		status = *input.Status
+	}
+	apiKey := service.APIKey{
+		ID:          id,
+		UserID:      userID,
+		Key:         key,
+		Name:        input.Name,
+		GroupID:     input.GroupID,
+		Status:      status,
+		Quota:       input.Quota,
+		ExpiresAt:   input.ExpiresAt,
+		RateLimit5h: input.RateLimit5h,
+		RateLimit1d: input.RateLimit1d,
+		RateLimit7d: input.RateLimit7d,
+		Concurrency: input.Concurrency,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	s.apiKeys = append(s.apiKeys, apiKey)
+	return &service.AdminUpdateAPIKeyGroupIDResult{APIKey: &apiKey}, nil
+}
+
 func (s *stubAdminService) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID int64, input service.AdminUpdateAPIKeyPolicyInput) (*service.APIKey, error) {
 	for i := range s.apiKeys {
 		if s.apiKeys[i].ID == keyID {
@@ -602,6 +640,9 @@ func (s *stubAdminService) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 			}
 			if input.RateLimit7d != nil {
 				s.apiKeys[i].RateLimit7d = *input.RateLimit7d
+			}
+			if input.Concurrency != nil {
+				s.apiKeys[i].Concurrency = *input.Concurrency
 			}
 			if input.ResetRateLimitUsage {
 				s.apiKeys[i].Usage5h = 0

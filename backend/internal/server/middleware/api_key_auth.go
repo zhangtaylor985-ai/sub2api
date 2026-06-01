@@ -120,10 +120,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		if cfg.RunMode == config.RunModeSimple {
 			c.Set(string(ContextKeyAPIKey), apiKey)
-			c.Set(string(ContextKeyUser), AuthSubject{
-				UserID:      apiKey.User.ID,
-				Concurrency: apiKey.User.Concurrency,
-			})
+			c.Set(string(ContextKeyUser), authSubjectFromAPIKey(apiKey))
 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 			setGroupContext(c, apiKey.Group)
 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
@@ -215,16 +212,39 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			c.Set(string(ContextKeySubscription), subscription)
 		}
 		c.Set(string(ContextKeyAPIKey), apiKey)
-		c.Set(string(ContextKeyUser), AuthSubject{
-			UserID:      apiKey.User.ID,
-			Concurrency: apiKey.User.Concurrency,
-		})
+		c.Set(string(ContextKeyUser), authSubjectFromAPIKey(apiKey))
 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 		setGroupContext(c, apiKey.Group)
 		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 
 		c.Next()
 	}
+}
+
+func authSubjectFromAPIKey(apiKey *service.APIKey) AuthSubject {
+	if apiKey == nil || apiKey.User == nil {
+		return AuthSubject{}
+	}
+	subject := AuthSubject{
+		UserID:             apiKey.User.ID,
+		APIKeyID:           apiKey.ID,
+		Concurrency:        apiKey.EffectiveConcurrency(),
+		ConcurrencyScope:   ConcurrencyScopeUser,
+		ConcurrencyScopeID: apiKey.User.ID,
+	}
+	if apiKey.GroupID != nil {
+		subject.GroupID = *apiKey.GroupID
+	}
+	if apiKey.Concurrency > 0 {
+		subject.ConcurrencyScope = ConcurrencyScopeAPIKey
+		subject.ConcurrencyScopeID = apiKey.ID
+		return subject
+	}
+	if apiKey.Group != nil && apiKey.Group.Concurrency > 0 {
+		subject.ConcurrencyScope = ConcurrencyScopeGroup
+		subject.ConcurrencyScopeID = apiKey.Group.ID
+	}
+	return subject
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key

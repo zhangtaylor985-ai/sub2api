@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -13,8 +14,13 @@ import (
 type concurrencyCacheMock struct {
 	acquireUserSlotFn    func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error)
 	acquireAccountSlotFn func(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error)
+	acquireScopedSlotFn  func(ctx context.Context, scope string, id int64, maxConcurrency int, requestID string) (bool, error)
 	releaseUserCalled    int32
 	releaseAccountCalled int32
+	releaseScopedCalled  int32
+	lastScopedScope      string
+	lastScopedID         int64
+	lastScopedMax        int
 }
 
 func (m *concurrencyCacheMock) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
@@ -69,11 +75,38 @@ func (m *concurrencyCacheMock) GetUserConcurrency(ctx context.Context, userID in
 	return 0, nil
 }
 
+func (m *concurrencyCacheMock) AcquireScopedSlot(ctx context.Context, scope string, id int64, maxConcurrency int, requestID string) (bool, error) {
+	m.lastScopedScope = scope
+	m.lastScopedID = id
+	m.lastScopedMax = maxConcurrency
+	if m.acquireScopedSlotFn != nil {
+		return m.acquireScopedSlotFn(ctx, scope, id, maxConcurrency, requestID)
+	}
+	return false, nil
+}
+
+func (m *concurrencyCacheMock) ReleaseScopedSlot(ctx context.Context, scope string, id int64, requestID string) error {
+	atomic.AddInt32(&m.releaseScopedCalled, 1)
+	return nil
+}
+
+func (m *concurrencyCacheMock) GetScopedConcurrency(ctx context.Context, scope string, id int64) (int, error) {
+	return 0, nil
+}
+
 func (m *concurrencyCacheMock) IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error) {
 	return true, nil
 }
 
 func (m *concurrencyCacheMock) DecrementWaitCount(ctx context.Context, userID int64) error {
+	return nil
+}
+
+func (m *concurrencyCacheMock) IncrementScopedWaitCount(ctx context.Context, scope string, id int64, maxWait int) (bool, error) {
+	return true, nil
+}
+
+func (m *concurrencyCacheMock) DecrementScopedWaitCount(ctx context.Context, scope string, id int64) error {
 	return nil
 }
 
@@ -123,4 +156,31 @@ func TestConcurrencyHelper_TryAcquireAccountSlot_NotAcquired(t *testing.T) {
 	require.False(t, acquired)
 	require.Nil(t, release)
 	require.Equal(t, int32(0), atomic.LoadInt32(&cache.releaseAccountCalled))
+}
+
+func TestConcurrencyHelper_TryAcquireSubjectSlot_UsesScopedCache(t *testing.T) {
+	cache := &concurrencyCacheMock{
+		acquireScopedSlotFn: func(ctx context.Context, scope string, id int64, maxConcurrency int, requestID string) (bool, error) {
+			return true, nil
+		},
+	}
+	helper := NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, time.Second)
+	subject := middleware2.AuthSubject{
+		UserID:             7,
+		APIKeyID:           11,
+		Concurrency:        2,
+		ConcurrencyScope:   middleware2.ConcurrencyScopeAPIKey,
+		ConcurrencyScopeID: 11,
+	}
+
+	release, acquired, err := helper.TryAcquireSubjectSlot(context.Background(), subject)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	require.NotNil(t, release)
+	require.Equal(t, "api_key", cache.lastScopedScope)
+	require.Equal(t, int64(11), cache.lastScopedID)
+	require.Equal(t, 2, cache.lastScopedMax)
+
+	release()
+	require.Equal(t, int32(1), atomic.LoadInt32(&cache.releaseScopedCalled))
 }

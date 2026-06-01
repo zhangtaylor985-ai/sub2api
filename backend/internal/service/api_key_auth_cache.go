@@ -10,6 +10,7 @@ type APIKeyAuthSnapshot struct {
 	GroupID     *int64                   `json:"group_id,omitempty"`
 	Name        string                   `json:"name"`
 	Status      string                   `json:"status"`
+	Concurrency int                      `json:"concurrency"`
 	IPWhitelist []string                 `json:"ip_whitelist,omitempty"`
 	IPBlacklist []string                 `json:"ip_blacklist,omitempty"`
 	User        APIKeyAuthUserSnapshot   `json:"user"`
@@ -90,6 +91,9 @@ type APIKeyAuthGroupSnapshot struct {
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 级联判断。
 	RPMLimit int `json:"rpm_limit"`
+
+	// Concurrency 分组级 API key 并发上限（0 = 使用用户兜底）。
+	Concurrency int `json:"concurrency"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

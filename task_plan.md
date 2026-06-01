@@ -1,35 +1,46 @@
-# Sub2API Admin API Key 策略管理增强计划
+# Sub2API Admin API Key 策略管理与 CLIProxyAPI 回迁计划
 
 ## 当前目标
 
-增强 admin 侧能力，让管理员可以在“用户管理 -> 用户 API 密钥”中直接控制每个 API Key 的运营策略，包括过期时间、总额度、日/周/5h 限额、状态、重置用量与分组；普通用户侧暂不修改。
+将 `cc.claudepool.com` 最终切回 Sub2API，并把 CLIProxyAPI 当前线上 API Key、用量、过期时间、并发等数据迁回 Sub2API。切换前先把 Sub2API 改成 admin-managed API Key 模型：管理员可直接创建、编辑 API Key，并按 key 设置总额度、日/周限额、过期时间和并发量；Sub2API 内部仍保留 user 外键作为承载，但运营上不再要求“一用户一 key”。
 
 ## 当前范围
 
-- 后端 admin API 支持更新 API Key 策略字段。
-- 前端 admin 用户 API Key 弹窗支持编辑策略字段。
+- 后端支持 API Key 级并发字段与限流作用域。
+- 后端 admin API 支持创建 API Key，并更新状态、分组、总额度、日/周/5h 限额、过期时间、并发与用量重置。
+- 前端 admin 增加 API Key 管理入口，支持直接添加和编辑 key 策略。
+- 提供 CLIProxyAPI -> Sub2API 的迁移/对账脚本。
+- 完成生产备份、发布、迁移、Caddy 切换和 smoke。
 - 保持用户侧 `/keys` 页面不变。
-- 添加必要测试与本地验证。
 
 ## 当前阶段
 
 | 阶段 | 状态 | 输出 |
 | --- | --- | --- |
 | 1. 现状确认 | complete | admin/user API Key 能力边界 |
-| 2. 后端 admin API 增强 | complete | service/handler/API contract |
-| 3. 前端 admin UI 增强 | complete | `UserApiKeysModal.vue` 与 admin API client |
-| 4. 验证 | complete | Go/前端定向测试与类型检查 |
+| 2. 后端 key 级并发与 admin 创建 API Key | complete | schema/service/handler/middleware |
+| 3. 前端 admin API Key 管理入口 | complete | Admin API key list/create/edit UI |
+| 4. 迁移与对账脚本 | complete | CLIProxyAPI -> Sub2API 数据脚本 |
+| 5. 本地验证 | complete | Go/前端定向测试、lint、typecheck、build |
+| 6. 生产发布与 canary | pending | 新镜像、健康检查、回滚点 |
+| 7. 生产数据迁移与切域名 | pending | 数据对账、Caddy 切换、smoke |
 
 ## 当前决策
 
 - 2026-05-28：保持“一 API Key 一用户”模型，用用户隔离并发/RPM，用 API Key 字段管理过期时间和额度。
 - 2026-05-28：本轮只改 admin 管理面；用户侧目前未开放登录，暂不收紧 `/keys` 页面。
+- 2026-06-01：用户确认最终切回 Sub2API；本次把运营模型改为 admin-managed API Key，内部 user 仅作为承载。
+- 2026-06-01：API Key 设置并发时按 `api_key_id` 独立限流；未设置或为 0 时回退到用户并发，兼容现有用户侧 key。
+- 2026-06-01：API Key 未设置并发但所属组设置并发时，按 `group_id` 共享组级并发池；否则回退 user 并发。
+- 2026-06-01：生产切换顺序为先发布 Sub2API 新代码，再迁移 CLIProxyAPI 数据，最后 Caddy 从 `127.0.0.1:8317` 切回 `127.0.0.1:8080`。
 
 ## 当前错误记录
 
 | 时间 | 错误 | 处理 |
 | --- | --- | --- |
 | 2026-05-28 | 本机没有直接可用 `pnpm`；`corepack pnpm` 触发 pnpm 11 依赖状态检查并生成 lockfile 噪音 | 改用已安装的 `frontend/node_modules/.bin/vue-tsc --noEmit`，并清理本次生成的 lockfile/workspace 文件 |
+| 2026-06-01 | 本机仍无 `pnpm` 命令 | 改用 `npm run lint:check`、`npm run typecheck`、`npm run build`，三项均通过 |
+| 2026-06-01 | 认证热路径最初未在 group preload 中选择 `group.concurrency` | 已补字段选择，并在 `GetByKeyForAuth` SQLite 回归中断言组并发保留 |
 
 ---
 

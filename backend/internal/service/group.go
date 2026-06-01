@@ -66,6 +66,9 @@ type Group struct {
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
 
+	// Concurrency 分组级 API key 并发上限（0 = 使用用户兜底）。
+	Concurrency int
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

@@ -502,6 +502,7 @@ export interface Group {
   platform: GroupPlatform
   rate_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
+  concurrency?: number // Group-level API key concurrency cap (0 = inherit user concurrency)
   is_exclusive: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
@@ -565,6 +566,7 @@ export interface ApiKey {
   last_used_at: string | null
   quota: number // Quota limit in USD (0 = unlimited)
   quota_used: number // Used quota amount in USD
+  concurrency: number // API key concurrency override (0 = inherit group/user)
   expires_at: string | null // Expiration time (null = never expires)
   created_at: string
   updated_at: string
@@ -581,19 +583,24 @@ export interface ApiKey {
   reset_5h_at: string | null
   reset_1d_at: string | null
   reset_7d_at: string | null
+  user?: User
 }
 
 export interface CreateApiKeyRequest {
   name: string
+  user_id?: number | null
   group_id?: number | null
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (0 = unlimited)
+  concurrency?: number // API key concurrency override (0 = inherit group/user)
   expires_in_days?: number // Days until expiry (null = never expires)
+  expires_at?: string | null
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  status?: 'active' | 'inactive'
 }
 
 export interface UpdateApiKeyRequest {
@@ -603,6 +610,7 @@ export interface UpdateApiKeyRequest {
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
+  concurrency?: number // API key concurrency override (0 = inherit group/user)
   expires_at?: string | null // Expiration time (null = no change)
   reset_quota?: boolean // Reset quota_used to 0
   rate_limit_5h?: number
@@ -616,6 +624,8 @@ export interface CreateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
+  rpm_limit?: number
+  concurrency?: number
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
@@ -643,6 +653,8 @@ export interface UpdateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
+  rpm_limit?: number
+  concurrency?: number
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType

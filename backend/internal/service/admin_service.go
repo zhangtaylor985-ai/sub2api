@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +19,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	entuser "github.com/Wei-Shaw/sub2api/ent/user"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -60,6 +63,8 @@ type AdminService interface {
 	UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
 
 	// API Key management (admin)
+	AdminListAPIKeys(ctx context.Context, page, pageSize int, filters AdminAPIKeyListFilters, sortBy, sortOrder string) ([]APIKey, int64, error)
+	AdminCreateAPIKey(ctx context.Context, input AdminCreateAPIKeyInput) (*AdminUpdateAPIKeyGroupIDResult, error)
 	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
 	AdminUpdateAPIKeyPolicy(ctx context.Context, keyID int64, input AdminUpdateAPIKeyPolicyInput) (*APIKey, error)
 	AdminResetAPIKeyRateLimitUsage(ctx context.Context, keyID int64) (*APIKey, error)
@@ -218,6 +223,8 @@ type CreateGroupInput struct {
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
+	// Concurrency 分组 API key 并发上限（0 = 使用用户兜底）
+	Concurrency int
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -258,6 +265,8 @@ type UpdateGroupInput struct {
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
+	// Concurrency 分组 API key 并发上限（0 = 使用用户兜底），nil 表示不改动。
+	Concurrency *int
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -346,12 +355,35 @@ type AdminUpdateAPIKeyGroupIDResult struct {
 	GrantedGroupName       string // the group name that was auto-granted
 }
 
+type AdminAPIKeyListFilters struct {
+	Search  string
+	Status  string
+	GroupID *int64
+	UserID  *int64
+}
+
+type AdminCreateAPIKeyInput struct {
+	UserID              *int64
+	Name                string
+	CustomKey           *string
+	GroupID             *int64
+	Status              *string
+	Quota               float64
+	ExpiresAt           *time.Time
+	RateLimit5h         float64
+	RateLimit1d         float64
+	RateLimit7d         float64
+	Concurrency         int
+	ResetRateLimitUsage bool
+}
+
 // AdminUpdateAPIKeyPolicyInput captures admin-managed API key policy fields.
 type AdminUpdateAPIKeyPolicyInput struct {
 	Status       *string
 	Quota        *float64
 	ExpiresAt    *time.Time
 	ClearExpires bool
+	Concurrency  *int
 
 	RateLimit5h *float64
 	RateLimit1d *float64
@@ -1602,6 +1634,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
 	}
+	if input.Concurrency < 0 {
+		return nil, errors.New("concurrency must be >= 0")
+	}
 
 	platform := input.Platform
 	if platform == "" {
@@ -1714,6 +1749,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		RPMLimit:                        input.RPMLimit,
+		Concurrency:                     input.Concurrency,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -1963,6 +1999,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
 	}
+	if input.Concurrency != nil {
+		if *input.Concurrency < 0 {
+			return nil, errors.New("concurrency must be >= 0")
+		}
+		group.Concurrency = *input.Concurrency
+	}
 	sanitizeGroupMessagesDispatchFields(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
@@ -2153,6 +2195,179 @@ func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []
 	return s.groupRepo.UpdateSortOrders(ctx, updates)
 }
 
+type adminAPIKeyLister interface {
+	ListAdmin(ctx context.Context, params pagination.PaginationParams, filters AdminAPIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error)
+}
+
+const (
+	adminManagedAPIKeyUserEmail       = "admin-api-keys@sub2api.local"
+	adminManagedAPIKeyUserName        = "Admin API Keys"
+	adminManagedAPIKeyUserBalance     = 1000000
+	adminManagedAPIKeyUserConcurrency = 10
+)
+
+// AdminListAPIKeys lists API keys across all users for the admin transition workflow.
+func (s *adminServiceImpl) AdminListAPIKeys(ctx context.Context, page, pageSize int, filters AdminAPIKeyListFilters, sortBy, sortOrder string) ([]APIKey, int64, error) {
+	lister, ok := s.apiKeyRepo.(adminAPIKeyLister)
+	if !ok {
+		return nil, 0, infraerrors.InternalServer("ADMIN_API_KEY_LIST_UNAVAILABLE", "api key repository does not support admin listing")
+	}
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
+	keys, result, err := lister.ListAdmin(ctx, params, filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	return keys, result.Total, nil
+}
+
+// AdminCreateAPIKey creates an API key without requiring a one-user-one-key workflow.
+// If UserID is omitted, the key is attached to a system carrier user.
+func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCreateAPIKeyInput) (*AdminUpdateAPIKeyGroupIDResult, error) {
+	if strings.TrimSpace(input.Name) == "" {
+		return nil, infraerrors.BadRequest("INVALID_API_KEY_NAME", "name is required")
+	}
+	if input.Quota < 0 || input.RateLimit5h < 0 || input.RateLimit1d < 0 || input.RateLimit7d < 0 {
+		return nil, infraerrors.BadRequest("INVALID_API_KEY_LIMIT", "quota and rate limits must be non-negative")
+	}
+	if input.Concurrency < 0 {
+		return nil, infraerrors.BadRequest("INVALID_API_KEY_CONCURRENCY", "concurrency must be non-negative")
+	}
+
+	userID, err := s.resolveAdminAPIKeyOwner(ctx, input.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	keyValue, err := generateAdminAPIKeyValue(input.CustomKey)
+	if err != nil {
+		return nil, err
+	}
+	exists, err := s.apiKeyRepo.ExistsByKey(ctx, keyValue)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, ErrAPIKeyExists
+	}
+
+	status := StatusActive
+	if input.Status != nil && strings.TrimSpace(*input.Status) != "" {
+		switch *input.Status {
+		case StatusActive, "inactive", StatusAPIKeyDisabled:
+			status = *input.Status
+		default:
+			return nil, infraerrors.BadRequest("INVALID_API_KEY_STATUS", "status must be active, inactive, or disabled")
+		}
+	}
+
+	apiKey := &APIKey{
+		UserID:      userID,
+		Key:         keyValue,
+		Name:        strings.TrimSpace(input.Name),
+		Status:      status,
+		Quota:       input.Quota,
+		QuotaUsed:   0,
+		ExpiresAt:   input.ExpiresAt,
+		RateLimit5h: input.RateLimit5h,
+		RateLimit1d: input.RateLimit1d,
+		RateLimit7d: input.RateLimit7d,
+		Concurrency: input.Concurrency,
+	}
+	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
+		return nil, fmt.Errorf("create api key: %w", err)
+	}
+
+	if input.GroupID != nil && *input.GroupID > 0 {
+		result, bindErr := s.AdminUpdateAPIKeyGroupID(ctx, apiKey.ID, input.GroupID)
+		if bindErr != nil {
+			_ = s.apiKeyRepo.Delete(ctx, apiKey.ID)
+			return nil, bindErr
+		}
+		if s.authCacheInvalidator != nil {
+			s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, keyValue)
+		}
+		return result, nil
+	}
+
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, keyValue)
+	}
+	return &AdminUpdateAPIKeyGroupIDResult{APIKey: apiKey}, nil
+}
+
+func (s *adminServiceImpl) resolveAdminAPIKeyOwner(ctx context.Context, userID *int64) (int64, error) {
+	if userID != nil && *userID > 0 {
+		user, err := s.userRepo.GetByID(ctx, *userID)
+		if err != nil {
+			return 0, err
+		}
+		if !user.IsActive() {
+			return 0, ErrUserNotActive
+		}
+		return user.ID, nil
+	}
+	return s.ensureAdminManagedAPIKeyUser(ctx)
+}
+
+func (s *adminServiceImpl) ensureAdminManagedAPIKeyUser(ctx context.Context) (int64, error) {
+	if s.entClient == nil {
+		return 0, infraerrors.BadRequest("USER_ID_REQUIRED", "user_id is required when admin carrier user cannot be created")
+	}
+	existing, err := s.entClient.User.Query().
+		Where(entuser.EmailEQ(adminManagedAPIKeyUserEmail), entuser.DeletedAtIsNil()).
+		Only(ctx)
+	if err == nil {
+		update := s.entClient.User.UpdateOneID(existing.ID).
+			SetStatus(StatusActive).
+			SetUsername(adminManagedAPIKeyUserName).
+			SetConcurrency(adminManagedAPIKeyUserConcurrency)
+		if existing.Balance < adminManagedAPIKeyUserBalance {
+			update.SetBalance(adminManagedAPIKeyUserBalance)
+		}
+		if _, updateErr := update.Save(ctx); updateErr != nil {
+			return 0, updateErr
+		}
+		return existing.ID, nil
+	}
+	if !dbent.IsNotFound(err) {
+		return 0, err
+	}
+	created, err := s.entClient.User.Create().
+		SetEmail(adminManagedAPIKeyUserEmail).
+		SetPasswordHash("admin-managed-api-keys").
+		SetRole(RoleUser).
+		SetUsername(adminManagedAPIKeyUserName).
+		SetBalance(adminManagedAPIKeyUserBalance).
+		SetConcurrency(adminManagedAPIKeyUserConcurrency).
+		SetStatus(StatusActive).
+		Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return created.ID, nil
+}
+
+func generateAdminAPIKeyValue(customKey *string) (string, error) {
+	if customKey != nil && strings.TrimSpace(*customKey) != "" {
+		key := strings.TrimSpace(*customKey)
+		if len(key) < 16 {
+			return "", ErrAPIKeyTooShort
+		}
+		for _, c := range key {
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+				continue
+			}
+			return "", ErrAPIKeyInvalidChars
+		}
+		return key, nil
+	}
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+	}
+	return "sk-" + hex.EncodeToString(bytes), nil
+}
+
 // AdminUpdateAPIKeyGroupID 管理员修改 API Key 分组绑定
 // groupID: nil=不修改, 指向0=解绑, 指向正整数=绑定到目标分组
 func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error) {
@@ -2287,6 +2502,12 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 		if apiKey.Status == StatusAPIKeyQuotaExhausted {
 			apiKey.Status = StatusActive
 		}
+	}
+	if input.Concurrency != nil {
+		if *input.Concurrency < 0 {
+			return nil, infraerrors.BadRequest("INVALID_API_KEY_CONCURRENCY", "concurrency must be non-negative")
+		}
+		apiKey.Concurrency = *input.Concurrency
 	}
 	if input.ClearExpires {
 		apiKey.ExpiresAt = nil

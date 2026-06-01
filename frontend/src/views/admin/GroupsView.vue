@@ -185,6 +185,12 @@
             >
           </template>
 
+          <template #cell-concurrency="{ value }">
+            <span class="text-sm text-gray-700 dark:text-gray-300">
+              {{ value && value > 0 ? value : t("admin.groups.inheritUserConcurrency") }}
+            </span>
+          </template>
+
           <template #cell-is_exclusive="{ value }">
             <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
               {{
@@ -508,6 +514,18 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.form.concurrency") }}</label>
+          <input
+            v-model.number="createForm.concurrency"
+            type="number"
+            min="0"
+            step="1"
+            class="input"
+            :placeholder="t('admin.groups.form.concurrencyPlaceholder')"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.concurrencyHint") }}</p>
         </div>
         <div
           v-if="createForm.subscription_type !== 'subscription'"
@@ -1691,6 +1709,18 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.form.concurrency") }}</label>
+          <input
+            v-model.number="editForm.concurrency"
+            type="number"
+            min="0"
+            step="1"
+            class="input"
+            :placeholder="t('admin.groups.form.concurrencyPlaceholder')"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.concurrencyHint") }}</p>
         </div>
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2886,6 +2916,11 @@ const columns = computed<Column[]>(() => [
     sortable: true,
   },
   {
+    key: "concurrency",
+    label: t("admin.groups.columns.concurrency"),
+    sortable: true,
+  },
+  {
     key: "is_exclusive",
     label: t("admin.groups.columns.type"),
     sortable: true,
@@ -3137,6 +3172,8 @@ const createForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // 分组级 API Key 并发限制（0 = 沿用用户并发）
+  concurrency: 0 as number,
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -3423,6 +3460,8 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // 分组级 API Key 并发限制（0 = 沿用用户并发）
+  concurrency: 0 as number,
 });
 
 type ImagePricingFormState = {
@@ -3654,6 +3693,8 @@ const closeCreateModal = () => {
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
+  createForm.rpm_limit = 0;
+  createForm.concurrency = 0;
   createModelRoutingRules.value = [];
 };
 
@@ -3794,6 +3835,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  editForm.concurrency = group.concurrency ?? 0;
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,

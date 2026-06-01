@@ -359,6 +359,7 @@ export default {
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
+    adminApiKeys: 'API Key Management',
     channels: 'Channels',
     availableChannels: 'Available Channels',
     subscriptions: 'Subscriptions',
@@ -1369,6 +1370,64 @@ export default {
 
   // Admin
   admin: {
+    apiKeys: {
+      title: 'API Key Management',
+      description: 'Create and maintain API key quotas, rate limits, and concurrency directly as an admin',
+      searchPlaceholder: 'Search key, name, user email, or username...',
+      create: 'Create API Key',
+      editPolicy: 'Edit Policy',
+      allStatus: 'All Status',
+      allGroups: 'All Groups',
+      ungrouped: 'No Group',
+      systemOwner: 'System Carrier User',
+      inherited: 'Inherited',
+      unlimited: 'Unlimited',
+      neverExpires: 'Never Expires',
+      generated: 'Auto-generate',
+      columns: {
+        key: 'API Key',
+        owner: 'Owner',
+        group: 'Group',
+        limits: 'Quota / Rate Limits',
+        usage: 'Usage',
+        concurrency: 'Concurrency',
+        status: 'Status',
+        expiresAt: 'Expires At',
+        createdAt: 'Created At',
+        actions: 'Actions'
+      },
+      form: {
+        name: 'Name',
+        namePlaceholder: 'e.g. Four-seat transition key',
+        customKey: 'Custom Key',
+        customKeyPlaceholder: 'Leave empty to auto-generate',
+        ownerUserId: 'User ID',
+        ownerUserIdPlaceholder: 'Leave empty to use system carrier user',
+        group: 'Group',
+        status: 'Status',
+        totalQuota: 'Total Quota USD',
+        dailyLimit: 'Daily Limit USD',
+        weeklyLimit: 'Weekly Limit USD',
+        fiveHourLimit: '5-hour Limit USD',
+        concurrency: 'Concurrency Limit',
+        expiresAt: 'Expires At',
+        zeroUnlimited: '0 = unlimited',
+        zeroInheritConcurrency: '0 = inherit group / user concurrency',
+        resetQuota: 'Reset total usage',
+        resetRateUsage: 'Reset rate-limit window usage',
+        clearExpires: 'Clear expiration'
+      },
+      errors: {
+        nameRequired: 'Please enter an API key name',
+        loadFailed: 'Failed to load API keys',
+        createFailed: 'Failed to create API key',
+        updateFailed: 'Failed to update API key',
+        invalidExpiresAt: 'Invalid expiration time'
+      },
+      created: 'API key created',
+      updated: 'API key policy updated'
+    },
+
     // Dashboard
     dashboard: {
       title: 'Admin Dashboard',
@@ -2055,6 +2114,7 @@ export default {
         name: 'Name',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
+        concurrency: 'Concurrency',
         rpmOverride: 'RPM Override',
         rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
         rateDefault: 'default',
@@ -2088,13 +2148,17 @@ export default {
         exclusive: 'Exclusive Group',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).'
+        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
+        concurrency: 'API Key Concurrency',
+        concurrencyPlaceholder: '0 = inherit user concurrency',
+        concurrencyHint: 'Default concurrency cap for API keys in this group. 0 = inherit user concurrency; individual API keys can still override it.'
       },
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
       platformNotEditable: 'Platform cannot be changed after creation',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
+      inheritUserConcurrency: 'Inherit user',
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {
         title: 'What is an exclusive group?',

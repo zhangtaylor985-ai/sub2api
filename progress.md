@@ -95,3 +95,11 @@
 - 2026-05-28：已新增 `AdminUpdateAPIKeyPolicy`，admin API 支持更新状态、总额度、过期时间、5h/日/周限额、重置总额度用量和重置限速窗口用量。
 - 2026-05-28：已在 admin 用户 API Key 弹窗加入“编辑策略”内联表单；用户侧页面未修改。
 - 2026-05-28：验证通过：`go test ./internal/handler/admin -run 'TestAdminAPIKeyHandler'`、`go test -tags unit ./internal/service -run AdminUpdateAPIKeyPolicy -count=1`、`frontend/node_modules/.bin/vue-tsc --noEmit`、`git diff --check`。
+- 2026-06-01：用户确认把 `cc.claudepool.com` 回切 Sub2API，并把 CLIProxyAPI 当前线上 API Key/用量/过期时间/并发迁回 Sub2API。
+- 2026-06-01：只读确认生产状态：Sub2API 容器 `main-354601e9` 在 `8080` healthy；Caddy 当前仍将 `cc.claudepool.com` 反代到 `127.0.0.1:8317`；Sub2API 有效 API key 81 个、usage log 906303 条。
+- 2026-06-01：更新本任务计划，范围扩大为 key 级并发、admin 直接创建/管理 key、迁移脚本、生产发布和域名切换。
+- 2026-06-01：完成后端实现：`api_keys.concurrency`、`groups.concurrency`、API key/group/user 三层并发作用域、admin list/create/update API key、admin group 并发字段、auth cache v11。
+- 2026-06-01：完成前端实现：新增 admin API Key 管理页，支持搜索、分组/状态筛选、创建 key、编辑状态/分组/额度/限额/过期时间/并发；Groups 页面和用户 API Key 弹窗同步显示/编辑并发。
+- 2026-06-01：完成 CLIProxyAPI -> Sub2API 手动迁移 SQL，放置在 `backend/manual_migrations/migrate_cliproxy_admin_api_keys.sql`；支持 dry-run/commit、组并发、key 并发、用量、限额和到期时间回迁。
+- 2026-06-01：代码审查中发现 `GetByKeyForAuth` 未选择 `group.concurrency`，已修复并补 SQLite 单测断言。
+- 2026-06-01：验证通过：`cd backend && NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 go test ./...`、`npm run lint:check`、`npm run typecheck`、`npm run build`、`git diff --check`。前端 build 仅有既有 chunk/dynamic import 警告。

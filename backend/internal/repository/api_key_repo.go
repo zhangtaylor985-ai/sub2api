@@ -43,6 +43,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetKey(key.Key).
 		SetName(key.Name).
 		SetStatus(key.Status).
+		SetConcurrency(key.Concurrency).
 		SetNillableGroupID(key.GroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
@@ -127,6 +128,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldGroupID,
 			apikey.FieldName,
 			apikey.FieldStatus,
+			apikey.FieldConcurrency,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -184,6 +186,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldDefaultMappedModel,
 				group.FieldMessagesDispatchModelConfig,
 				group.FieldRpmLimit,
+				group.FieldConcurrency,
 			)
 		}).
 		Only(ctx)
@@ -208,6 +211,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
 		SetName(key.Name).
 		SetStatus(key.Status).
+		SetConcurrency(key.Concurrency).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
 		SetRateLimit5h(key.RateLimit5h).
@@ -350,6 +354,62 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
 }
 
+func (r *apiKeyRepository) ListAdmin(ctx context.Context, params pagination.PaginationParams, filters service.AdminAPIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+	q := r.activeQuery()
+
+	if filters.Search != "" {
+		keyword := strings.TrimSpace(filters.Search)
+		q = q.Where(apikey.Or(
+			apikey.NameContainsFold(keyword),
+			apikey.KeyContainsFold(keyword),
+			apikey.HasUserWith(
+				user.Or(
+					user.EmailContainsFold(keyword),
+					user.UsernameContainsFold(keyword),
+				),
+			),
+		))
+	}
+	if filters.Status != "" {
+		q = q.Where(apikey.StatusEQ(filters.Status))
+	}
+	if filters.UserID != nil && *filters.UserID > 0 {
+		q = q.Where(apikey.UserIDEQ(*filters.UserID))
+	}
+	if filters.GroupID != nil {
+		if *filters.GroupID == 0 {
+			q = q.Where(apikey.GroupIDIsNil())
+		} else {
+			q = q.Where(apikey.GroupIDEQ(*filters.GroupID))
+		}
+	}
+
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	keysQuery := q.
+		WithUser().
+		WithGroup().
+		Offset(params.Offset()).
+		Limit(params.Limit())
+	for _, order := range apiKeyListOrder(params) {
+		keysQuery = keysQuery.Order(order)
+	}
+
+	keys, err := keysQuery.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	outKeys := make([]service.APIKey, 0, len(keys))
+	for i := range keys {
+		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
+	}
+	return outKeys, paginationResultFromTotal(int64(total), params), nil
+}
+
 func (r *apiKeyRepository) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
 	if len(apiKeyIDs) == 0 {
 		return []int64{}, nil
@@ -417,6 +477,8 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 		field = apikey.FieldExpiresAt
 	case "last_used_at":
 		field = apikey.FieldLastUsedAt
+	case "concurrency":
+		field = apikey.FieldConcurrency
 	case "created_at":
 		field = apikey.FieldCreatedAt
 	default:
@@ -630,6 +692,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		UpdatedAt:     m.UpdatedAt,
 		GroupID:       m.GroupID,
 		Quota:         m.Quota,
+		Concurrency:   m.Concurrency,
 		QuotaUsed:     m.QuotaUsed,
 		ExpiresAt:     m.ExpiresAt,
 		RateLimit5h:   m.RateLimit5h,
@@ -724,6 +787,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		DefaultMappedModel:              g.DefaultMappedModel,
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		RPMLimit:                        g.RpmLimit,
+		Concurrency:                     g.Concurrency,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

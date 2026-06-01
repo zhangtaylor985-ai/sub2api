@@ -10,6 +10,15 @@
 - 现有 admin UI `UserApiKeysModal.vue` 只能在用户 API Key 弹窗里查看 key 和改分组，没有策略编辑入口。
 - 本次实现后，admin 侧同一个接口支持 `status`、`quota`、`expires_at`、`reset_quota`、`rate_limit_5h/1d/7d`、`reset_rate_limit_usage`。
 - 为避免部分更新，handler 会先解析/校验策略字段，再执行分组更新。
+- 2026-06-01：用户确认回切 Sub2API；线上 Sub2API app 容器在 `8080`，但 `cc.claudepool.com` 当前 Caddy 反代到 `127.0.0.1:8317`，即 CLIProxyAPI。
+- 2026-06-01：线上 Sub2API `api_keys` 当前无 `concurrency` 字段；已有 `quota`、`quota_used`、`expires_at`、`rate_limit_5h/1d/7d`、`usage_5h/1d/7d` 与窗口字段。
+- 2026-06-01：当前并发限流使用 `AuthSubject.UserID` 和 `AuthSubject.Concurrency`，middleware 从 `apiKey.User.Concurrency` 填充；如果多个 key 共用一个 carrier user，会互相共享同一个用户并发池。
+- 2026-06-01：key 级并发必须同时改变限流作用域：API Key 显式 `concurrency > 0` 时使用 `api_key_id` 作用域；未设置时继续使用 user 作用域，兼容用户侧现有行为。
+- 2026-06-01：线上 Sub2API 只读计数：有效 API key 81 个，usage log 906303 条。最终迁移前需重新对账并做 DB/Redis 备份。
+- 2026-06-01：CLIProxyAPI 生产组字段包含 `concurrency_limit`；当前四类车组为独享车 3、双人车 3、三人车 2、四人车 1。
+- 2026-06-01：CLIProxyAPI API Key 显式并发从 `policy_json->>'concurrency-limit'` 解析；Sub2API 迁移脚本会写入 `api_keys.concurrency`，未设置的 key 继承组级并发。
+- 2026-06-01：Sub2API auth cache 版本已提升到 v11，并携带 API key / group concurrency；数据迁移后还需清理 Redis `apikey:auth:*` 与 `apikey:rate:*`，避免旧 snapshot 或旧限速窗口影响切换。
+- 2026-06-01：认证热路径必须显式 select `group.concurrency`，否则组级继承会在 auth cache 路径退化为用户并发；已在代码与 SQLite 回归中修复。
 
 ---
 

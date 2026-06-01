@@ -233,7 +233,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
 
-	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted, reqLog)
+	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject, reqStream, &streamStarted, reqLog)
 	if !acquired {
 		return
 	}
@@ -640,7 +640,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
 
-	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted, reqLog)
+	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject, reqStream, &streamStarted, reqLog)
 	if !acquired {
 		return
 	}
@@ -957,16 +957,15 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 
 func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
 	c *gin.Context,
-	userID int64,
-	userConcurrency int,
+	subject middleware2.AuthSubject,
 	reqStream bool,
 	streamStarted *bool,
 	reqLog *zap.Logger,
 ) (func(), bool) {
 	ctx := c.Request.Context()
-	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(ctx, userID, userConcurrency)
+	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireSubjectSlot(ctx, subject)
 	if err != nil {
-		reqLog.Warn("openai.user_slot_acquire_failed", zap.Error(err))
+		reqLog.Warn("openai.subject_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", *streamStarted)
 		return nil, false
 	}
@@ -974,10 +973,10 @@ func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
 		return wrapReleaseOnDone(ctx, userReleaseFunc), true
 	}
 
-	maxWait := service.CalculateMaxWait(userConcurrency)
-	canWait, waitErr := h.concurrencyHelper.IncrementWaitCount(ctx, userID, maxWait)
+	maxWait := service.CalculateMaxWait(subject.Concurrency)
+	canWait, waitErr := h.concurrencyHelper.IncrementSubjectWaitCount(ctx, subject, maxWait)
 	if waitErr != nil {
-		reqLog.Warn("openai.user_wait_counter_increment_failed", zap.Error(waitErr))
+		reqLog.Warn("openai.subject_wait_counter_increment_failed", zap.Error(waitErr))
 		// 按现有降级语义：等待计数异常时放行后续抢槽流程
 	} else if !canWait {
 		reqLog.Info("openai.user_wait_queue_full", zap.Int("max_wait", maxWait))
@@ -988,20 +987,20 @@ func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
 	waitCounted := waitErr == nil && canWait
 	defer func() {
 		if waitCounted {
-			h.concurrencyHelper.DecrementWaitCount(ctx, userID)
+			h.concurrencyHelper.DecrementSubjectWaitCount(ctx, subject)
 		}
 	}()
 
-	userReleaseFunc, err = h.concurrencyHelper.AcquireUserSlotWithWait(c, userID, userConcurrency, reqStream, streamStarted)
+	userReleaseFunc, err = h.concurrencyHelper.AcquireSubjectSlotWithWait(c, subject, reqStream, streamStarted)
 	if err != nil {
-		reqLog.Warn("openai.user_slot_acquire_failed_after_wait", zap.Error(err))
+		reqLog.Warn("openai.subject_slot_acquire_failed_after_wait", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", *streamStarted)
 		return nil, false
 	}
 
 	// 槽位获取成功后，立刻退出等待计数。
 	if waitCounted {
-		h.concurrencyHelper.DecrementWaitCount(ctx, userID)
+		h.concurrencyHelper.DecrementSubjectWaitCount(ctx, subject)
 		waitCounted = false
 	}
 	return wrapReleaseOnDone(ctx, userReleaseFunc), true
@@ -1222,7 +1221,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 必须尽早注册，确保任何 early return 都能释放已获取的并发槽位。
 	defer releaseTurnSlots()
 
-	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(ctx, subject.UserID, subject.Concurrency)
+	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireSubjectSlot(ctx, subject)
 	if err != nil {
 		reqLog.Warn("openai.websocket_user_slot_acquire_failed", zap.Error(err))
 		closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to acquire user concurrency slot")
@@ -1341,7 +1340,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			// 防御式清理：避免异常路径下旧槽位覆盖导致泄漏。
 			releaseTurnSlots()
 			// 非首轮 turn 需要重新抢占并发槽位，避免长连接空闲占槽。
-			userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(ctx, subject.UserID, subject.Concurrency)
+			userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireSubjectSlot(ctx, subject)
 			if err != nil {
 				return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "failed to acquire user concurrency slot", err)
 			}

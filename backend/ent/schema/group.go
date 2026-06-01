@@ -160,6 +160,9 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+		field.Int("concurrency").
+			Default(0).
+			Comment("Group-level API key concurrency limit (0 = fallback to user concurrency)"),
 	}
 }
 

@@ -212,7 +212,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 0. 检查wait队列是否已满
 	maxWait := service.CalculateMaxWait(subject.Concurrency)
-	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
+	canWait, err := h.concurrencyHelper.IncrementSubjectWaitCount(c.Request.Context(), subject, maxWait)
 	waitCounted := false
 	if err != nil {
 		reqLog.Warn("gateway.user_wait_counter_increment_failed", zap.Error(err))
@@ -228,12 +228,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// Ensure we decrement if we exit before acquiring the user slot.
 	defer func() {
 		if waitCounted {
-			h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
+			h.concurrencyHelper.DecrementSubjectWaitCount(c.Request.Context(), subject)
 		}
 	}()
 
-	// 1. 首先获取用户并发槽位
-	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
+	// 1. 首先获取 API key / group / user 并发槽位
+	userReleaseFunc, err := h.concurrencyHelper.AcquireSubjectSlotWithWait(c, subject, reqStream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gateway.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)
@@ -241,7 +241,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 	// User slot acquired: no longer waiting in the queue.
 	if waitCounted {
-		h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
+		h.concurrencyHelper.DecrementSubjectWaitCount(c.Request.Context(), subject)
 		waitCounted = false
 	}
 	// 在请求结束或 Context 取消时确保释放槽位，避免客户端断开造成泄漏

@@ -32,9 +32,106 @@ type AdminUpdateAPIKeyGroupRequest struct {
 	Quota               *float64 `json:"quota"`                  // nil=不修改, 0=不限制
 	ExpiresAt           *string  `json:"expires_at"`             // nil=不修改, ""=清空, RFC3339=设置
 	ResetQuota          *bool    `json:"reset_quota"`            // true=重置总额度已用量
+	Concurrency         *int     `json:"concurrency"`            // nil=不修改, 0=继承分组/用户, >0=单 key 并发
 	RateLimit5h         *float64 `json:"rate_limit_5h"`          // nil=不修改, 0=不限制
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
+}
+
+type AdminCreateAPIKeyRequest struct {
+	UserID      *int64  `json:"user_id"`
+	Name        string  `json:"name" binding:"required"`
+	CustomKey   *string `json:"custom_key"`
+	GroupID     *int64  `json:"group_id"`
+	Status      *string `json:"status"`
+	Quota       float64 `json:"quota"`
+	ExpiresAt   *string `json:"expires_at"`
+	RateLimit5h float64 `json:"rate_limit_5h"`
+	RateLimit1d float64 `json:"rate_limit_1d"`
+	RateLimit7d float64 `json:"rate_limit_7d"`
+	Concurrency int     `json:"concurrency"`
+}
+
+// List handles listing API keys across all users.
+// GET /api/v1/admin/api-keys
+func (h *AdminAPIKeyHandler) List(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	filters := service.AdminAPIKeyListFilters{
+		Search: c.Query("search"),
+		Status: c.Query("status"),
+	}
+	if raw := c.Query("group_id"); raw != "" {
+		groupID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "Invalid group_id")
+			return
+		}
+		filters.GroupID = &groupID
+	}
+	if raw := c.Query("user_id"); raw != "" {
+		userID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		filters.UserID = &userID
+	}
+
+	keys, total, err := h.adminService.AdminListAPIKeys(c.Request.Context(), page, pageSize, filters, c.Query("sort_by"), c.Query("sort_order"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.APIKey, 0, len(keys))
+	for i := range keys {
+		out = append(out, *dto.APIKeyFromService(&keys[i]))
+	}
+	response.Paginated(c, out, total, page, pageSize)
+}
+
+// Create handles admin-created API keys.
+// POST /api/v1/admin/api-keys
+func (h *AdminAPIKeyHandler) Create(c *gin.Context) {
+	var req AdminCreateAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.Quota < 0 || req.RateLimit5h < 0 || req.RateLimit1d < 0 || req.RateLimit7d < 0 {
+		response.BadRequest(c, "quota and rate limits must be non-negative")
+		return
+	}
+	if req.Concurrency < 0 {
+		response.BadRequest(c, "concurrency must be non-negative")
+		return
+	}
+	var expiresAt *time.Time
+	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
+		parsed, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+		if err != nil {
+			response.BadRequest(c, "Invalid expires_at")
+			return
+		}
+		expiresAt = &parsed
+	}
+	result, err := h.adminService.AdminCreateAPIKey(c.Request.Context(), service.AdminCreateAPIKeyInput{
+		UserID:      req.UserID,
+		Name:        req.Name,
+		CustomKey:   req.CustomKey,
+		GroupID:     req.GroupID,
+		Status:      req.Status,
+		Quota:       req.Quota,
+		ExpiresAt:   expiresAt,
+		RateLimit5h: req.RateLimit5h,
+		RateLimit1d: req.RateLimit1d,
+		RateLimit7d: req.RateLimit7d,
+		Concurrency: req.Concurrency,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, adminAPIKeyResultResponse(result))
 }
 
 // UpdateGroup handles updating an API key's admin-managed fields.
@@ -73,7 +170,14 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		result.APIKey = key
 	}
 
-	resp := struct {
+	response.Success(c, adminAPIKeyResultResponse(result))
+}
+
+func adminAPIKeyResultResponse(result *service.AdminUpdateAPIKeyGroupIDResult) any {
+	if result == nil {
+		return gin.H{"api_key": nil}
+	}
+	return struct {
 		APIKey                 *dto.APIKey `json:"api_key"`
 		AutoGrantedGroupAccess bool        `json:"auto_granted_group_access"`
 		GrantedGroupID         *int64      `json:"granted_group_id,omitempty"`
@@ -84,7 +188,6 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		GrantedGroupID:         result.GrantedGroupID,
 		GrantedGroupName:       result.GrantedGroupName,
 	}
-	response.Success(c, resp)
 }
 
 func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.AdminUpdateAPIKeyPolicyInput, bool, error) {
@@ -105,10 +208,14 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 			return service.AdminUpdateAPIKeyPolicyInput{}, false, fmt.Errorf("%s must be non-negative", name)
 		}
 	}
+	if req.Concurrency != nil && *req.Concurrency < 0 {
+		return service.AdminUpdateAPIKeyPolicyInput{}, false, fmt.Errorf("concurrency must be non-negative")
+	}
 
 	input := service.AdminUpdateAPIKeyPolicyInput{
 		Status:              req.Status,
 		Quota:               req.Quota,
+		Concurrency:         req.Concurrency,
 		RateLimit5h:         req.RateLimit5h,
 		RateLimit1d:         req.RateLimit1d,
 		RateLimit7d:         req.RateLimit7d,
@@ -132,6 +239,7 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 		req.Quota != nil ||
 		req.ExpiresAt != nil ||
 		req.ResetQuota != nil ||
+		req.Concurrency != nil ||
 		req.RateLimit5h != nil ||
 		req.RateLimit1d != nil ||
 		req.RateLimit7d != nil ||

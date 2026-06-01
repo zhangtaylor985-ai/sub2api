@@ -54,6 +54,7 @@ type APIKey struct {
 	Name        string     `json:"name"`
 	GroupID     *int64     `json:"group_id"`
 	Status      string     `json:"status"`
+	Concurrency int        `json:"concurrency"` // 0 = inherit from group/user
 	IPWhitelist []string   `json:"ip_whitelist"`
 	IPBlacklist []string   `json:"ip_blacklist"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
@@ -118,6 +119,9 @@ type Group struct {
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
+
+	// Concurrency 分组级 API key 并发上限（0 = 使用用户兜底）。
+	Concurrency int `json:"concurrency"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

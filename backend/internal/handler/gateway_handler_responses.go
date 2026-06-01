@@ -112,7 +112,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	// 1. Acquire user concurrency slot
 	maxWait := service.CalculateMaxWait(subject.Concurrency)
-	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
+	canWait, err := h.concurrencyHelper.IncrementSubjectWaitCount(c.Request.Context(), subject, maxWait)
 	waitCounted := false
 	if err != nil {
 		reqLog.Warn("gateway.responses.user_wait_counter_increment_failed", zap.Error(err))
@@ -125,18 +125,18 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	}
 	defer func() {
 		if waitCounted {
-			h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
+			h.concurrencyHelper.DecrementSubjectWaitCount(c.Request.Context(), subject)
 		}
 	}()
 
-	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
+	userReleaseFunc, err := h.concurrencyHelper.AcquireSubjectSlotWithWait(c, subject, reqStream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gateway.responses.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
 	}
 	if waitCounted {
-		h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
+		h.concurrencyHelper.DecrementSubjectWaitCount(c.Request.Context(), subject)
 		waitCounted = false
 	}
 	userReleaseFunc = wrapReleaseOnDone(c.Request.Context(), userReleaseFunc)

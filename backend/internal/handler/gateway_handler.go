@@ -1168,13 +1168,16 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 		rateLimitData, err := h.apiKeyService.GetRateLimitData(ctx, apiKey.ID)
 		if err == nil && rateLimitData != nil {
 			var rateLimits []gin.H
-			if apiKey.RateLimit5h > 0 {
+			limit5h := apiKey.EffectiveRateLimit5h()
+			limit1d := apiKey.EffectiveRateLimit1d()
+			limit7d := apiKey.EffectiveRateLimit7d()
+			if limit5h > 0 {
 				used := rateLimitData.EffectiveUsage5h()
 				entry := gin.H{
 					"window":       "5h",
-					"limit":        apiKey.RateLimit5h,
+					"limit":        limit5h,
 					"used":         used,
-					"remaining":    max(0, apiKey.RateLimit5h-used),
+					"remaining":    max(0, limit5h-used),
 					"window_start": rateLimitData.Window5hStart,
 				}
 				if rateLimitData.Window5hStart != nil && !service.IsWindowExpired(rateLimitData.Window5hStart, service.RateLimitWindow5h) {
@@ -1182,13 +1185,13 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 				}
 				rateLimits = append(rateLimits, entry)
 			}
-			if apiKey.RateLimit1d > 0 {
+			if limit1d > 0 {
 				used := rateLimitData.EffectiveUsage1d()
 				entry := gin.H{
 					"window":       "1d",
-					"limit":        apiKey.RateLimit1d,
+					"limit":        limit1d,
 					"used":         used,
-					"remaining":    max(0, apiKey.RateLimit1d-used),
+					"remaining":    max(0, limit1d-used),
 					"window_start": rateLimitData.Window1dStart,
 				}
 				if rateLimitData.Window1dStart != nil && !service.IsWindowExpired(rateLimitData.Window1dStart, service.RateLimitWindow1d) {
@@ -1196,13 +1199,13 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 				}
 				rateLimits = append(rateLimits, entry)
 			}
-			if apiKey.RateLimit7d > 0 {
+			if limit7d > 0 {
 				used := rateLimitData.EffectiveUsage7d()
 				entry := gin.H{
 					"window":       "7d",
-					"limit":        apiKey.RateLimit7d,
+					"limit":        limit7d,
 					"used":         used,
-					"remaining":    max(0, apiKey.RateLimit7d-used),
+					"remaining":    max(0, limit7d-used),
 					"window_start": rateLimitData.Window7dStart,
 				}
 				if rateLimitData.Window7dStart != nil && !service.IsWindowExpired(rateLimitData.Window7dStart, service.RateLimitWindow7d) {

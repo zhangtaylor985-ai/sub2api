@@ -69,7 +69,57 @@ func (k *APIKey) IsActive() bool {
 
 // HasRateLimits returns true if any rate limit window is configured
 func (k *APIKey) HasRateLimits() bool {
-	return k.RateLimit5h > 0 || k.RateLimit1d > 0 || k.RateLimit7d > 0
+	return k.EffectiveRateLimit5h() > 0 || k.EffectiveRateLimit1d() > 0 || k.EffectiveRateLimit7d() > 0
+}
+
+// EffectiveRateLimit5h resolves the 5h API key rate limit.
+func (k *APIKey) EffectiveRateLimit5h() float64 {
+	if k == nil {
+		return 0
+	}
+	return positiveLimit(k.RateLimit5h)
+}
+
+// EffectiveRateLimit1d resolves the daily API key rate limit from key override, then group default.
+func (k *APIKey) EffectiveRateLimit1d() float64 {
+	if k == nil {
+		return 0
+	}
+	if limit := positiveLimit(k.RateLimit1d); limit > 0 {
+		return limit
+	}
+	if k.Group != nil {
+		return positiveLimitPtr(k.Group.DailyLimitUSD)
+	}
+	return 0
+}
+
+// EffectiveRateLimit7d resolves the weekly API key rate limit from key override, then group default.
+func (k *APIKey) EffectiveRateLimit7d() float64 {
+	if k == nil {
+		return 0
+	}
+	if limit := positiveLimit(k.RateLimit7d); limit > 0 {
+		return limit
+	}
+	if k.Group != nil {
+		return positiveLimitPtr(k.Group.WeeklyLimitUSD)
+	}
+	return 0
+}
+
+func positiveLimit(value float64) float64 {
+	if value > 0 {
+		return value
+	}
+	return 0
+}
+
+func positiveLimitPtr(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return positiveLimit(*value)
 }
 
 // EffectiveConcurrency resolves API key concurrency from key override, group default, then user fallback.

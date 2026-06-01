@@ -103,8 +103,8 @@
           <template #cell-limits="{ row }">
             <div class="space-y-0.5 text-xs text-gray-600 dark:text-dark-300">
               <div>{{ t('admin.apiKeys.form.totalQuota') }}: {{ formatLimit(row.quota) }}</div>
-              <div>{{ t('admin.apiKeys.form.dailyLimit') }}: {{ formatLimit(row.rate_limit_1d) }}</div>
-              <div>{{ t('admin.apiKeys.form.weeklyLimit') }}: {{ formatLimit(row.rate_limit_7d) }}</div>
+              <div>{{ t('admin.apiKeys.form.dailyLimit') }}: {{ formatLimit(effectiveDailyLimit(row)) }}</div>
+              <div>{{ t('admin.apiKeys.form.weeklyLimit') }}: {{ formatLimit(effectiveWeeklyLimit(row)) }}</div>
             </div>
           </template>
 
@@ -215,14 +215,17 @@
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.dailyLimit') }}</span>
             <input v-model.number="createForm.rate_limit_1d" type="number" min="0" step="0.0001" class="input" />
+            <span class="input-hint">{{ t('admin.apiKeys.form.zeroInheritGroupLimit') }}</span>
           </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.weeklyLimit') }}</span>
             <input v-model.number="createForm.rate_limit_7d" type="number" min="0" step="0.0001" class="input" />
+            <span class="input-hint">{{ t('admin.apiKeys.form.zeroInheritGroupLimit') }}</span>
           </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.fiveHourLimit') }}</span>
             <input v-model.number="createForm.rate_limit_5h" type="number" min="0" step="0.0001" class="input" />
+            <span class="input-hint">{{ t('admin.apiKeys.form.zeroUnlimited') }}</span>
           </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.concurrency') }}</span>
@@ -276,14 +279,17 @@
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.dailyLimit') }}</span>
             <input v-model.number="editForm.rate_limit_1d" type="number" min="0" step="0.0001" class="input" />
+            <span class="input-hint">{{ t('admin.apiKeys.form.zeroInheritGroupLimit') }}</span>
           </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.weeklyLimit') }}</span>
             <input v-model.number="editForm.rate_limit_7d" type="number" min="0" step="0.0001" class="input" />
+            <span class="input-hint">{{ t('admin.apiKeys.form.zeroInheritGroupLimit') }}</span>
           </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.fiveHourLimit') }}</span>
             <input v-model.number="editForm.rate_limit_5h" type="number" min="0" step="0.0001" class="input" />
+            <span class="input-hint">{{ t('admin.apiKeys.form.zeroUnlimited') }}</span>
           </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.concurrency') }}</span>
@@ -492,6 +498,16 @@ const formatMoney = (value: number) => Number(value || 0).toFixed(4).replace(/0+
 const formatLimit = (value: number) => {
   const n = Number(value || 0)
   return n > 0 ? `$${formatMoney(n)}` : t('admin.apiKeys.unlimited')
+}
+
+const effectiveDailyLimit = (key: ApiKey) => {
+  if (key.rate_limit_1d > 0) return key.rate_limit_1d
+  return key.group?.daily_limit_usd || 0
+}
+
+const effectiveWeeklyLimit = (key: ApiKey) => {
+  if (key.rate_limit_7d > 0) return key.rate_limit_7d
+  return key.group?.weekly_limit_usd || 0
 }
 
 const ownerLabel = (key: ApiKey) => {

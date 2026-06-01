@@ -495,9 +495,15 @@ WITH upserted AS (
     m.expires_at,
     m.last_used_at,
     0,
-    CASE WHEN m.token_package_remaining_usd > 0 THEN 0 ELSE m.effective_daily_budget_usd END,
-    CASE WHEN m.token_package_remaining_usd > 0 THEN 0 ELSE m.effective_weekly_budget_usd END,
-    m.source_concurrency_limit,
+    CASE
+      WHEN m.token_package_remaining_usd > 0 OR m.source_group_id <> 'legacy-ungrouped' THEN 0
+      ELSE m.effective_daily_budget_usd
+    END,
+    CASE
+      WHEN m.token_package_remaining_usd > 0 OR m.source_group_id <> 'legacy-ungrouped' THEN 0
+      ELSE m.effective_weekly_budget_usd
+    END,
+    CASE WHEN m.source_group_id = 'legacy-ungrouped' THEN m.source_concurrency_limit ELSE 0 END,
     0,
     CASE WHEN m.token_package_remaining_usd > 0 THEN 0 ELSE m.daily_usage_usd END,
     CASE WHEN m.token_package_remaining_usd > 0 THEN 0 ELSE m.weekly_usage_usd END,

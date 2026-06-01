@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -171,6 +173,169 @@ func TestAPIKey_EffectiveUsage(t *testing.T) {
 	}
 }
 
+func TestAPIKey_EffectiveRateLimits(t *testing.T) {
+	groupDaily := 150.0
+	groupWeekly := 500.0
+
+	tests := []struct {
+		name      string
+		key       APIKey
+		wantHas   bool
+		want5h    float64
+		wantDaily float64
+		wantWeek  float64
+	}{
+		{
+			name: "inherits daily and weekly limits from group",
+			key: APIKey{
+				Group: &Group{
+					DailyLimitUSD:  &groupDaily,
+					WeeklyLimitUSD: &groupWeekly,
+				},
+			},
+			wantHas:   true,
+			wantDaily: 150,
+			wantWeek:  500,
+		},
+		{
+			name: "key override wins over group limits",
+			key: APIKey{
+				RateLimit5h: 12,
+				RateLimit1d: 100,
+				RateLimit7d: 330,
+				Group: &Group{
+					DailyLimitUSD:  &groupDaily,
+					WeeklyLimitUSD: &groupWeekly,
+				},
+			},
+			wantHas:   true,
+			want5h:    12,
+			wantDaily: 100,
+			wantWeek:  330,
+		},
+		{
+			name:    "no key or group limits",
+			key:     APIKey{},
+			wantHas: false,
+		},
+		{
+			name: "zero group values are unlimited",
+			key: APIKey{
+				Group: &Group{
+					DailyLimitUSD:  rateLimitFloatPtr(0),
+					WeeklyLimitUSD: rateLimitFloatPtr(0),
+				},
+			},
+			wantHas: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.key.HasRateLimits(); got != tt.wantHas {
+				t.Errorf("HasRateLimits() = %v, want %v", got, tt.wantHas)
+			}
+			if got := tt.key.EffectiveRateLimit5h(); got != tt.want5h {
+				t.Errorf("EffectiveRateLimit5h() = %v, want %v", got, tt.want5h)
+			}
+			if got := tt.key.EffectiveRateLimit1d(); got != tt.wantDaily {
+				t.Errorf("EffectiveRateLimit1d() = %v, want %v", got, tt.wantDaily)
+			}
+			if got := tt.key.EffectiveRateLimit7d(); got != tt.wantWeek {
+				t.Errorf("EffectiveRateLimit7d() = %v, want %v", got, tt.wantWeek)
+			}
+		})
+	}
+}
+
+func TestBillingCacheService_EvaluateRateLimits_UsesGroupLimits(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name      string
+		key       APIKey
+		usage1d   float64
+		usage7d   float64
+		wantError error
+	}{
+		{
+			name: "daily group limit is enforced",
+			key: APIKey{
+				ID: 1,
+				Group: &Group{
+					DailyLimitUSD:  rateLimitFloatPtr(100),
+					WeeklyLimitUSD: rateLimitFloatPtr(330),
+				},
+			},
+			usage1d:   100,
+			wantError: ErrAPIKeyRateLimit1dExceeded,
+		},
+		{
+			name: "weekly group limit is enforced",
+			key: APIKey{
+				ID: 2,
+				Group: &Group{
+					DailyLimitUSD:  rateLimitFloatPtr(100),
+					WeeklyLimitUSD: rateLimitFloatPtr(330),
+				},
+			},
+			usage1d:   99,
+			usage7d:   330,
+			wantError: ErrAPIKeyRateLimit7dExceeded,
+		},
+		{
+			name: "key override wins over higher group limit",
+			key: APIKey{
+				ID:          3,
+				RateLimit1d: 60,
+				Group: &Group{
+					DailyLimitUSD:  rateLimitFloatPtr(100),
+					WeeklyLimitUSD: rateLimitFloatPtr(330),
+				},
+			},
+			usage1d:   60,
+			wantError: ErrAPIKeyRateLimit1dExceeded,
+		},
+		{
+			name: "under inherited limits succeeds",
+			key: APIKey{
+				ID: 4,
+				Group: &Group{
+					DailyLimitUSD:  rateLimitFloatPtr(100),
+					WeeklyLimitUSD: rateLimitFloatPtr(330),
+				},
+			},
+			usage1d: 99,
+			usage7d: 329,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &BillingCacheService{}
+			err := svc.evaluateRateLimits(
+				context.Background(),
+				&tt.key,
+				0,
+				tt.usage1d,
+				tt.usage7d,
+				rateLimitTimePtr(now.Add(-1*time.Hour)),
+				rateLimitTimePtr(now.Add(-1*time.Hour)),
+				rateLimitTimePtr(now.Add(-1*time.Hour)),
+			)
+			if tt.wantError == nil {
+				if err != nil {
+					t.Fatalf("evaluateRateLimits() error = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantError) {
+				t.Fatalf("evaluateRateLimits() error = %v, want %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
 func TestAPIKeyRateLimitData_EffectiveUsage(t *testing.T) {
 	now := time.Now()
 
@@ -242,4 +407,8 @@ func TestAPIKeyRateLimitData_EffectiveUsage(t *testing.T) {
 
 func rateLimitTimePtr(t time.Time) *time.Time {
 	return &t
+}
+
+func rateLimitFloatPtr(v float64) *float64 {
+	return &v
 }

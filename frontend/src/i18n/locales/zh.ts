@@ -1416,6 +1416,7 @@ export default {
         concurrency: '并发上限',
         expiresAt: '过期时间',
         zeroUnlimited: '0 表示不限',
+        zeroInheritGroupLimit: '0 表示继承分组限额',
         zeroInheritConcurrency: '0 表示继承分组 / 用户并发',
         resetQuota: '重置总额度用量',
         resetRateUsage: '重置限速窗口用量',

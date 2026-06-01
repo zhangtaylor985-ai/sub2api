@@ -1412,6 +1412,7 @@ export default {
         concurrency: 'Concurrency Limit',
         expiresAt: 'Expires At',
         zeroUnlimited: '0 = unlimited',
+        zeroInheritGroupLimit: '0 = inherit group limit',
         zeroInheritConcurrency: '0 = inherit group / user concurrency',
         resetQuota: 'Reset total usage',
         resetRateUsage: 'Reset rate-limit window usage',

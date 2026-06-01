@@ -85,6 +85,16 @@ Sub2API 已经有较好的底座：模型映射、账号调度、`prompt_cache_k
 3. P1 测试已补齐，并已根据用户“继续”的指令修复其中 4 个业务缺口。
 4. 本轮仍未执行部署或线上重启。
 
+## 2026-05-29 复核结论
+
+当前不能说“矩阵里的所有项目都已修完”。更准确的状态是：
+
+- P1 协议稳定性项已经基本落地：缺 terminal、200/SSE error frame、`response.failed`、message-only `output_item.done`、unknown `tool_result`、WebSearch 客户端分流、continuation summary 防泄漏等已有修复或回归测试。
+- WebSearch 来源/链接可见性已本地补齐：Claude -> Responses 请求追加 `web_search_call.action.sources`，响应侧保留 `sources/url/annotations` 并转成 Anthropic `web_search_result` / citations。
+- P2/P3 仍是后续任务：first activity 精准指标、raw SSE 轻量诊断索引、更多 fake upstream 黑盒矩阵、worker/provider 冷却架构不直接迁移。
+- 原生 Claude 路径未发现被当前 Claude->GPT 改动污染：原生 `/v1/messages` 仍走 `GatewayHandler.Messages` 的平台分流；OpenAI 分组启用 `/v1/messages dispatch` 后才进入 `OpenAIGatewayService.ForwardAsAnthropic`。
+- 已新增 `backend/internal/pkg/claudegptcompat`，把 Claude->GPT 专用的客户端识别、WebSearch query 清洗、synthetic/thinking 搜索进度、sources/url/citation 辅助抽成库；`apicompat` 只保留协议转换编排。
+
 ## 本轮已补测试与修复
 
 第一阶段按“不改业务逻辑”的边界补了两类测试：

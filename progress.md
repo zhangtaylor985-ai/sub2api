@@ -103,3 +103,109 @@
 - 2026-06-01：完成 CLIProxyAPI -> Sub2API 手动迁移 SQL，放置在 `backend/manual_migrations/migrate_cliproxy_admin_api_keys.sql`；支持 dry-run/commit、组并发、key 并发、用量、限额和到期时间回迁。
 - 2026-06-01：代码审查中发现 `GetByKeyForAuth` 未选择 `group.concurrency`，已修复并补 SQLite 单测断言。
 - 2026-06-01：验证通过：`cd backend && NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 go test ./...`、`npm run lint:check`、`npm run typecheck`、`npm run build`、`git diff --check`。前端 build 仅有既有 chunk/dynamic import 警告。
+- 2026-05-29：用户反馈 Sub2API 的 Claude Code WebSearch 只显示 `Searched: <用户问题/查询>`，没有展示实际来源/URL；CLIProxyAPI 当前项目能在搜索后展示来源信息。开始第 14 阶段：对照两个项目的 `web_search_call` 转换和 citation/annotation 保留逻辑，先分析再决定是否本地修复。
+- 已确认并本地修复来源信息丢失链路：
+  - 请求侧：Claude -> Responses 只要包含原生 `web_search` 工具，就追加 `include:["web_search_call.action.sources"]`。
+  - 响应侧：`WebSearchAction` 扩展为可接收 `queries/url/sources`；`web_search_tool_result.content` 从 sources/open_page URL 生成 `web_search_result`，不再固定为空数组。
+  - 展示侧：Claude CLI synthetic `<tool_call>` 保留上游 `queries/url`；OpenAI `url_citation` annotations 转成 Anthropic text citations，streaming `response.output_text.annotation.added` 转成 `citations_delta`。
+- 验证通过：
+  - `go test ./internal/pkg/apicompat -run 'WebSearch|Citation|ThinkingEnabled|ClaudeCodeWebSearch'`
+  - `go test ./internal/pkg/apicompat`
+  - `go test ./...`
+  - `git diff --check`
+- 2026-05-29 11:42 CST：开始生产账号分组绑定整理；已按 `sub2api-production-inspection` 流程只读检查生产容器和 Postgres schema。
+- 线上当前状态：`sub2api` 运行镜像 `zhangtaylor985/sub2api:main-2e01e876`，容器 healthy，`/health` ok。
+- 只读统计：未删除账号 11 个、全部账号 12 个、未删除分组 8 个、当前 `account_groups` 12 行；补齐未删除账号 x 未删除分组需要新增 76 行。
+- 已将当前账号绑定和拟执行 SQL 记录到 `docs/prod_account_group_snapshot_20260529.md`，不含 credentials/API key/token。
+- 查询小错误记录：首次账号绑定 SELECT 因 `id/name/status` 未加表别名触发 ambiguous column 报错；未写入数据，已用 `a.id/a.name/...` 修正查询。
+- 2026-05-29：按用户要求启动本地 Sub2API 供 Codex auth file 授权：
+  - 使用 `deploy/docker-compose.dev.yml` 从当前本地源码构建 `deploy-sub2api` 镜像。
+  - 容器：`sub2api-dev`、`sub2api-postgres-dev`、`sub2api-redis-dev`。
+  - 本地入口：`http://127.0.0.1:8080`。
+  - 健康检查：`curl http://127.0.0.1:8080/health` 返回 `{"status":"ok"}`。
+- 2026-05-29：修复 `/key-usage` 模型统计黑盒展示：
+  - 线上只读确认 `/v1/messages` 的 Claude -> GPT 调度记录带有 `model_mapping_chain`，例如 `claude-opus-4-7→gpt-5.5`。
+  - 后端 `model_stats` 用户侧聚合表达式改为优先取 `model_mapping_chain` 第一段，其次 `requested_model`，最后 legacy `model`。
+  - 直接请求 GPT 的 OpenAI 端点仍显示 `gpt-*`；Claude 内部转 GPT 不再在用户侧展示 GPT。
+  - 验证通过：`go test -tags=unit ./internal/repository`、`go test -tags=unit ./internal/repository -run 'TestResolveModelDimensionExpression|TestUsageLogRepositoryGetModelStatsWithFiltersRequestTypePriority|TestUsageLogRepositoryGetModelStatsAccountCostColumn'`、`git diff --check`。
+- 2026-05-29：按用户确认补齐线上账号分组绑定：
+  - 生产健康检查通过：`sub2api` 运行镜像 `zhangtaylor985/sub2api:main-354601e9`，Postgres/Redis healthy，`/health` ok。
+  - 写入前只读统计：未删除账号 11 个、未删除分组 8 个、已有有效绑定 12 条、缺失有效绑定 76 条。
+  - 执行幂等 SQL：对 `accounts.deleted_at IS NULL` x `groups.deleted_at IS NULL` 插入缺失 `account_groups`，`ON CONFLICT (account_id, group_id) DO NOTHING`，本次插入 76 条。
+  - 写入后复核：有效绑定 88 条，缺失 0 条；每个未删除账号均绑定 8 个未删除分组。
+- 2026-05-29：按用户要求支持线上 `claude-opus-4-8`，策略与 `claude-opus-4-7` 一致：
+  - 只读确认 OpenAI 分组 Opus family 默认 `gpt-5.4`；9 个 active OpenAI OAuth 账号已有 `claude-opus-4-7 -> gpt-5.5` 精确映射，`claude-opus-4-8` 缺失。
+  - 已对这 9 个账号的 `credentials.model_mapping` 幂等补充 `claude-opus-4-8 -> gpt-5.5`，未读取或记录任何密钥。
+  - 写入后复核：9 个账号 `claude-opus-4-7` 与 `claude-opus-4-8` 均为 `gpt-5.5`，不一致数量 0；另 1 个无 4.7 精确策略账号保持分组默认回退。
+  - 为刷新进程内账号/模型缓存，仅重启应用容器 `sub2api`；Postgres/Redis 未重启。最终 `/health` ok，容器 healthy。
+- 2026-05-29：追查用户反馈 `claude-opus-4-8` 仍 retry：
+  - 进一步补齐 6 个 OpenAI 分组的 `messages_dispatch_model_config.exact_model_mappings.claude-opus-4-8 = gpt-5.5`，使分组调度层也与 4.7 精确策略对齐。
+  - 清理 Redis `apikey:auth:*` 快照，剩余 0，并重启应用容器；最终 `/health` ok，容器 healthy。
+  - 线上日志确认模型链路已可成功处理其他 `claude-opus-4-8` 请求；用户提供的这把 key 当前失败原因为 `API_KEY_RATE_1D_EXCEEDED`。
+  - 该 key 的 1d limit 为 60，当前日窗口实际用量约 60.0262；近 30 分钟内 `claude-opus-4-7`、`claude-opus-4-8`、`claude-sonnet-4-6` 均出现同类 429，非 4.8 模型映射问题。
+- 2026-05-29：根据用户补充重新核对同一 key，纠正上一条初判：
+  - 当前 key 绑定分组为 `CPA-Double`，平台是 `anthropic`，成功的 `claude-opus-4-7` 实际走 `CPA Worker` Anthropic 账号，不是 OpenAI dispatch 链路。
+  - 限额复核：该 key 日限额未耗尽；此前看到的 429 不是当前问题的根因。
+  - 根因确认：`CPA Worker` 账号级 `credentials.model_mapping` 只有 `claude-opus-4-7 -> claude-opus-4-7`，缺少 `claude-opus-4-8`，因此 4.8 被 Anthropic 账号白名单/映射挡住。
+  - 已对有 4.7 Anthropic 映射的账号幂等补充 `claude-opus-4-8 -> claude-opus-4-7`，本次更新 1 个账号；未读取或记录任何密钥。
+  - 清理 Redis `apikey:auth:*` 快照 17 个，剩余 0；重启 `sub2api` 应用容器，Postgres/Redis 未重启；最终 `/health` ok，容器 healthy。
+  - 生产本机最小 `/v1/messages` 黑盒验证通过：`claude-opus-4-8` 返回 HTTP 200，日志确认 `api_key_id=125` 选中 `CPA Worker`，并应用 `claude-opus-4-8 -> claude-opus-4-7` 映射。
+- 2026-05-29：按用户要求复核并设置 `api_key_id=125` 对应用户并发：
+  - 当前并发限额已是 2；执行幂等更新后仍为 2。
+  - 已清理该 key 的 Redis auth snapshot 并发布 auth cache invalidation；复核 `users.concurrency=2`。
+- 2026-05-29：按用户要求复核 `docs/claude_gpt_stability_migration_matrix_20260527_CN.md`：
+  - 结论：P1 核心稳定性项已基本修复或已有回归测试；P2/P3 里的诊断索引、first activity 精准指标、更多 fake upstream 黑盒矩阵仍不是“全部完成”。
+  - 原生 Claude 账号路径未发现被 Claude->GPT 改动污染：原生 `/v1/messages` 仍走 `GatewayHandler.Messages` 的 Anthropic/Gemini/Antigravity 分流；Claude->GPT 入口是 OpenAI 分组 `allow_messages_dispatch=true` 后调用 `OpenAIGatewayService.ForwardAsAnthropic`。
+  - 新增 `internal/pkg/claudegptcompat` 作为 Claude->GPT 专用兼容库；`apicompat` 保留协议类型和转换编排，通过薄 wrapper 调用该库。
+  - 库内当前收纳：客户端识别、reasoning summary 展示策略、WebSearch 工具/query 判定与清洗、Claude CLI synthetic 搜索进度、VSCode thinking 搜索进度、unsafe continuation summary 抑制、WebSearch sources/url/citation 辅助。
+  - 验证通过：`go test ./internal/pkg/claudegptcompat ./internal/pkg/apicompat`。
+- 2026-05-29：为可维护性继续收敛 Claude->GPT 兼容库边界：
+  - 将最初单文件 `claudegptcompat/compat.go` 拆为 `doc.go`、`client.go`、`query.go`、`safety.go`、`websearch.go`，避免 598 行策略文件继续膨胀。
+  - 模块职责：`client.go` 管客户端识别和展示策略；`query.go` 管 WebSearch query 提取/清洗；`safety.go` 管 continuation summary 与文本型 tool_call 防泄漏；`websearch.go` 管 sources/url/citation/result 辅助。
+  - 验证通过：`go test ./internal/pkg/claudegptcompat ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'`、`go test -tags=unit ./internal/repository`、`go test ./...`。
+- 2026-05-29：配置本地 Sub2API 黑盒沙盒：
+  - 本地容器：`sub2api-dev`、`sub2api-postgres-dev`、`sub2api-redis-dev`，入口 `http://127.0.0.1:8080`。
+  - 新增/更新本地 OpenAI 分组 `Local Codex GPT`：`allow_messages_dispatch=true`，Opus family 与 `claude-opus-4-6/4-7/4-8` 映射到 `gpt-5.5`，Sonnet/Haiku 保持现有基线。
+  - 本地 OpenAI/Codex 账号 `Base` 已绑定到该组，并补充 `claude-opus-*` / `claude-opus-4-6/4-7/4-8 -> gpt-5.5` 账号级 mapping。
+  - 创建本地测试 API Key，名称 `Local Claude GPT Blackbox`；不在文档中记录 raw key。
+  - 本地 admin 用户余额设为测试值，并清理相关 Redis auth/balance cache。
+  - 重建 `deploy-sub2api` dev 镜像并替换 `sub2api-dev` 应用容器，Postgres/Redis 数据未重置。
+  - 直接 API smoke 通过：`POST /v1/messages` 请求 `claude-opus-4-7` 返回 `LOCAL_SUB2API_LATEST_OK`；usage log 证实 `model_mapping_chain=claude-opus-4-7→gpt-5.5`、`upstream_model=gpt-5.5`。
+- 2026-05-29：本地 Claude CLI 黑盒：
+  - `~/.claude_local/settings.json` 已备份到 `/Users/taylor/.claude_local/settings.json.bak.sub2api-20260529185703`，随后指向本地 `http://127.0.0.1:8080` 和本地测试 key，`model=claude-opus-4-7`。
+  - 第一次 `claude -p` 尝试失败为 401：原因是 Claude CLI settings 中的 `env.ANTHROPIC_AUTH_TOKEN` 覆盖了临时 shell 环境变量；已写入 `sub2api-production-regression` skill。
+  - 更新 settings 后，非交互黑盒通过：`claude --debug-file /tmp/sub2api-cc1-local-debug-2.log --model claude-opus-4-7 -p 'Reply exactly LOCAL_CC1_SUB2API_OK'` 输出 `LOCAL_CC1_SUB2API_OK`。
+  - debug-file 证实命中 `ANTHROPIC_BASE_URL=http://127.0.0.1:8080` 和 `/v1/messages`，并收到 stream first chunk；usage log 证实本轮请求仍为 `claude-opus-4-7→gpt-5.5`。
+  - WebSearch stream-json 黑盒通过：`claude -p --output-format stream-json --verbose --include-partial-messages '请使用 WebSearch 搜索 OpenAI official website homepage title，然后只回答标题。'` 输出中出现 `Searching the web`、`server_tool_use name=web_search`、`web_search_tool_result.content[]` 的真实 URL 列表、`Searched:`、最终正文 `OpenAI | Research & Deployment` 和 `message_stop`。
+  - WebSearch usage log 仍显示 `model_mapping_chain=claude-opus-4-7→gpt-5.5`、`upstream_model=gpt-5.5`，并观察到 `cache_read_tokens=2432`。
+- 2026-05-29：文档/skill 更新：
+  - Sub2API `AGENTS.md` 明确 `/Users/taylor/sdk/sub2api` 是后续主要维护项目，`/Users/taylor/code/tools/CLIProxyAPI-ori` 只作为迁移参考。
+  - CLIProxyAPI-ori `AGENTS.md` 同步说明该项目只是 Sub2API 的迁移参考，两个项目共享同一线上环境，排查/部署前必须确认目标服务。
+  - `.codex/skills/sub2api-production-regression/SKILL.md` 增加本地黑盒沙盒流程和 Claude CLI settings token 覆盖注意事项。
+- 2026-06-01：重新启动本地 Sub2API 黑盒沙盒：
+  - 当前 Docker 环境中旧 `sub2api-dev` 容器不存在，且 Docker Hub 拉取 `postgres:18-alpine` 被限制；改为复用本机已有 `postgres:17.6` 与 `redis:latest` 镜像。
+  - 新本地依赖容器：`sub2api-postgres-local` 暴露 `127.0.0.1:5433`，`sub2api-redis-local` 暴露 `127.0.0.1:6380`。
+  - 后端使用当前源码构建嵌入前端的 `backend/bin/server`，在 tmux session `sub2api-local` 中监听 `127.0.0.1:8080`。
+  - 本地数据目录：`deploy/data_local_host`、`deploy/postgres_data_pg17_local`、`deploy/redis_data_local`，已加入 `deploy/.gitignore`，避免误提交本地数据库。
+  - 用户已完成本地 Codex auth file 授权；本地 OpenAI OAuth 账号状态 active。
+  - 新增/更新本地分组 `Local Codex GPT`：`allow_messages_dispatch=true`，`claude-opus-4-6/4-7/4-8` 和 Opus family 映射到 `gpt-5.5`，Sonnet/Haiku 保持基线。
+  - 账号级 `credentials.model_mapping` 已补齐 `claude-opus-* -> gpt-5.5`、`claude-sonnet-* -> gpt-5.3-codex`、`claude-haiku-* -> gpt-5.4-mini`。
+  - 创建/更新本地测试 API Key `Local Claude GPT Blackbox`；raw key 仅保存在 `/tmp/sub2api_local_blackbox_api_key`，不写入仓库文档。
+  - 直接 API smoke 通过：`claude-opus-4-6` 返回 `LOCAL_SUB2API_OK`；usage log 证实 `model_mapping_chain=claude-opus-4-6→gpt-5.5`、`upstream_model=gpt-5.5`。
+  - `~/.claude_local/settings.json` 已备份到 `/Users/taylor/.claude_local/settings.json.bak.sub2api-20260601142907`，随后指向本地 `http://127.0.0.1:8080` 和本地测试 key，默认模型设为 `claude-opus-4-6`。
+  - Claude CLI 非交互黑盒通过：`claude2 -p 'Reply with exactly LOCAL_CC1_SUB2API_20260601_OK'` 输出精确 token；debug-file `/tmp/sub2api-cc1-local-debug-20260601-smoke.log` 证实命中本地 `/v1/messages` 并收到 stream first chunk。
+  - WebSearch stream-json 黑盒通过：`/tmp/sub2api-cc1-local-websearch-20260601.jsonl` 中出现 `server_tool_use name=web_search`、`web_search_tool_result.content[]` URL 列表、`Searched:`、最终正文 `OpenAI | Research & Deployment` 和 `message_stop`。
+  - 真实 TTY 连续两轮黑盒通过：同一 `claude2` 交互会话先后返回 `TTY_SUB2API_ONE`、`TTY_SUB2API_TWO`；debug-file `/tmp/sub2api-cc1-local-debug-20260601-tty.log` 证实命中本地 `/v1/messages source=repl_main_thread`。
+  - 本地 usage log 证据：所有新增 Claude CLI / WebSearch / TTY 请求均记录 `model_mapping_chain=claude-opus-4-6→gpt-5.5`、`upstream_model=gpt-5.5`。
+  - 本地沙盒噪音：后台 `AccountExpiry` 曾出现一次 Postgres `Cannot allocate memory`，发生在本地 Docker/OrbStack 资源环境，不影响已完成 `/v1/messages` 请求与健康检查；生产发布前仍需跑正式测试和生产健康检查。
+- 2026-06-01：上线前正式回归：
+  - `git diff --check` 通过。
+  - 后端定向测试通过：`go test ./internal/pkg/claudegptcompat ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'`、`go test -tags=unit ./internal/repository`。
+  - 后端全量测试通过：`go test ./...`。
+  - 前端检查通过：`corepack pnpm@9.15.9 run lint:check`、`corepack pnpm@9.15.9 run typecheck`、`corepack pnpm@9.15.9 run build`。
+  - 当前判断：本地门禁已达到生产发布候选标准；已把本地 `main` 合入最新 `origin/main` 并重跑关键测试，下一步推进 push、生产 canary 和正式切换。
+- 2026-06-01：rebase 到 `origin/main` 后复验通过：
+  - `git diff --check` 通过。
+  - 后端复验通过：`go test ./internal/pkg/claudegptcompat ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'`、`go test -tags=unit ./internal/repository`、`go test ./...`。
+  - 前端复验通过：`corepack pnpm@9.15.9 run lint:check`、`corepack pnpm@9.15.9 run typecheck`、`corepack pnpm@9.15.9 run build`；Vite 仅保留既有 dynamic import/chunk size/Browserslist 警告。
+  - 本地健康检查：`http://127.0.0.1:8080/health` 返回 ok。

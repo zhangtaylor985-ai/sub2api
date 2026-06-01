@@ -30,15 +30,16 @@ func TestResolveEndpointColumn(t *testing.T) {
 }
 
 func TestResolveModelDimensionExpression(t *testing.T) {
+	requestedExpr := "COALESCE(NULLIF(TRIM(split_part(model_mapping_chain, '→', 1)), ''), NULLIF(TRIM(requested_model), ''), model)"
 	tests := []struct {
 		modelType string
 		want      string
 	}{
-		{usagestats.ModelSourceRequested, "COALESCE(NULLIF(TRIM(requested_model), ''), model)"},
-		{usagestats.ModelSourceUpstream, "COALESCE(NULLIF(TRIM(upstream_model), ''), COALESCE(NULLIF(TRIM(requested_model), ''), model))"},
-		{usagestats.ModelSourceMapping, "(COALESCE(NULLIF(TRIM(requested_model), ''), model) || ' -> ' || COALESCE(NULLIF(TRIM(upstream_model), ''), COALESCE(NULLIF(TRIM(requested_model), ''), model)))"},
-		{"", "COALESCE(NULLIF(TRIM(requested_model), ''), model)"},
-		{"invalid", "COALESCE(NULLIF(TRIM(requested_model), ''), model)"},
+		{usagestats.ModelSourceRequested, requestedExpr},
+		{usagestats.ModelSourceUpstream, "COALESCE(NULLIF(TRIM(upstream_model), ''), " + requestedExpr + ")"},
+		{usagestats.ModelSourceMapping, "(" + requestedExpr + " || ' -> ' || COALESCE(NULLIF(TRIM(upstream_model), ''), " + requestedExpr + "))"},
+		{"", requestedExpr},
+		{"invalid", requestedExpr},
 	}
 
 	for _, tc := range tests {

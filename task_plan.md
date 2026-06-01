@@ -82,6 +82,13 @@
 | 11. 上线前黑盒与发布 | complete | canary、Claude CLI 黑盒、生产部署、健康检查与生产 SSE smoke 已完成 |
 | 12. 线上 WebSearch 路径纠偏 | complete | 已补 Claude Code `WebSearch` -> OpenAI 原生 `web_search` 入口映射、单测、本地 cc1/TTY 黑盒 |
 | 13. WebSearch query 泄漏修复 | complete | 已屏蔽 continuation summary 作为 action/fallback 搜索词，并在 SSE 出口抑制文本型 web_search tool_call 泄漏；生产镜像 `main-2e01e876` 已 healthy |
+| 14. WebSearch 来源/链接可见性分析 | complete | 已确认并本地修复 `sources/url/annotations` 丢失；通过后端全量测试，待本地黑盒和上线决策 |
+| 15. 生产账号分组绑定整理 | in_progress | 已完成当前账号-分组绑定只读快照，待用户确认后批量补齐未删除账号到所有未删除分组 |
+| 16. `/key-usage` 模型黑盒展示 | complete | 已修复用户侧 `model_stats` 聚合口径：Claude 内部转 GPT 不向用户显示 GPT，直接请求 GPT 仍显示 GPT |
+| 17. Claude -> GPT 兼容库边界 | complete | 新增 `internal/pkg/claudegptcompat`，把客户端识别、WebSearch query 清洗、synthetic 搜索进度、sources/url/citation 辅助从 `apicompat` 抽出 |
+| 18. 本地黑盒沙盒与维护边界固化 | complete | 本地 Sub2API dev 镜像重建；本地 Opus->GPT-5.5 分组/API Key 配置；直接 API smoke、Claude CLI `-p`、WebSearch stream-json 黑盒通过；两个项目 `AGENTS.md` 和回归 skill 已更新 |
+| 19. 2026-06-01 本地黑盒复验与上线门禁 | complete | 直接 API、Claude CLI `-p`、WebSearch stream-json、真实 TTY 连续两轮、Go 全量测试、前端 lint/typecheck/build 均通过 |
+| 20. 2026-06-01 生产发布与上线观察 | in_progress | 本地上线门禁已通过；当前本地 `main` 落后远端，需要先合入远端最新提交，再提交、推送、构建生产镜像、canary smoke 和正式切换 |
 
 ## 决策记录
 
@@ -93,6 +100,14 @@
 - 2026-05-27：用户要求后续黑盒优先使用本地启动 Sub2API 并在本地授权 Codex auth file；远端 canary 只作为生产同配置验证手段。
 - 2026-05-27：本次发布不打 Git tag；生产 Docker 镜像使用 `zhangtaylor985/sub2api:main-decdc6d0`。
 - 2026-05-27：Claude Code/VSCode 的 `name:"WebSearch"` 客户端工具应在 Claude -> GPT 入口映射为 OpenAI 原生 `web_search`；否则会退回 Claude Code 原生 Web Search，表现为慢且常见 0 results。
+- 2026-05-29：新增问题边界：Sub2API 目前能显示 `Searching/Searched`，但没有像 CLIProxyAPI 那样在搜索过程或最终答案中展示来源/链接；本阶段先做对照分析，不急于线上热修。
+- 2026-05-29：生产账号分组整理采用“先快照、再确认、后写库”的流程；默认只处理 `deleted_at IS NULL` 的账号和分组，不恢复已删除账号绑定。
+- 2026-05-29：`/key-usage` 用户侧用量展示必须保持黑盒；Claude 请求经内部调度转 GPT 时不显示 GPT，只有用户客户端直接请求 GPT 时才显示 GPT。
+- 2026-05-29：Claude -> GPT 的专用兼容逻辑应放在 `internal/pkg/claudegptcompat`，`apicompat` 只做协议类型和转换编排；原生 Claude 账号路径不应依赖该库。
+- 2026-05-29：Sub2API 后续主要维护目录是 `/Users/taylor/sdk/sub2api`；`/Users/taylor/code/tools/CLIProxyAPI-ori` 只作为 Claude -> GPT 兼容迁移参考。两个项目共享线上环境，排查/部署前必须确认目标服务。
+- 2026-05-29：Claude->GPT 黑盒优先本地沙盒：直接 API smoke 先验证分组/API Key/模型映射，再用 Claude CLI/`cc1` 验证真实客户端；生产 canary 只作为上线前同配置验证。
+- 2026-06-01：本地 Docker 环境缺失旧 dev compose 容器时，可以用“Postgres/Redis Docker 依赖 + 当前源码 tmux 直跑后端”的沙盒形态完成黑盒；该形态需要单独记录端口和数据目录，避免误认为只能使用 `sub2api-dev`。
+- 2026-06-01：本次上线门禁采用“本地真实 Codex auth file 黑盒 + 全量自动化测试 + 生产 canary”三段式；生产只在 canary health/smoke 通过后替换 app 容器，Postgres/Redis 不随应用协议修复一起迁移。
 
 ## 错误记录
 
@@ -111,3 +126,7 @@
 | 2026-05-27 | 固定字符串 TTY 测试触发 Claude Code debug 中非致命标题 JSON parse 噪音 | 追加自然 TTY prompt 验证正常交互无该 parse 噪音；服务端请求均为 HTTP 200 |
 | 2026-05-27 | 本地启动 Sub2API 首次使用 32 字符 `TOTP_ENCRYPTION_KEY` 失败，服务要求 64 hex 字符 | 清理临时 data dir 后使用 64 hex 字符重启，健康检查通过 |
 | 2026-05-27 | 线上用户截图显示 `Searched:` 后泄漏 Claude Code continuation summary | 根因是 OpenAI `web_search_call` 缺失 `action.query` 时使用 unsafe fallback query；已补清洗、防泄漏单测和 generic searched 文案 |
+| 2026-05-29 | 账号快照查询首次 SELECT 未给 `accounts.id` 加别名，Postgres 报 `column reference "id" is ambiguous` | 未写入任何数据；改为 `a.id/a.name/...` 别名查询后成功 |
+| 2026-05-29 | 本地 dev compose 重建首次缺 `POSTGRES_PASSWORD` | 当前 shell 未加载 compose 所需 env；改为从运行中容器读取非打印 env 并导出后重建 |
+| 2026-05-29 | 查询 usage log 时误选不存在的 `status_code` 列 | 先用 `\d usage_logs` 查看 schema，再改用存在的 `request_type/model/upstream_model/model_mapping_chain` 等字段 |
+| 2026-05-29 | 首次 Claude CLI 黑盒 401 `Invalid API key` | 原因是 `~/.claude_local/settings.json` 内 `env.ANTHROPIC_AUTH_TOKEN` 覆盖临时 shell token；备份并更新 settings 后通过 |

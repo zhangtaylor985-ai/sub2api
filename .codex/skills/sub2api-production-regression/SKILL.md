@@ -85,6 +85,38 @@ pnpm --dir frontend run build
 
 测试结束后记录临时改过的 settings，并按需要恢复或保留。
 
+## Local Blackbox Sandbox
+
+Sub2API 的 Claude -> GPT 黑盒默认先走本地沙盒，不直接打生产。
+
+当前本地基线：
+
+- Workdir: `/Users/taylor/sdk/sub2api`
+- Endpoint: `http://127.0.0.1:8080`
+- Preferred containers: `sub2api-dev`, `sub2api-postgres-dev`, `sub2api-redis-dev`
+- Fallback sandbox: if dev compose is unavailable, run Postgres/Redis in Docker and start the current-source backend directly from `backend/bin/server`; record container names, ports, data dirs, and tmux/session name in `progress.md`.
+- Group: `Local Codex GPT`
+- API key name: `Local Claude GPT Blackbox`
+- Opus mapping baseline: `claude-opus-4-6/4-7/4-8` and `claude-opus-*` -> `gpt-5.5`
+
+Recommended local flow:
+
+1. Rebuild app container from the current worktree while preserving local Postgres/Redis data, or rebuild `backend/bin/server` when using the fallback host-run sandbox.
+2. Health check `http://127.0.0.1:8080/health`.
+3. Ensure local OpenAI/Codex account is active and linked to `Local Codex GPT`.
+4. Ensure group `allow_messages_dispatch=true` and Opus maps to `gpt-5.5` at both group and account mapping layers.
+5. Run direct `/v1/messages` smoke with the local test key.
+6. Check `usage_logs.model_mapping_chain` and `usage_logs.upstream_model`; user-facing response should keep `model` as the requested Claude model, while internal usage evidence may show `gpt-5.5`.
+7. Only after API smoke passes, point `/Users/taylor/.claude_local/settings.json` at the local endpoint for `cc1` TTY testing.
+
+Claude CLI settings caveat:
+
+- `~/.claude_local/settings.json` may define `env.ANTHROPIC_AUTH_TOKEN`; in practice this can override a one-off shell `ANTHROPIC_AUTH_TOKEN`.
+- Before `cc1`/Claude CLI blackbox, inspect settings with masked output, back it up, then write the local test token into settings if needed.
+- Record the backup path in `progress.md`; do not print or commit the token.
+
+Do not commit raw local API keys, OAuth credentials, or Codex auth files. It is acceptable to record local group names, API key names, and non-sensitive mapping evidence.
+
 ## Production Report
 
 最终上线报告必须包含：

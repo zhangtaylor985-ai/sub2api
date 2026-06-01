@@ -6,6 +6,9 @@
 data/
 postgres_data/
 redis_data/
+data_local_host/
+postgres_data_pg17_local/
+redis_data_local/
 
 # Environment configuration (contains sensitive information)
 .env

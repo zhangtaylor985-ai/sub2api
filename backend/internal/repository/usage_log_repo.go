@@ -3426,7 +3426,10 @@ func (r *usageLogRepository) GetAllGroupUsageSummary(ctx context.Context, todayS
 
 // resolveModelDimensionExpression maps model source type to a safe SQL expression.
 func resolveModelDimensionExpression(modelType string) string {
-	requestedExpr := "COALESCE(NULLIF(TRIM(requested_model), ''), model)"
+	// User-facing requested model stats should reveal the client model, not an
+	// internal dispatch target. model_mapping_chain is built as original->...,
+	// so its first segment is the best recovery path for older mapped rows.
+	requestedExpr := "COALESCE(NULLIF(TRIM(split_part(model_mapping_chain, '→', 1)), ''), NULLIF(TRIM(requested_model), ''), model)"
 	switch usagestats.NormalizeModelSource(modelType) {
 	case usagestats.ModelSourceUpstream:
 		return fmt.Sprintf("COALESCE(NULLIF(TRIM(upstream_model), ''), %s)", requestedExpr)

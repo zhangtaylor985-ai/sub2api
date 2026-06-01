@@ -127,3 +127,66 @@
   - Claude CLI：遇到真实 OpenAI `web_search_call` 时补合成文本块，形如 `Searching the web.` / `Searched: <query>` 加 `<tool_call>` 标记。
   - VSCode/Codex VSCode：遇到真实 `web_search_call` 时补简短 `thinking` 进度，例如 `Searching the web for: <query>`。
   - 对这些客户端 suppress post-hoc reasoning summary，避免搜索完成后才把总结伪装成实时 thinking。
+
+## WebSearch 来源/链接可见性
+
+- 2026-05-29 用户截图对比显示：Sub2API 只显示 `Searched: <查询>`，而当前 CLIProxyAPI 能在搜索结果/最终回答中显示来源信息。
+- 根因一：Sub2API 的 `ResponsesRequest.Include` 只请求 `reasoning.encrypted_content`，没有请求 OpenAI Responses 支持的 `web_search_call.action.sources`，因此上游即使有 sources 默认也不一定返回。
+- 根因二：Sub2API 类型里 `WebSearchAction` 只有 `type/query`，没有 `queries/url/sources`；`ResponsesContentPart` 没有 `annotations`，所以 OpenAI `url_citation` 的 `url/title` 会在 JSON unmarshal 后丢失。
+- 根因三：Sub2API 把 `web_search_tool_result.content` 固定为空数组；这和 Anthropic 原生 WebSearch 示例里的 `web_search_result {url,title,page_age,encrypted_content}` 不一致，Claude Code UI 没有可展示的搜索来源。
+- 官方依据：OpenAI Responses WebSearch 会在 `web_search_call.action` 返回搜索动作，并在 `message.content[].annotations` 提供 `url_citation`；`include` 支持 `web_search_call.action.sources`。Anthropic WebSearch 的 `web_search_tool_result.content` 可以包含 `web_search_result`，text block 可以包含 `web_search_result_location` citations。
+- 本地修复边界：只保留上游真实返回的 `sources/url/annotations`，不伪造搜索结果；如果上游没有返回来源，仍保持空结果，避免把用户查询误显示成来源。
+
+## 生产账号分组绑定快照
+
+- 2026-05-29 11:42 CST：线上 `sub2api` 容器运行镜像 `zhangtaylor985/sub2api:main-2e01e876`，Postgres/Redis 健康，`/health` 返回 ok。
+- 表关系确认：账号到分组由 `account_groups(account_id, group_id, priority, created_at)` 表维护，主键为 `(account_id, group_id)`；`priority` 默认 50，`created_at` 默认 `now()`。
+- 当前数量：未删除账号 11 个，未删除分组 8 个，现有 `account_groups` 12 行；若把所有未删除账号补齐到所有未删除分组，需要新增 76 行。
+- 当前快照已记录到 `docs/prod_account_group_snapshot_20260529.md`；未读取或记录任何 credentials/API key/token。
+- 默认变更边界：只对 `accounts.deleted_at IS NULL` 和 `groups.deleted_at IS NULL` 的组合补齐绑定；已删除账号 `id=1` 不纳入补齐。
+
+## `/key-usage` 模型黑盒展示
+
+- 用户侧 `/key-usage` 调用 `GET /v1/usage`，模型表来自响应中的 `model_stats`；该表属于用户可见口径，不应暴露内部上游调度模型。
+- 如果客户端请求 Claude 模型但后端通过 OpenAI `allow_messages_dispatch` 调度到 GPT，上游 GPT 只能作为内部路由/管理员排查口径，不应在用户侧模型统计里显示。
+- 如果客户端确实请求 GPT，例如 OpenAI `/v1/responses` 或 `/v1/chat/completions`，用户侧可以显示 GPT。
+- 当前修复口径：用户侧模型统计优先使用 `model_mapping_chain` 第一段，其次 `requested_model`，最后回退 legacy `model`；`upstream_model` 和完整映射链只作为管理员排查字段。
+- 线上只读抽样确认：`/v1/messages` 且 `model_mapping_chain` 类似 `claude-opus-4-7→gpt-5.5` 的记录，用新表达式会聚合到 `claude-opus-4-7`；OpenAI 端点直接请求 `gpt-*` 的记录仍聚合为 `gpt-*`。
+- 历史 `cliproxy_legacy` 行如果没有 `requested_model` 和 `model_mapping_chain`，无法可靠恢复原始客户端模型；不要凭猜测批量改库。
+
+## `claude-opus-4-8` 线上映射
+
+- OpenAI 分组链路有两层：分组 `messages_dispatch_model_config` 先把 Claude family 映射到 GPT，账号 `credentials.model_mapping` 再作为白名单和最终上游改写；两层都要覆盖 4.8。
+- Anthropic 分组不走 OpenAI dispatch；账号级 `credentials.model_mapping` 同样会作为模型白名单。若 4.7 可用但 4.8 不可用，需要先确认该 key 绑定的是 OpenAI 分组还是 Anthropic 分组。
+- 2026-05-29 用户反馈的 key 绑定 `CPA-Double` Anthropic 分组，实际成功链路选中 `CPA Worker` Anthropic 账号。该账号只有 `claude-opus-4-7 -> claude-opus-4-7`，缺少 4.8，补充 `claude-opus-4-8 -> claude-opus-4-7` 后生产黑盒验证通过。
+- 排查同类问题时不要只看日限额或 OpenAI 账号映射；应按 key -> group -> linked accounts -> selected account -> account model_mapping 的顺序确认真实链路。
+
+## Claude -> GPT 兼容库边界
+
+- 2026-05-29 复核：当前 Claude->GPT 兼容入口只在 OpenAI `/v1/messages` dispatch 路径，即 `OpenAIGatewayHandler.Messages` -> `OpenAIGatewayService.ForwardAsAnthropic`；原生 Claude 账号路径仍是 `GatewayHandler.Messages` 选择 Anthropic/Gemini/Antigravity 账号后直接转发。
+- 新增库：`backend/internal/pkg/claudegptcompat`。
+- 库职责：只放 Claude 客户端使用 GPT/OpenAI Responses 时需要的兼容策略，包括客户端识别、WebSearch query 清洗、Claude CLI synthetic 搜索进度、VSCode thinking 搜索进度、continuation summary 防泄漏、WebSearch sources/url/citation 辅助。
+- `backend/internal/pkg/apicompat` 当前保留协议结构体、Anthropic <-> Responses 转换器和薄 wrapper；这样后续维护时可以先看 `claudegptcompat` 判断是否属于 Claude->GPT 专用逻辑。
+- 迁移矩阵复核：P1 协议稳定性项已基本落地；P2/P3 诊断和观测类能力仍按后续任务处理，不算“全部完成”。
+- 可维护性边界进一步细化：`claudegptcompat` 不保留一个大杂烩文件，而按职责拆分为 client/query/safety/websearch。后续新增 Claude->GPT 行为时，先判断属于哪类策略；如果需要新增跨类别状态机，应先设计子包或独立文件，不要把策略继续塞回 `apicompat`。
+
+## 本地黑盒沙盒
+
+- 本地 Sub2API 已可作为 Claude->GPT 黑盒沙盒：`http://127.0.0.1:8080`，容器 `sub2api-dev` / `sub2api-postgres-dev` / `sub2api-redis-dev`。
+- 本地分组 `Local Codex GPT` 作为测试分组，开启 OpenAI `/v1/messages` dispatch，Opus family 映射到 `gpt-5.5`。
+- 本地 API Key 名称 `Local Claude GPT Blackbox` 用于测试；raw key 不写入文档。
+- 验证证据链：
+  - 直接 API smoke 返回 Claude 形态响应，用户侧 `model` 保持 `claude-opus-4-7`。
+  - usage log 内部证据显示 `model_mapping_chain=claude-opus-4-7→gpt-5.5`、`upstream_model=gpt-5.5`。
+  - Claude CLI `-p` 黑盒 debug-file 显示命中 `ANTHROPIC_BASE_URL=http://127.0.0.1:8080` 和 `/v1/messages`，输出 `LOCAL_CC1_SUB2API_OK`。
+  - WebSearch stream-json 黑盒显示搜索过程和来源链接都能从 OpenAI `web_search_call` 转回 Claude 事件：`server_tool_use`、`web_search_tool_result`、URL 列表、最终正文和 `message_stop` 都出现。
+- 重要坑：Claude CLI settings 中的 `env.ANTHROPIC_AUTH_TOKEN` 会影响实际发送的 key；本地黑盒不能只在 shell 中临时设置 token，必须检查并必要时备份修改 `/Users/taylor/.claude_local/settings.json`。
+
+## 2026-06-01 上线门禁结论
+
+- 本地 dev compose 缺失时，已验证可使用 fallback 沙盒：`sub2api-postgres-local` 暴露 `127.0.0.1:5433`，`sub2api-redis-local` 暴露 `127.0.0.1:6380`，当前源码构建的 `backend/bin/server` 在 tmux session `sub2api-local` 监听 `127.0.0.1:8080`。
+- 真实 Codex auth file 黑盒通过：直接 `/v1/messages`、Claude CLI 非交互 `-p`、WebSearch `stream-json --include-partial-messages`、真实 TTY 同一会话连续两轮均成功。
+- WebSearch 黑盒看到 `server_tool_use name=web_search`、`web_search_tool_result.content[]` URL 列表、`Searched:`、最终正文和 `message_stop`；usage log 证实 `claude-opus-4-6→gpt-5.5`。
+- 自动化测试通过：`git diff --check`、`go test ./internal/pkg/claudegptcompat ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI'`、`go test -tags=unit ./internal/repository`、`go test ./...`、`pnpm 9 lint:check/typecheck/build`。
+- 本地噪音：本地后台 `AccountExpiry` 曾记录一次 Postgres `Cannot allocate memory`，判定为本机 Docker/OrbStack 资源噪音；不影响请求链路通过，但生产发布后仍要观察容器日志和健康状态。
+- 生产发布判断：当前变更达到本地上线门禁，下一步应先把本地分支安全合入最新 `origin/main`，再走 GitHub 主线和 Docker app 容器 canary/替换流程；数据层保持不动。

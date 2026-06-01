@@ -55,6 +55,9 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	if len(req.Tools) > 0 {
 		out.Tools = convertAnthropicToolsToResponses(req.Tools)
 	}
+	if responsesToolsContainWebSearch(out.Tools) {
+		out.Include = appendUniqueString(out.Include, "web_search_call.action.sources")
+	}
 
 	// Determine reasoning effort: only output_config.effort controls the
 	// level; thinking.type is ignored. Default follows Codex CLI / airgate's
@@ -79,6 +82,24 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	}
 
 	return out, nil
+}
+
+func responsesToolsContainWebSearch(tools []ResponsesTool) bool {
+	for _, tool := range tools {
+		if strings.EqualFold(strings.TrimSpace(tool.Type), "web_search") {
+			return true
+		}
+	}
+	return false
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 // convertAnthropicToolChoiceToResponses maps Anthropic tool_choice to Responses format.

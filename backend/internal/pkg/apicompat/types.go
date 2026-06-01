@@ -56,7 +56,8 @@ type AnthropicContentBlock struct {
 	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
 
 	// type=text
-	Text string `json:"text,omitempty"`
+	Text      string              `json:"text,omitempty"`
+	Citations []AnthropicCitation `json:"citations,omitempty"`
 
 	// type=thinking
 	Thinking string `json:"thinking,omitempty"`
@@ -73,6 +74,15 @@ type AnthropicContentBlock struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"` // string or []AnthropicContentBlock
 	IsError   bool            `json:"is_error,omitempty"`
+}
+
+// AnthropicCitation describes a citation attached to an Anthropic text block.
+type AnthropicCitation struct {
+	Type           string `json:"type"`
+	URL            string `json:"url,omitempty"`
+	Title          string `json:"title,omitempty"`
+	EncryptedIndex string `json:"encrypted_index,omitempty"`
+	CitedText      string `json:"cited_text,omitempty"`
 }
 
 func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
@@ -178,6 +188,9 @@ type AnthropicDelta struct {
 	// signature_delta
 	Signature string `json:"signature,omitempty"`
 
+	// citations_delta
+	Citation *AnthropicCitation `json:"citation,omitempty"`
+
 	// message_delta fields
 	StopReason   string  `json:"stop_reason,omitempty"`
 	StopSequence *string `json:"stop_sequence,omitempty"`
@@ -241,9 +254,19 @@ type ResponsesInputItem struct {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
-	Text     string `json:"text,omitempty"`
-	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+	Type        string                `json:"type"` // "input_text" | "output_text" | "input_image"
+	Text        string                `json:"text,omitempty"`
+	ImageURL    string                `json:"image_url,omitempty"` // data URI for input_image
+	Annotations []ResponsesAnnotation `json:"annotations,omitempty"`
+}
+
+// ResponsesAnnotation describes structured annotations on OpenAI output text.
+type ResponsesAnnotation struct {
+	Type       string `json:"type,omitempty"`
+	StartIndex int    `json:"start_index,omitempty"`
+	EndIndex   int    `json:"end_index,omitempty"`
+	URL        string `json:"url,omitempty"`
+	Title      string `json:"title,omitempty"`
 }
 
 // ResponsesTool describes a tool in the Responses API.
@@ -307,8 +330,19 @@ type ResponsesOutput struct {
 
 // WebSearchAction describes the search action in a web_search_call output item.
 type WebSearchAction struct {
-	Type  string `json:"type,omitempty"`  // "search"
-	Query string `json:"query,omitempty"` // primary search query
+	Type    string            `json:"type,omitempty"`    // "search" | "open_page" | "find_in_page"
+	Query   string            `json:"query,omitempty"`   // primary search query
+	Queries []string          `json:"queries,omitempty"` // searched queries
+	URL     string            `json:"url,omitempty"`     // opened URL
+	Sources []WebSearchSource `json:"sources,omitempty"`
+}
+
+// WebSearchSource describes a source returned with web_search_call.action.sources.
+type WebSearchSource struct {
+	Type    string `json:"type,omitempty"`
+	URL     string `json:"url,omitempty"`
+	Title   string `json:"title,omitempty"`
+	PageAge string `json:"page_age,omitempty"`
 }
 
 // ResponsesSummary is a summary text block inside a reasoning output.
@@ -387,11 +421,12 @@ type ResponsesStreamEvent struct {
 	Item *ResponsesOutput `json:"item,omitempty"`
 
 	// response.output_text.delta / response.output_text.done
-	OutputIndex  int    `json:"output_index,omitempty"`
-	ContentIndex int    `json:"content_index,omitempty"`
-	Delta        string `json:"delta,omitempty"`
-	Text         string `json:"text,omitempty"`
-	ItemID       string `json:"item_id,omitempty"`
+	OutputIndex  int                  `json:"output_index,omitempty"`
+	ContentIndex int                  `json:"content_index,omitempty"`
+	Delta        string               `json:"delta,omitempty"`
+	Text         string               `json:"text,omitempty"`
+	ItemID       string               `json:"item_id,omitempty"`
+	Annotation   *ResponsesAnnotation `json:"annotation,omitempty"`
 
 	// response.function_call_arguments.delta / done
 	CallID    string `json:"call_id,omitempty"`

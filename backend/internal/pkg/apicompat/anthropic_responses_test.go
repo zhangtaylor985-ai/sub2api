@@ -174,6 +174,7 @@ func TestAnthropicToResponses_ClaudeCodeWebSearchToolMapsToNativeResponsesTool(t
 	assert.Equal(t, "Bash", resp.Tools[0].Name)
 	assert.Equal(t, "web_search", resp.Tools[1].Type)
 	assert.Empty(t, resp.Tools[1].Name)
+	assert.Contains(t, resp.Include, "web_search_call.action.sources")
 }
 
 func TestAnthropicToResponses_WebSearchToolDedupesServerAndClaudeCodeForms(t *testing.T) {
@@ -944,6 +945,60 @@ func TestStreamingWebSearchClaudeCLIEmitsSyntheticProgress(t *testing.T) {
 	assert.Contains(t, events[5].Delta.Text, `"query":"official Sub2API docs"`)
 }
 
+func TestStreamingWebSearchPreservesSourcesAndQueries(t *testing.T) {
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind: AnthropicCompatClientClaudeCLI,
+	})
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.output_item.done",
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_sources",
+			Status: "completed",
+			Action: &WebSearchAction{
+				Type:    "search",
+				Query:   "today top news",
+				Queries: []string{"today top news", "site:apnews.com today"},
+				Sources: []WebSearchSource{{
+					URL:     "https://apnews.com/article/example",
+					Title:   "AP News Example",
+					PageAge: "May 29, 2026",
+				}},
+			},
+		},
+	}, state)
+
+	require.Len(t, events, 7)
+	require.JSONEq(t, `{"query":"today top news","queries":["today top news","site:apnews.com today"]}`, string(events[0].ContentBlock.Input))
+	require.JSONEq(t, `[{"type":"web_search_result","url":"https://apnews.com/article/example","title":"AP News Example","page_age":"May 29, 2026"}]`, string(events[2].ContentBlock.Content))
+	assert.Contains(t, events[5].Delta.Text, `"queries":["today top news","site:apnews.com today"]`)
+}
+
+func TestStreamingWebSearchPreservesOpenPageURL(t *testing.T) {
+	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
+		ClientKind: AnthropicCompatClientClaudeCLI,
+	})
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.output_item.done",
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_open_page",
+			Status: "completed",
+			Action: &WebSearchAction{
+				Type: "open_page",
+				URL:  "https://www.reuters.com/world/example",
+			},
+		},
+	}, state)
+
+	require.Len(t, events, 7)
+	require.JSONEq(t, `{"query":"","url":"https://www.reuters.com/world/example"}`, string(events[0].ContentBlock.Input))
+	require.JSONEq(t, `[{"type":"web_search_result","url":"https://www.reuters.com/world/example"}]`, string(events[2].ContentBlock.Content))
+	assert.Contains(t, events[5].Delta.Text, `"url":"https://www.reuters.com/world/example"`)
+}
+
 func TestStreamingWebSearchClaudeCLIUsesFallbackQueryWhenActionMissing(t *testing.T) {
 	state := NewResponsesEventToAnthropicStateWithOptions(ResponsesToAnthropicOptions{
 		ClientKind:             AnthropicCompatClientClaudeCLI,
@@ -1137,6 +1192,61 @@ func TestResponsesToAnthropicWithOptions_SuppressesReasoningAndAddsCLISearchText
 	assert.Contains(t, anth.Content[2].Text, "Searched: Sub2API web search")
 	assert.Equal(t, "text", anth.Content[3].Type)
 	assert.Equal(t, "Found the answer.", anth.Content[3].Text)
+}
+
+func TestResponsesToAnthropicPreservesOutputTextURLCitations(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID:     "resp_citations",
+		Model:  "gpt-5.5",
+		Status: "completed",
+		Output: []ResponsesOutput{{
+			Type: "message",
+			Content: []ResponsesContentPart{{
+				Type: "output_text",
+				Text: "Source: AP",
+				Annotations: []ResponsesAnnotation{{
+					Type:       "url_citation",
+					StartIndex: 8,
+					EndIndex:   10,
+					URL:        "https://apnews.com/article/example",
+					Title:      "AP News Example",
+				}},
+			}},
+		}},
+	}
+
+	anth := ResponsesToAnthropic(resp, "claude-sonnet-4-6")
+	require.Len(t, anth.Content, 1)
+	require.Len(t, anth.Content[0].Citations, 1)
+	assert.Equal(t, "web_search_result_location", anth.Content[0].Citations[0].Type)
+	assert.Equal(t, "https://apnews.com/article/example", anth.Content[0].Citations[0].URL)
+	assert.Equal(t, "AP News Example", anth.Content[0].Citations[0].Title)
+	assert.Equal(t, "AP", anth.Content[0].Citations[0].CitedText)
+}
+
+func TestStreamingOutputTextAnnotationAddedEmitsCitationDelta(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_text.delta",
+		OutputIndex: 0,
+		Delta:       "Source: AP",
+	}, state)
+	require.Len(t, events, 2)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_text.annotation.added",
+		OutputIndex: 0,
+		Annotation: &ResponsesAnnotation{
+			Type:  "url_citation",
+			URL:   "https://apnews.com/article/example",
+			Title: "AP News Example",
+		},
+	}, state)
+	require.Len(t, events, 1)
+	require.NotNil(t, events[0].Delta.Citation)
+	assert.Equal(t, "citations_delta", events[0].Delta.Type)
+	assert.Equal(t, "https://apnews.com/article/example", events[0].Delta.Citation.URL)
 }
 
 func TestInferBuiltinWebSearchQueryExtractsChineseQuery(t *testing.T) {

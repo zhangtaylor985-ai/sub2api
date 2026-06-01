@@ -7,6 +7,12 @@ description: Use when inspecting Sub2API local/production addresses, containers,
 
 用于 `/Users/taylor/sdk/sub2api` 的地址库、线上只读排查、API Key / 用户 / 分组关系说明。默认中文回复；命令和日志保持英文。
 
+## Scope
+
+- 本 Skill 只记录线上入口、容器/数据库位置、安全规则和可复用只读排查命令。
+- 不记录业务需求、页面展示口径、一次性任务计划、发布回归流程或具体修复结论。
+- 业务/任务结论放在项目 `AGENTS.md`、`task_plan.md`、`findings.md`、`progress.md` 或 `docs/` 中；发布流程使用 `sub2api-deploy`，上线回归使用 `sub2api-production-regression`。
+
 ## Address Book
 
 - Local source: `/Users/taylor/sdk/sub2api`
@@ -48,6 +54,12 @@ ssh root@204.168.245.138 \
 ssh root@204.168.245.138 \
   "docker logs sub2api --tail 200"
 ```
+
+## Keep This Skill Current
+
+- 线上地址、容器名、反代入口、部署目录或关键排查 SQL 变化时，优先更新本文件。
+- 本文件是后续 Codex 进入 Sub2API 线上环境的地址库；不要把密钥、token、数据库密码或用户凭据写进来。
+- 若某次排查形成可复用流程，把只读命令、判断口径和风险边界追加到对应小节。
 
 ## Production Postgres
 

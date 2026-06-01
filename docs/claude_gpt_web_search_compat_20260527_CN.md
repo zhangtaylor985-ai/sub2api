@@ -199,6 +199,39 @@ go test ./...
 - 新容器启动和健康检查通过，没有发现 panic、terminal-missing 或 WebSearch 相关错误。
 - 观察到若干既有业务侧 `glm-4.6 no available accounts` 和 `/v1/messages/count_tokens` 404，不属于本次 WebSearch 兼容改动；后续可单独排查路由能力和 count_tokens 兼容。
 
+## 2026-05-29 WebSearch 来源/链接可见性修复
+
+用户截图显示 Sub2API 的 Claude Code WebSearch 只显示 `Searching the web.` / `Searched: <查询>`，没有展示实际搜索来源或 URL；当前 CLIProxyAPI 的搜索路径至少能在结果中看到来源信息。
+
+根因：
+
+- 请求侧只包含 `reasoning.encrypted_content`，没有请求 OpenAI Responses 的 `web_search_call.action.sources`。
+- 响应类型只保留 `WebSearchAction.type/query`，没有接收 `queries/url/sources`。
+- `ResponsesContentPart` 没有 `annotations` 字段，OpenAI `url_citation` 里的 `url/title` 会被丢掉。
+- `web_search_tool_result.content` 被固定为空数组，Claude Code UI 没有可展示的搜索结果来源。
+
+本地修复：
+
+- Claude -> Responses 请求包含原生 `web_search` 工具时，追加 `include:["web_search_call.action.sources"]`。
+- `WebSearchAction` 扩展为可接收 `queries/url/sources`，并把 sources/open_page URL 转为 Anthropic `web_search_result`。
+- Claude CLI synthetic `<tool_call>` 保留上游 `queries/url`，便于客户端展示真实搜索动作。
+- OpenAI `url_citation` annotations 转为 Anthropic text `citations`；streaming `response.output_text.annotation.added` 转为 `citations_delta`。
+- 维护边界：新增 `backend/internal/pkg/claudegptcompat`，把客户端识别、WebSearch query 清洗、synthetic/thinking 搜索进度和 sources/url/citation 辅助从 `apicompat` 抽出，避免后续继续把 Claude->GPT 专用逻辑堆在通用协议转换器里。
+
+验证：
+
+- `go test ./internal/pkg/apicompat -run 'WebSearch|Citation|ThinkingEnabled|ClaudeCodeWebSearch'`
+- `go test ./internal/pkg/claudegptcompat ./internal/pkg/apicompat`
+- `go test ./internal/pkg/apicompat`
+- `go test ./...`
+- `git diff --check`
+
+边界：
+
+- 本修复只保留上游真实返回的来源信息，不伪造搜索结果。
+- 若上游没有返回 `sources/url/annotations`，`web_search_tool_result.content` 仍会是空数组。
+- 后续上线前应通过 fake upstream 或本地真实 Claude Code 黑盒确认 Claude Code UI 对 `web_search_result` / `citations_delta` 的实际展示效果。
+
 ## 剩余事项
 
 - 将线上 GitHub clone/pull 链路修好：本次生产机 HTTPS clone 曾长时间卡住并 early EOF，最终使用本地 `git archive` 传固定 tag 源码构建。

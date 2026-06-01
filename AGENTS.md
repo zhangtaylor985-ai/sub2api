@@ -11,6 +11,9 @@
 ## 本地源码
 
 - 本地源码路径：`/Users/taylor/sdk/sub2api`
+- 这是后续主要维护项目；涉及 Sub2API 的代码、文档、部署、黑盒测试和运行配置，默认都在本目录完成。
+- 旧项目 `/Users/taylor/code/tools/CLIProxyAPI-ori` 只作为 Claude -> GPT 迁移参考项目使用；不要在旧项目里承载新的 Sub2API 业务实现。
+- 两个项目共享同一线上环境 `204.168.245.138` / `cc.claudepool.com`，排查时必须先确认当前操作对象是 Sub2API 还是 CLIProxyAPI，避免把配置、日志和部署流程混用。
 - 当前维护远端：`origin git@github.com:zhangtaylor985-ai/sub2api.git`
 - 上游参考远端：`upstream https://github.com/Wei-Shaw/sub2api.git`
 - 后端目录：`backend/`
@@ -53,7 +56,10 @@
 
 ## 黑盒测试偏好
 
-- 后续 Sub2API Claude/Codex auth file 黑盒测试，优先本地启动 Sub2API，并在本地授权测试用 Codex auth file。
+- 后续 Sub2API Claude/Codex auth file 黑盒测试，优先本地启动 Sub2API，并在本地授权测试用 Codex auth file；生产只作为最后的同配置验证。
+- 本地黑盒沙盒当前入口：`http://127.0.0.1:8080`。优先使用 `sub2api-dev` / `sub2api-postgres-dev` / `sub2api-redis-dev`；若 dev compose 不可用，可使用 `sub2api-postgres-local`、`sub2api-redis-local` 加当前源码 `backend/bin/server` 直跑，需在 `progress.md` 记录端口和数据目录。
+- 本地测试分组/API Key 可由维护者自主创建；当前可复用本地组 `Local Codex GPT` 与测试 key 名称 `Local Claude GPT Blackbox`。文档可记录 key 名称，不要把 raw key 扩散到提交或对外文档。
+- 本地沙盒 Opus 调度基线：OpenAI 分组 `allow_messages_dispatch=true`，`claude-opus-4-6/4-7/4-8` 和 `claude-opus-*` 映射到 `gpt-5.5`；验证时以 usage log 的 `model_mapping_chain` / `upstream_model` 作为内部证据。
 - 只有需要生产同配置验证时，再使用生产机临时 canary；canary 必须只绑定远端 `127.0.0.1` 非正式端口，验证结束后清理容器、镜像、临时源码和本机 SSH 隧道。
 
 ## 项目级 Skills

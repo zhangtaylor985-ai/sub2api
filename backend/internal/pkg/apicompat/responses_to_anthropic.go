@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claudegptcompat"
 )
 
 // ---------------------------------------------------------------------------
@@ -54,8 +56,9 @@ func ResponsesToAnthropicWithOptions(resp *ResponsesResponse, model string, opts
 						continue
 					}
 					blocks = append(blocks, AnthropicContentBlock{
-						Type: "text",
-						Text: part.Text,
+						Type:      "text",
+						Text:      part.Text,
+						Citations: responsesAnnotationsToAnthropicCitations(part.Annotations, part.Text),
 					})
 				}
 			}
@@ -69,18 +72,17 @@ func ResponsesToAnthropicWithOptions(resp *ResponsesResponse, model string, opts
 		case "web_search_call":
 			toolUseID := "srvtoolu_" + item.ID
 			query := webSearchQueryWithFallback(item.Action, opts.WebSearchFallbackQuery)
-			inputJSON, _ := json.Marshal(map[string]string{"query": query})
+			inputJSON := webSearchToolInputJSON(item.Action, query)
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:  "server_tool_use",
 				ID:    toolUseID,
 				Name:  "web_search",
 				Input: inputJSON,
 			})
-			emptyResults, _ := json.Marshal([]struct{}{})
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:      "web_search_tool_result",
 				ToolUseID: toolUseID,
-				Content:   emptyResults,
+				Content:   webSearchToolResultContent(item.Action),
 			})
 			if shouldEmitSyntheticWebSearchTag(opts.ClientKind) {
 				if syntheticText := buildSyntheticWebSearchToolCallText(item.Action, opts.WebSearchFallbackQuery, true); syntheticText != "" {
@@ -241,6 +243,8 @@ func ResponsesEventToAnthropicEvents(
 		return resToAnthHandleOutputItemAdded(evt, state)
 	case "response.output_text.delta":
 		return resToAnthHandleTextDelta(evt, state)
+	case "response.output_text.annotation.added":
+		return resToAnthHandleTextAnnotationAdded(evt, state)
 	case "response.output_text.done":
 		return resToAnthHandleBlockDone(state)
 	case "response.function_call_arguments.delta":
@@ -469,6 +473,7 @@ func resToAnthHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventTo
 		idx := state.ContentBlockIndex
 		state.ContentBlockOpen = true
 		state.CurrentBlockType = "text"
+		state.OutputIndexToBlockIdx[evt.OutputIndex] = idx
 
 		events = append(events, AnthropicStreamEvent{
 			Type:  "content_block_start",
@@ -490,6 +495,33 @@ func resToAnthHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventTo
 		},
 	})
 	return events
+}
+
+func resToAnthHandleTextAnnotationAdded(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if evt == nil || evt.Annotation == nil {
+		return nil
+	}
+	citation := responsesAnnotationToAnthropicCitation(*evt.Annotation, "")
+	if citation == nil {
+		return nil
+	}
+
+	blockIdx, ok := state.OutputIndexToBlockIdx[evt.OutputIndex]
+	if !ok {
+		if !state.ContentBlockOpen || state.CurrentBlockType != "text" {
+			return nil
+		}
+		blockIdx = state.ContentBlockIndex
+	}
+
+	return []AnthropicStreamEvent{{
+		Type:  "content_block_delta",
+		Index: &blockIdx,
+		Delta: &AnthropicDelta{
+			Type:     "citations_delta",
+			Citation: citation,
+		},
+	}}
 }
 
 func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
@@ -632,7 +664,7 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	if query != "" {
 		state.LastWebSearchQuery = query
 	}
-	inputJSON, _ := json.Marshal(map[string]string{"query": query})
+	inputJSON := webSearchToolInputJSON(evt.Item.Action, query)
 
 	// Emit server_tool_use block (start + stop).
 	idx1 := state.ContentBlockIndex
@@ -653,9 +685,6 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	state.ContentBlockIndex++
 
 	// Emit web_search_tool_result block (start + stop).
-	// Content is empty because OpenAI does not expose individual search results;
-	// the model consumes them internally and produces text output.
-	emptyResults, _ := json.Marshal([]struct{}{})
 	idx2 := state.ContentBlockIndex
 	events = append(events, AnthropicStreamEvent{
 		Type:  "content_block_start",
@@ -663,7 +692,7 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 		ContentBlock: &AnthropicContentBlock{
 			Type:      "web_search_tool_result",
 			ToolUseID: toolUseID,
-			Content:   emptyResults,
+			Content:   webSearchToolResultContent(evt.Item.Action),
 		},
 	})
 	events = append(events, AnthropicStreamEvent{
@@ -691,17 +720,73 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 }
 
 func webSearchActionQuery(action *WebSearchAction) string {
-	if action == nil {
-		return ""
-	}
-	return sanitizeLikelySearchQuery(action.Query)
+	return claudegptcompat.WebSearchActionQuery(toClaudeGPTWebSearchAction(action))
+}
+
+func webSearchActionURL(action *WebSearchAction) string {
+	return claudegptcompat.WebSearchActionURL(toClaudeGPTWebSearchAction(action))
 }
 
 func webSearchQueryWithFallback(action *WebSearchAction, fallbackQuery string) string {
-	if query := webSearchActionQuery(action); query != "" {
-		return query
+	return claudegptcompat.WebSearchQueryWithFallback(toClaudeGPTWebSearchAction(action), fallbackQuery)
+}
+
+func sanitizedWebSearchQueries(action *WebSearchAction) []string {
+	return claudegptcompat.SanitizedWebSearchQueries(toClaudeGPTWebSearchAction(action))
+}
+
+func webSearchToolInputJSON(action *WebSearchAction, query string) json.RawMessage {
+	return claudegptcompat.WebSearchToolInputJSON(toClaudeGPTWebSearchAction(action), query)
+}
+
+type anthropicWebSearchResult = claudegptcompat.WebSearchResult
+
+func webSearchToolResultContent(action *WebSearchAction) json.RawMessage {
+	results := webSearchResultsFromAction(action)
+	raw, _ := json.Marshal(results)
+	return raw
+}
+
+func webSearchResultsFromAction(action *WebSearchAction) []anthropicWebSearchResult {
+	return claudegptcompat.WebSearchResultsFromAction(toClaudeGPTWebSearchAction(action))
+}
+
+func normalizeWebSearchURL(raw string) string {
+	return claudegptcompat.NormalizeWebSearchURL(raw)
+}
+
+func responsesAnnotationsToAnthropicCitations(annotations []ResponsesAnnotation, text string) []AnthropicCitation {
+	if len(annotations) == 0 {
+		return nil
 	}
-	return sanitizeLikelySearchQuery(fallbackQuery)
+	citations := make([]AnthropicCitation, 0, len(annotations))
+	for _, annotation := range annotations {
+		citation := responsesAnnotationToAnthropicCitation(annotation, text)
+		if citation != nil {
+			citations = append(citations, *citation)
+		}
+	}
+	return citations
+}
+
+func responsesAnnotationToAnthropicCitation(annotation ResponsesAnnotation, text string) *AnthropicCitation {
+	if !strings.EqualFold(strings.TrimSpace(annotation.Type), "url_citation") {
+		return nil
+	}
+	u := normalizeWebSearchURL(annotation.URL)
+	if u == "" {
+		return nil
+	}
+	return &AnthropicCitation{
+		Type:      "web_search_result_location",
+		URL:       u,
+		Title:     strings.TrimSpace(annotation.Title),
+		CitedText: citationTextSlice(text, annotation.StartIndex, annotation.EndIndex),
+	}
+}
+
+func citationTextSlice(text string, startIndex, endIndex int) string {
+	return claudegptcompat.CitationTextSlice(text, startIndex, endIndex)
 }
 
 func emitStandaloneTextBlock(state *ResponsesEventToAnthropicState, text string) []AnthropicStreamEvent {

@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -58,6 +61,10 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+}
+
+type legacyClaudeOnlyAPIKeyPolicyReader interface {
+	IsLegacyClaudeOnlyAPIKey(ctx context.Context, apiKeyID int64) (bool, error)
 }
 
 // NewUsageService 创建使用统计服务实例
@@ -322,6 +329,124 @@ func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, 
 		return nil, fmt.Errorf("get api key model stats: %w", err)
 	}
 	return stats, nil
+}
+
+// GetPublicAPIKeyModelStats returns user-facing model stats for /v1/usage.
+func (s *UsageService) GetPublicAPIKeyModelStats(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
+	stats, err := s.GetAPIKeyModelStats(ctx, apiKeyID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	reader, ok := s.usageRepo.(legacyClaudeOnlyAPIKeyPolicyReader)
+	if !ok {
+		return stats, nil
+	}
+	claudeOnly, err := reader.IsLegacyClaudeOnlyAPIKey(ctx, apiKeyID)
+	if err != nil {
+		return nil, err
+	}
+	if !claudeOnly {
+		return stats, nil
+	}
+	return redactClaudeOnlyModelStats(stats), nil
+}
+
+func redactClaudeOnlyModelStats(stats []usagestats.ModelStat) []usagestats.ModelStat {
+	if len(stats) == 0 {
+		return stats
+	}
+	byModel := make(map[string]*usagestats.ModelStat, len(stats))
+	order := make([]string, 0, len(stats))
+	for _, stat := range stats {
+		model := publicClaudeOnlyModelName(stat.Model)
+		if model == "" {
+			model = "claude-*"
+		}
+		row, ok := byModel[model]
+		if !ok {
+			copied := stat
+			copied.Model = model
+			byModel[model] = &copied
+			order = append(order, model)
+			continue
+		}
+		row.Requests += stat.Requests
+		row.InputTokens += stat.InputTokens
+		row.OutputTokens += stat.OutputTokens
+		row.CacheCreationTokens += stat.CacheCreationTokens
+		row.CacheReadTokens += stat.CacheReadTokens
+		row.TotalTokens += stat.TotalTokens
+		row.Cost += stat.Cost
+		row.ActualCost += stat.ActualCost
+		row.AccountCost += stat.AccountCost
+	}
+	out := make([]usagestats.ModelStat, 0, len(order))
+	for _, model := range order {
+		out = append(out, *byModel[model])
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].TotalTokens == out[j].TotalTokens {
+			return out[i].Model < out[j].Model
+		}
+		return out[i].TotalTokens > out[j].TotalTokens
+	})
+	return out
+}
+
+func publicClaudeOnlyModelName(model string) string {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	normalized = strings.TrimPrefix(normalized, "openai/")
+	normalized = strings.TrimPrefix(normalized, "chatgpt/")
+	switch {
+	case strings.HasPrefix(normalized, "gpt-5.5"):
+		return "claude-opus-4-8"
+	case strings.HasPrefix(normalized, "gpt-5.4-mini"), strings.HasPrefix(normalized, "gpt-5.4-nano"):
+		return "claude-haiku-4-5-20251001"
+	case strings.HasPrefix(normalized, "gpt-5.4"):
+		return "claude-opus-4-7"
+	case strings.HasPrefix(normalized, "gpt-5.3-codex"):
+		return "claude-sonnet-4-6"
+	case strings.HasPrefix(normalized, "gpt-"), strings.HasPrefix(normalized, "chatgpt-"),
+		strings.HasPrefix(normalized, "o1"), strings.HasPrefix(normalized, "o3"), strings.HasPrefix(normalized, "o4"):
+		return "claude-*"
+	default:
+		return strings.TrimSpace(model)
+	}
+}
+
+func legacyPolicyAllowsClaudeOnly(policyJSON []byte) bool {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(policyJSON, &raw); err != nil {
+		return false
+	}
+	var excluded []string
+	for _, key := range []string{"excluded-models", "excluded_models"} {
+		if value, ok := raw[key]; ok {
+			_ = json.Unmarshal(value, &excluded)
+			break
+		}
+	}
+	if len(excluded) == 0 {
+		return false
+	}
+	blocksGPT := false
+	blocksClaude := false
+	for _, item := range excluded {
+		pattern := strings.ToLower(strings.TrimSpace(item))
+		switch {
+		case pattern == "gpt-*" || pattern == "gpt*" || pattern == "chatgpt-*" || pattern == "chatgpt*" ||
+			pattern == "o1*" || pattern == "o3*" || pattern == "o4*" || pattern == "o-*":
+			blocksGPT = true
+		case pattern == "claude-*" || pattern == "claude*":
+			blocksClaude = true
+		}
+	}
+	return blocksGPT && !blocksClaude
+}
+
+// LegacyPolicyAllowsClaudeOnlyForUsage reports whether a migrated CLIProxyAPI policy blocks GPT family models while leaving Claude visible.
+func LegacyPolicyAllowsClaudeOnlyForUsage(policyJSON []byte) bool {
+	return legacyPolicyAllowsClaudeOnly(policyJSON)
 }
 
 // GetAPIKeyDailyUsage returns daily usage stats for a user's API key.

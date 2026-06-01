@@ -1059,7 +1059,7 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	// Best-effort: 获取模型统计
 	var modelStats any
 	if h.usageService != nil {
-		if stats, err := h.usageService.GetAPIKeyModelStats(ctx, apiKey.ID, startTime, endTime); err == nil && len(stats) > 0 {
+		if stats, err := h.usageService.GetPublicAPIKeyModelStats(ctx, apiKey.ID, startTime, endTime); err == nil && len(stats) > 0 {
 			modelStats = stats
 		}
 	}

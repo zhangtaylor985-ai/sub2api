@@ -3148,6 +3148,39 @@ func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, start
 	return r.getModelStatsWithFiltersBySource(ctx, startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType, usagestats.ModelSourceRequested)
 }
 
+func (r *usageLogRepository) IsLegacyClaudeOnlyAPIKey(ctx context.Context, apiKeyID int64) (bool, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT source_policy_json
+		FROM cliproxy_legacy_api_key_migration
+		WHERE api_key_id = $1
+	`, apiKeyID)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "42P01" {
+			return false, nil
+		}
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	var policyJSON []byte
+	if err := rows.Scan(&policyJSON); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return service.LegacyPolicyAllowsClaudeOnlyForUsage(policyJSON), nil
+}
+
 // GetModelStatsWithFiltersBySource returns model statistics with optional filters and model source dimension.
 // source: requested | upstream | mapping.
 func (r *usageLogRepository) GetModelStatsWithFiltersBySource(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8, source string) (results []ModelStat, err error) {

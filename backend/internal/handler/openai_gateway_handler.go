@@ -658,9 +658,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
-	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
-	sessionHash, promptCacheKey = resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel, body)
+	sessionHash, promptCacheKey := resolveOpenAIMessagesSessionSignals(h.gatewayService, c, reqModel, body)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -864,6 +862,21 @@ func resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel 
 	if userID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String()); userID != "" {
 		seed := reqModel + "-" + userID
 		sessionHash = service.DeriveSessionHashFromSeed(seed)
+	}
+	return sessionHash, promptCacheKey
+}
+
+func resolveOpenAIMessagesSessionSignals(gatewayService *service.OpenAIGatewayService, c *gin.Context, reqModel string, body []byte) (string, string) {
+	if gatewayService == nil {
+		return resolveOpenAIMessagesMetadataSession("", "", reqModel, body)
+	}
+
+	promptCacheKey := gatewayService.ExtractSessionID(c, body)
+	// Explicit client-provided session signals should keep the highest priority.
+	sessionHash := gatewayService.GenerateExplicitSessionHash(c, body)
+	sessionHash, promptCacheKey = resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel, body)
+	if sessionHash == "" {
+		sessionHash = gatewayService.GenerateSessionHash(c, body)
 	}
 	return sessionHash, promptCacheKey
 }

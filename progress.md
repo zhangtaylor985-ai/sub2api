@@ -234,3 +234,9 @@
   - 生产 direct `/v1/messages` smoke 通过：`claude-opus-4-6`、`claude-opus-4-7`、`claude-opus-4-8` 均 HTTP 200，usage log 均确认 `→gpt-5.5`。
   - 文档已新增 `docs/prod_opus_gpt55_mapping_20260601_CN.md`，并更新 `AGENTS.md` 与迁移矩阵。
   - 观察项：最近日志仍有并发槽超时、上游 HTTP/2 `INTERNAL_ERROR`、OpenAI `/v1/chat/completions` 直接请求 Claude Opus 被拒绝、context-window 错误；这些与本次分组映射收敛无直接因果，下一阶段单独处理。
+- 2026-06-01：开始并完成 OpenAI dispatch 多轮 session 粘性修复：
+  - 代码发现：`/v1/messages` dispatch 先用 content-based `GenerateSessionHash`，导致 Claude `metadata.user_id` 只有在 content seed 为空时才参与账号粘性；compact/resume 改写 body 时可能生成新 session hash。
+  - 修复：新增 `resolveOpenAIMessagesSessionSignals`，优先级改为显式 `session_id`/`conversation_id`/`prompt_cache_key` > Claude `metadata.user_id` > content fallback。
+  - 兼容边界：不在 handler 层从 metadata 生成 `prompt_cache_key`；ForwardAsAnthropic 的上游缓存/continuation 逻辑保持原有职责。
+  - 定向测试通过：`go test ./internal/handler -run 'TestResolveOpenAIMessages(SessionSignals|MetadataSession)'`、`go test ./internal/service -run 'TestDeriveOpenAIContentSessionSeed|TestForwardAsAnthropic_.*Metadata|TestForwardAsAnthropic_DoesNotAttachPreviousResponseIDForOAuthCompat'`。
+  - 扩展回归通过：`go test ./internal/handler -run 'OpenAIGateway|Messages|SessionSignals'`、`go test ./internal/service -run 'OpenAI|ForwardAsAnthropic|Session|Scheduler'`、`go test ./internal/pkg/apicompat`、后端全量 `go test ./...`。

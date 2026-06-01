@@ -93,6 +93,7 @@
 - 2026-05-27：已上线追补修复镜像 `zhangtaylor985/sub2api:main-77dfaf2b`。线上 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T134952Z`；上一版应用镜像为 `zhangtaylor985/sub2api:main-decdc6d0`。
 - 2026-06-01：已上线 Claude -> GPT WebSearch 来源保留与兼容库拆分；后续运行镜像滚动到 `zhangtaylor985/sub2api:main-378405f6`，当前容器 healthy。
 - 2026-06-01：已收敛生产 OpenAI `/v1/messages` dispatch 分组 Opus 映射：6 个未删除 OpenAI 分组均为 `opus_mapped_model=gpt-5.5`，并显式配置 `claude-opus-4-6/4-7/4-8 -> gpt-5.5`。本次只改分组层，不给原本无 `model_mapping` 的账号新增账号级白名单。
+- 2026-06-01：OpenAI `/v1/messages` dispatch 的账号粘性修复为“显式 session header / `prompt_cache_key` > Claude `metadata.user_id` > content fallback”。后续排查多轮跳账号时，先确认客户端是否发送稳定 metadata，再看 sticky cache 与 account 调度。
 - 任务细节见：
   - `task_plan.md`
   - `findings.md`

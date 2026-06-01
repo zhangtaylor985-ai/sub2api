@@ -212,3 +212,11 @@
 - 执行结果：6 个 OpenAI dispatch 分组均更新完成；Redis `apikey:auth:*` 快照清理到 0，`sub2api` 应用容器重启后 Docker health healthy，公开 `/health` ok。
 - 生产 direct smoke：`claude-opus-4-6`、`claude-opus-4-7`、`claude-opus-4-8` 均 HTTP 200，usage log 分别确认 `claude-opus-4-6→gpt-5.5`、`claude-opus-4-7→gpt-5.5`、`claude-opus-4-8→gpt-5.5`。
 - 发布后日志观察到的独立问题：API key 并发槽等待超时、上游 HTTP/2 `INTERNAL_ERROR`、`/v1/chat/completions` 直接请求 Claude Opus 被 Codex 上游拒绝、大上下文 context-window 错误；这些不是本次分组映射收敛导致，后续应单独治理。
+
+## OpenAI dispatch 多轮 session 粘性
+
+- `/v1/messages` OpenAI dispatch 入口此前先调用 `GenerateSessionHash(c, body)`，该方法在没有显式 `session_id`/`conversation_id`/`prompt_cache_key` 时会从 body 的 model、tools、system 和第一条 user 消息生成 content-based seed。
+- 因为 content fallback 通常非空，后续 `resolveOpenAIMessagesMetadataSession` 很少有机会使用 Claude `metadata.user_id`；这与原生 `GatewayService.GenerateSessionHash(parsed)` 的“metadata.user_id session_id 最高优先级”口径不一致。
+- 风险：普通多轮 replay 若第一条 user/system/tools 稳定，content seed 能粘住；但 compact/resume 或 body 被客户端改写，第一条 user/system/tools 变化时，同一个 Claude session 可能生成不同 session hash，从而换 OpenAI/Codex account。
+- 本地修复：新增 `resolveOpenAIMessagesSessionSignals`，优先级调整为显式 session header / `prompt_cache_key` > Claude `metadata.user_id` > content-based fallback；`metadata.user_id` 仍只影响账号粘性，不在 handler 层生成 `prompt_cache_key`。
+- 回归测试覆盖：metadata 在 body 改写时保持相同 session hash；无 metadata 时仍按 content fallback 区分不同首轮内容；显式 `session_id` 优先于 metadata。

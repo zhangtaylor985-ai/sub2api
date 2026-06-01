@@ -111,6 +111,69 @@ func TestResolveOpenAIMessagesMetadataSession_PreservesExplicitPromptCacheKey(t 
 	require.Equal(t, "explicit-cache", promptCacheKey)
 }
 
+func TestResolveOpenAIMessagesSessionSignals_MetadataStableAcrossChangingBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &service.OpenAIGatewayService{}
+	metadata := `{"user_id":"{\"device_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"account_uuid\":\"\",\"session_id\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\"}"}`
+
+	body1 := []byte(`{"model":"claude-opus-4-7","metadata":` + metadata + `,"messages":[{"role":"user","content":"first body anchor"}]}`)
+	body2 := []byte(`{"model":"claude-opus-4-7","metadata":` + metadata + `,"system":"rewritten compact summary","messages":[{"role":"user","content":"different compacted first user"},{"role":"assistant","content":"ok"},{"role":"user","content":"next"}]}`)
+
+	rec1 := httptest.NewRecorder()
+	c1, _ := gin.CreateTestContext(rec1)
+	c1.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body1)))
+	rec2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(rec2)
+	c2.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body2)))
+
+	sessionHash1, promptCacheKey1 := resolveOpenAIMessagesSessionSignals(svc, c1, "claude-opus-4-7", body1)
+	sessionHash2, promptCacheKey2 := resolveOpenAIMessagesSessionSignals(svc, c2, "claude-opus-4-7", body2)
+
+	require.NotEmpty(t, sessionHash1)
+	require.Equal(t, sessionHash1, sessionHash2)
+	require.Empty(t, promptCacheKey1)
+	require.Empty(t, promptCacheKey2)
+}
+
+func TestResolveOpenAIMessagesSessionSignals_ContentFallbackWhenNoMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &service.OpenAIGatewayService{}
+	body1 := []byte(`{"model":"claude-opus-4-7","messages":[{"role":"user","content":"first body anchor"}]}`)
+	body2 := []byte(`{"model":"claude-opus-4-7","messages":[{"role":"user","content":"different first user"}]}`)
+
+	rec1 := httptest.NewRecorder()
+	c1, _ := gin.CreateTestContext(rec1)
+	c1.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body1)))
+	rec2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(rec2)
+	c2.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body2)))
+
+	sessionHash1, _ := resolveOpenAIMessagesSessionSignals(svc, c1, "claude-opus-4-7", body1)
+	sessionHash2, _ := resolveOpenAIMessagesSessionSignals(svc, c2, "claude-opus-4-7", body2)
+
+	require.NotEmpty(t, sessionHash1)
+	require.NotEmpty(t, sessionHash2)
+	require.NotEqual(t, sessionHash1, sessionHash2)
+}
+
+func TestResolveOpenAIMessagesSessionSignals_ExplicitSessionWinsOverMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &service.OpenAIGatewayService{}
+	body := []byte(`{"model":"claude-opus-4-7","metadata":{"user_id":"claude-code-session"},"messages":[{"role":"user","content":"hello"}]}`)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body)))
+	c.Request.Header.Set("session_id", "explicit-session")
+
+	expected := svc.GenerateExplicitSessionHash(c, body)
+	sessionHash, promptCacheKey := resolveOpenAIMessagesSessionSignals(svc, c, "claude-opus-4-7", body)
+
+	require.NotEmpty(t, expected)
+	require.Equal(t, expected, sessionHash)
+	require.Equal(t, "explicit-session", promptCacheKey)
+}
+
 func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

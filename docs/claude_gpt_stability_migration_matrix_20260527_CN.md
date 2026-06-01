@@ -101,7 +101,7 @@ Sub2API 已经有较好的底座：模型映射、账号调度、`prompt_cache_k
 
 下一阶段优先级：
 
-1. **多轮 session 粘性黑盒**：继续用本地沙盒做“同一 TTY、多轮 body 变化、WebSearch 后继续追问、长上下文增长”的 account/response-chain 复核；生产只做低风险 canary。
+1. **真实多轮黑盒扩展**：继续用本地沙盒做“同一 TTY、多轮 body 变化、WebSearch 后继续追问、长上下文增长”的 account/response-chain 复核；生产只做低风险 canary。
 2. **fake upstream 矩阵**：为 `web_search_call added/done`、sources/url/annotations、200/SSE error frame、split delta、message-only terminal、unknown tool_result 做确定性 fake upstream 测试，减少依赖真实模型是否刚好触发某个事件。
 3. **观测与诊断**：补 raw SSE 轻量诊断索引和 first activity 精准指标，方便区分协议壳、真实 token、tool delta、上游错误和客户端取消。
 4. **长上下文窗口治理**：发布观察中仍有真实用户请求触发上游 context-window 502；这不是本次 WebSearch 修复导致，但需要后续从模型窗口、预估 token、错误提示和路由策略四个角度治理。
@@ -110,6 +110,7 @@ Sub2API 已经有较好的底座：模型映射、账号调度、`prompt_cache_k
 已完成项：
 
 - **生产 Opus 映射一致性**：2026-06-01 已收敛 6 个 OpenAI dispatch 分组，Opus family、`claude-opus-4-6`、`claude-opus-4-7`、`claude-opus-4-8` 均映射到 `gpt-5.5`；生产 direct smoke 和 usage log 均确认 4-6/4-7/4-8 为 `→gpt-5.5`。记录见 `docs/prod_opus_gpt55_mapping_20260601_CN.md`。
+- **多轮 session 粘性基础修复**：2026-06-01 已修复 OpenAI `/v1/messages` dispatch 的 session 信号优先级，从“content fallback 先于 metadata”改为“显式 session > Claude `metadata.user_id` > content fallback”；这能避免 compact/resume 改写首轮内容时同一 Claude session 生成不同账号粘性键。已补单测并通过后端全量 `go test ./...`。
 
 ## 本轮已补测试与修复
 

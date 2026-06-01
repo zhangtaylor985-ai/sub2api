@@ -90,6 +90,7 @@
 | 19. 2026-06-01 本地黑盒复验与上线门禁 | complete | 直接 API、Claude CLI `-p`、WebSearch stream-json、真实 TTY 连续两轮、Go 全量测试、前端 lint/typecheck/build 均通过 |
 | 20. 2026-06-01 生产发布与上线观察 | complete | 已推送主线、构建并上线 `zhangtaylor985/sub2api:main-19663655`；canary 与正式 `/health`、直接 `/v1/messages` smoke 通过，canary 已清理 |
 | 21. 2026-06-01 生产 Opus -> GPT-5.5 映射收敛 | complete | 已更新 6 个 OpenAI dispatch 分组、清理 auth cache、重启 app；生产 4-6/4-7/4-8 direct smoke 与 usage log 均确认 `→gpt-5.5` |
+| 22. OpenAI dispatch 多轮 session 粘性修复 | complete | 已调整 session 信号优先级为显式 session > `metadata.user_id` > content fallback；补回归并通过后端全量测试 |
 
 ## 决策记录
 
@@ -111,6 +112,7 @@
 - 2026-06-01：本次上线门禁采用“本地真实 Codex auth file 黑盒 + 全量自动化测试 + 生产 canary”三段式；生产只在 canary health/smoke 通过后替换 app 容器，Postgres/Redis 不随应用协议修复一起迁移。
 - 2026-06-01：本次发布只替换 Sub2API app 容器；运行镜像从 `main-853b8019` 切到 `main-19663655`，Postgres/Redis 不动。生产测试 key 所在分组当前仍把 `claude-opus-4-7` 映射到 `gpt-5.4`，该配置问题不在本次代码发布中修改。
 - 2026-06-01：生产 Opus -> GPT-5.5 收敛优先改 OpenAI 分组 `messages_dispatch_model_config`；不为原本没有 `model_mapping` 的 active OpenAI OAuth 账号新增账号级映射，避免把“无限制账号”意外变成模型白名单账号。
+- 2026-06-01：OpenAI `/v1/messages` dispatch 的账号粘性应优先使用显式 session header / prompt_cache_key，其次使用 Claude `metadata.user_id`，最后才回退 content-based seed；这样与原生 Claude/Gateway 路径保持一致，也避免 compact/resume 改写首轮内容后换账号。
 
 ## 错误记录
 

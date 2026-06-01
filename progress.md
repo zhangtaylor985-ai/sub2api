@@ -240,3 +240,9 @@
   - 兼容边界：不在 handler 层从 metadata 生成 `prompt_cache_key`；ForwardAsAnthropic 的上游缓存/continuation 逻辑保持原有职责。
   - 定向测试通过：`go test ./internal/handler -run 'TestResolveOpenAIMessages(SessionSignals|MetadataSession)'`、`go test ./internal/service -run 'TestDeriveOpenAIContentSessionSeed|TestForwardAsAnthropic_.*Metadata|TestForwardAsAnthropic_DoesNotAttachPreviousResponseIDForOAuthCompat'`。
   - 扩展回归通过：`go test ./internal/handler -run 'OpenAIGateway|Messages|SessionSignals'`、`go test ./internal/service -run 'OpenAI|ForwardAsAnthropic|Session|Scheduler'`、`go test ./internal/pkg/apicompat`、后端全量 `go test ./...`。
+  - 本地黑盒：重建并重启当前源码本地沙盒，direct `/v1/messages` 三轮“同 metadata、body 首轮内容变化”均 HTTP 200，usage log 均为本地 account 1 且 `claude-opus-4-6→gpt-5.5`；`claude2 -p` 返回 `LOCAL_SESSION_FIX_CC1_OK`。
+  - TTY 尝试记录：两次真实 TTY 启动均卡在 Claude Code marketplace/plugin 初始化，未形成干净双轮输出；已手动 kill 残留进程。该问题未在服务端请求链路复现，生产上线前以 canary direct `/v1/messages` 补验证。
+  - 生产 canary：构建镜像 `zhangtaylor985/sub2api:main-d1d5efb2`，启动 `sub2api-canary-d1d5efb2` 绑定远端 `127.0.0.1:18080`；首次 canary run 因复制 env 时包含空行导致 `docker run --env ""` 失败，未启动容器，过滤空行后 canary healthy。
+  - canary sticky 验证：三轮 `claude-opus-4-7` 请求 body 首轮内容不同但 metadata 相同，均 HTTP 200，usage log 全部命中生产 `account_id=2`，且 `claude-opus-4-7→gpt-5.5`。
+  - 正式上线：Compose 备份 `/root/cliapp/sub2api/docker-compose.yml.bak.20260601T083344Z`，正式 app 容器切到 `zhangtaylor985/sub2api:main-d1d5efb2`；Postgres/Redis 未重启；canary 已清理。
+  - 正式验证：Docker health healthy，宿主机和公开 `/health` ok；两轮 production direct `/v1/messages` body 变化 sticky smoke 均 HTTP 200，usage log 全部命中 `account_id=11`，且 `claude-opus-4-7→gpt-5.5`；近 5 分钟日志未见 panic/fatal/migration failed/cannot allocate/auth failed。

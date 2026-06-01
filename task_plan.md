@@ -137,3 +137,4 @@
 | 2026-05-29 | 首次 Claude CLI 黑盒 401 `Invalid API key` | 原因是 `~/.claude_local/settings.json` 内 `env.ANTHROPIC_AUTH_TOKEN` 覆盖临时 shell token；备份并更新 settings 后通过 |
 | 2026-06-01 | 生产 Redis auth snapshot 首次清理时 redis-cli 继承空 `REDISCLI_AUTH`，出现 AUTH 提示且未删除快照 | 改用 `env -u REDISCLI_AUTH` 复核并删除 15 个 `apikey:auth:*` 快照，最终剩余 0 |
 | 2026-06-01 | 生产 `claude-opus-4-8` usage log 查询的 shell 单引号被外层命令吃掉，SQL 报 `column "claude" does not exist` | 请求本身 HTTP 200；改用独立 quoted heredoc 重新查询，确认 `claude-opus-4-8→gpt-5.5` |
+| 2026-06-01 | 生产 canary 首次 `docker run` 复制正式容器 env 时带入空行，Docker 报 `invalid environment variable` | 未启动 canary、未影响正式容器；过滤空 env 后重新启动 canary，健康检查通过 |

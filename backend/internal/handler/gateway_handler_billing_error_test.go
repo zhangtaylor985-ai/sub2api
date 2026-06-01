@@ -29,11 +29,31 @@ func TestBillingErrorDetails_MapsUserRPMExceededToTooManyRequests(t *testing.T) 
 }
 
 func TestBillingErrorDetails_APIKeyRateLimitStillMaps(t *testing.T) {
-	// 回归保护：加 RPM 分支后不应影响已有 APIKey rate limit 的映射。
+	// API key fixed-window quota exhaustion is a business quota denial, not a
+	// retryable upstream/server 429. Returning 403 keeps CLI clients from
+	// hiding the real message behind "exceeded retry limit".
+	cases := []struct {
+		err  error
+		code string
+	}{
+		{service.ErrAPIKeyRateLimit5hExceeded, "API_KEY_RATE_5H_EXCEEDED"},
+		{service.ErrAPIKeyRateLimit1dExceeded, "API_KEY_RATE_1D_EXCEEDED"},
+		{service.ErrAPIKeyRateLimit7dExceeded, "API_KEY_RATE_7D_EXCEEDED"},
+	}
+	for _, tc := range cases {
+		status, code, msg, retryAfter := billingErrorDetails(tc.err)
+		require.Equal(t, http.StatusForbidden, status, "status for %v", tc.err)
+		require.Equal(t, tc.code, code)
+		require.NotEmpty(t, msg)
+		require.Equal(t, 0, retryAfter)
+	}
+}
+
+func TestBillingErrorDetails_UserPlatformQuotaRemainsRetryable429(t *testing.T) {
 	for _, err := range []error{
-		service.ErrAPIKeyRateLimit5hExceeded,
-		service.ErrAPIKeyRateLimit1dExceeded,
-		service.ErrAPIKeyRateLimit7dExceeded,
+		service.ErrUserPlatformDailyQuotaExhausted,
+		service.ErrUserPlatformWeeklyQuotaExhausted,
+		service.ErrUserPlatformMonthlyQuotaExhausted,
 	} {
 		status, code, _, _ := billingErrorDetails(err)
 		require.Equal(t, http.StatusTooManyRequests, status, "status for %v", err)

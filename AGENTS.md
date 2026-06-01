@@ -27,7 +27,7 @@
 - 线上运行方式：Docker Compose
 - Compose 文件：`/root/cliapp/sub2api/docker-compose.yml`
 - 当前容器：
-  - `sub2api`，镜像 `zhangtaylor985/sub2api:main-decdc6d0`，健康检查通过，宿主机 `0.0.0.0:8080 -> 8080/tcp`
+  - `sub2api`，镜像 `zhangtaylor985/sub2api:main-378405f6`，健康检查通过，宿主机 `0.0.0.0:8080 -> 8080/tcp`
   - `sub2api-postgres`，镜像 `postgres:18-alpine`
   - `sub2api-redis`，镜像 `redis:8-alpine`
 - 线上挂载：
@@ -91,6 +91,8 @@
 - 2026-05-27：Postgres/Redis 仍保持 Docker Compose 管理；宿主机化迁移应单独做备份、恢复演练、停写窗口和回滚方案，不与应用协议修复混发。
 - 2026-05-27：追补 WebSearch 入口修复：Claude Code/VSCode `name:"WebSearch"` 客户端工具必须在 Claude -> GPT 入口映射为 OpenAI 原生 `web_search`，否则会退回客户端原生 Web Search 并出现慢、0 results 等问题。
 - 2026-05-27：已上线追补修复镜像 `zhangtaylor985/sub2api:main-77dfaf2b`。线上 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260527T134952Z`；上一版应用镜像为 `zhangtaylor985/sub2api:main-decdc6d0`。
+- 2026-06-01：已上线 Claude -> GPT WebSearch 来源保留与兼容库拆分；后续运行镜像滚动到 `zhangtaylor985/sub2api:main-378405f6`，当前容器 healthy。
+- 2026-06-01：已收敛生产 OpenAI `/v1/messages` dispatch 分组 Opus 映射：6 个未删除 OpenAI 分组均为 `opus_mapped_model=gpt-5.5`，并显式配置 `claude-opus-4-6/4-7/4-8 -> gpt-5.5`。本次只改分组层，不给原本无 `model_mapping` 的账号新增账号级白名单。
 - 任务细节见：
   - `task_plan.md`
   - `findings.md`

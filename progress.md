@@ -220,3 +220,17 @@
   - canary 已清理，Postgres/Redis 未重启。
   - 生产配置发现：测试 key `id=313` 当前把 `claude-opus-4-6/4-7` 映射到 `gpt-5.4`；后续若要强制所有 Opus 到 `gpt-5.5`，需要单独整理生产分组与账号级映射。
   - 发布后日志中仍可看到真实用户大上下文请求触发上游 context-window 502，与本次 smoke 无关，后续单独纳入长上下文治理。
+- 2026-06-01：开始生产 Opus -> GPT-5.5 映射收敛：
+  - 本地 `main` 已 fast-forward 到 `origin/main` 最新 `378405f6`，包含独立前端用量展示变更；本阶段不回滚、不覆盖该变更。
+  - 线上当前实际运行镜像为 `zhangtaylor985/sub2api:main-378405f6`，`sub2api`、Postgres、Redis 均 healthy，公开 `/health` 正常。
+  - 只读快照确认 6 个 OpenAI 分组均 `allow_messages_dispatch=true`，但 `opus_mapped_model=gpt-5.4`，且 4-6/4-7 精确映射缺失，4-8 精确映射为 `gpt-5.5`。
+  - 只读快照确认 8 个 active+schedulable OpenAI 账号没有 Opus 4-6/4-7/4-8 冲突账号级映射；多数账号无账号级 mapping，应该继续依赖分组 defaultMappedModel。
+  - 决策：本阶段仅改分组 `messages_dispatch_model_config`，不向无 mapping 的账号新增 mapping，避免把账号变成模型白名单。
+- 2026-06-01：完成生产 Opus -> GPT-5.5 映射收敛：
+  - 对 6 个 `platform=openai`、未删除、`allow_messages_dispatch=true` 的分组幂等更新：`opus_mapped_model=gpt-5.5`，并设置 `claude-opus-4-6/4-7/4-8 -> gpt-5.5`。
+  - 清理 Redis auth snapshot：第一次 redis-cli 继承空 `REDISCLI_AUTH` 出现 AUTH 提示；随后用 `env -u REDISCLI_AUTH` 删除 15 个 `apikey:auth:*`，最终剩余 0。
+  - 重启 `sub2api` 应用容器，Postgres/Redis 未重启；Docker health healthy，公开 `https://cc.claudepool.com/health` ok。
+  - 生产配置聚合复核：6/6 个 OpenAI dispatch 分组的 Opus family、4-6、4-7、4-8 都为 `gpt-5.5`。
+  - 生产 direct `/v1/messages` smoke 通过：`claude-opus-4-6`、`claude-opus-4-7`、`claude-opus-4-8` 均 HTTP 200，usage log 均确认 `→gpt-5.5`。
+  - 文档已新增 `docs/prod_opus_gpt55_mapping_20260601_CN.md`，并更新 `AGENTS.md` 与迁移矩阵。
+  - 观察项：最近日志仍有并发槽超时、上游 HTTP/2 `INTERNAL_ERROR`、OpenAI `/v1/chat/completions` 直接请求 Claude Opus 被拒绝、context-window 错误；这些与本次分组映射收敛无直接因果，下一阶段单独处理。

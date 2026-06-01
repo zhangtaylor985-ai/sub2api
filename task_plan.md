@@ -89,6 +89,7 @@
 | 18. 本地黑盒沙盒与维护边界固化 | complete | 本地 Sub2API dev 镜像重建；本地 Opus->GPT-5.5 分组/API Key 配置；直接 API smoke、Claude CLI `-p`、WebSearch stream-json 黑盒通过；两个项目 `AGENTS.md` 和回归 skill 已更新 |
 | 19. 2026-06-01 本地黑盒复验与上线门禁 | complete | 直接 API、Claude CLI `-p`、WebSearch stream-json、真实 TTY 连续两轮、Go 全量测试、前端 lint/typecheck/build 均通过 |
 | 20. 2026-06-01 生产发布与上线观察 | complete | 已推送主线、构建并上线 `zhangtaylor985/sub2api:main-19663655`；canary 与正式 `/health`、直接 `/v1/messages` smoke 通过，canary 已清理 |
+| 21. 2026-06-01 生产 Opus -> GPT-5.5 映射收敛 | complete | 已更新 6 个 OpenAI dispatch 分组、清理 auth cache、重启 app；生产 4-6/4-7/4-8 direct smoke 与 usage log 均确认 `→gpt-5.5` |
 
 ## 决策记录
 
@@ -109,6 +110,7 @@
 - 2026-06-01：本地 Docker 环境缺失旧 dev compose 容器时，可以用“Postgres/Redis Docker 依赖 + 当前源码 tmux 直跑后端”的沙盒形态完成黑盒；该形态需要单独记录端口和数据目录，避免误认为只能使用 `sub2api-dev`。
 - 2026-06-01：本次上线门禁采用“本地真实 Codex auth file 黑盒 + 全量自动化测试 + 生产 canary”三段式；生产只在 canary health/smoke 通过后替换 app 容器，Postgres/Redis 不随应用协议修复一起迁移。
 - 2026-06-01：本次发布只替换 Sub2API app 容器；运行镜像从 `main-853b8019` 切到 `main-19663655`，Postgres/Redis 不动。生产测试 key 所在分组当前仍把 `claude-opus-4-7` 映射到 `gpt-5.4`，该配置问题不在本次代码发布中修改。
+- 2026-06-01：生产 Opus -> GPT-5.5 收敛优先改 OpenAI 分组 `messages_dispatch_model_config`；不为原本没有 `model_mapping` 的 active OpenAI OAuth 账号新增账号级映射，避免把“无限制账号”意外变成模型白名单账号。
 
 ## 错误记录
 
@@ -131,3 +133,5 @@
 | 2026-05-29 | 本地 dev compose 重建首次缺 `POSTGRES_PASSWORD` | 当前 shell 未加载 compose 所需 env；改为从运行中容器读取非打印 env 并导出后重建 |
 | 2026-05-29 | 查询 usage log 时误选不存在的 `status_code` 列 | 先用 `\d usage_logs` 查看 schema，再改用存在的 `request_type/model/upstream_model/model_mapping_chain` 等字段 |
 | 2026-05-29 | 首次 Claude CLI 黑盒 401 `Invalid API key` | 原因是 `~/.claude_local/settings.json` 内 `env.ANTHROPIC_AUTH_TOKEN` 覆盖临时 shell token；备份并更新 settings 后通过 |
+| 2026-06-01 | 生产 Redis auth snapshot 首次清理时 redis-cli 继承空 `REDISCLI_AUTH`，出现 AUTH 提示且未删除快照 | 改用 `env -u REDISCLI_AUTH` 复核并删除 15 个 `apikey:auth:*` 快照，最终剩余 0 |
+| 2026-06-01 | 生产 `claude-opus-4-8` usage log 查询的 shell 单引号被外层命令吃掉，SQL 报 `column "claude" does not exist` | 请求本身 HTTP 200；改用独立 quoted heredoc 重新查询，确认 `claude-opus-4-8→gpt-5.5` |

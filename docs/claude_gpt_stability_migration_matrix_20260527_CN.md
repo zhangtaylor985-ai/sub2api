@@ -101,11 +101,15 @@ Sub2API 已经有较好的底座：模型映射、账号调度、`prompt_cache_k
 
 下一阶段优先级：
 
-1. **生产 Opus 映射一致性**：发布 smoke 发现测试 key `id=313` 的 `claude-opus-4-6/4-7` 仍落到 `gpt-5.4`。如果目标是所有 OpenAI dispatch 分组都执行 Opus -> GPT-5.5，需要单独审计并整理 `groups.messages_dispatch_model_config` 与 `accounts.credentials.model_mapping` 两层配置。
-2. **多轮 session 粘性黑盒**：继续用本地沙盒做“同一 TTY、多轮 body 变化、WebSearch 后继续追问、长上下文增长”的 account/response-chain 复核；生产只做低风险 canary。
-3. **fake upstream 矩阵**：为 `web_search_call added/done`、sources/url/annotations、200/SSE error frame、split delta、message-only terminal、unknown tool_result 做确定性 fake upstream 测试，减少依赖真实模型是否刚好触发某个事件。
-4. **观测与诊断**：补 raw SSE 轻量诊断索引和 first activity 精准指标，方便区分协议壳、真实 token、tool delta、上游错误和客户端取消。
-5. **长上下文窗口治理**：发布观察中仍有真实用户请求触发上游 context-window 502；这不是本次 WebSearch 修复导致，但需要后续从模型窗口、预估 token、错误提示和路由策略四个角度治理。
+1. **多轮 session 粘性黑盒**：继续用本地沙盒做“同一 TTY、多轮 body 变化、WebSearch 后继续追问、长上下文增长”的 account/response-chain 复核；生产只做低风险 canary。
+2. **fake upstream 矩阵**：为 `web_search_call added/done`、sources/url/annotations、200/SSE error frame、split delta、message-only terminal、unknown tool_result 做确定性 fake upstream 测试，减少依赖真实模型是否刚好触发某个事件。
+3. **观测与诊断**：补 raw SSE 轻量诊断索引和 first activity 精准指标，方便区分协议壳、真实 token、tool delta、上游错误和客户端取消。
+4. **长上下文窗口治理**：发布观察中仍有真实用户请求触发上游 context-window 502；这不是本次 WebSearch 修复导致，但需要后续从模型窗口、预估 token、错误提示和路由策略四个角度治理。
+5. **OpenAI endpoint 的 Claude 模型误用治理**：生产日志显示仍有 `/v1/chat/completions` 直接请求 `claude-opus-*` 并被 Codex 上游拒绝；这不是 Claude `/v1/messages` dispatch 路径，需要单独决定是否在 OpenAI endpoint 也做 Claude 模型映射或返回更清晰错误。
+
+已完成项：
+
+- **生产 Opus 映射一致性**：2026-06-01 已收敛 6 个 OpenAI dispatch 分组，Opus family、`claude-opus-4-6`、`claude-opus-4-7`、`claude-opus-4-8` 均映射到 `gpt-5.5`；生产 direct smoke 和 usage log 均确认 4-6/4-7/4-8 为 `→gpt-5.5`。记录见 `docs/prod_opus_gpt55_mapping_20260601_CN.md`。
 
 ## 本轮已补测试与修复
 

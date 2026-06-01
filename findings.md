@@ -201,3 +201,14 @@
 - canary 的非流式强制 `WebSearch` 样本只返回最终文本，没有暴露中间 `server_tool_use`；因此本次 WebSearch 展示验收仍以本地真实 Claude CLI `stream-json` 黑盒为主证据，不把该非流式样本当作失败。
 - 生产配置发现：测试 key `id=313` 当前所在分组/账号链路把 `claude-opus-4-6` 和 `claude-opus-4-7` 都映射到 `gpt-5.4`；这是生产模型映射配置，不是本次代码发布导致。后续若要“所有 Opus -> GPT-5.5”，需要单独做生产分组和账号映射整理。
 - 观察到真实用户大上下文请求仍可能触发上游 `context window` 502；该日志与本次 smoke 无关，后续应归入长上下文/模型窗口治理。
+
+## 2026-06-01 生产 Opus -> GPT-5.5 映射收敛
+
+- 线上实际运行镜像在本阶段开始时为 `zhangtaylor985/sub2api:main-378405f6`，容器 healthy，公开 `/health` 正常；该镜像晚于此前 `main-19663655`，本阶段以线上实际状态为准，不回滚已有更新。
+- 只读快照显示 6 个未删除 OpenAI 分组均已开启 `allow_messages_dispatch=true`，但 `opus_mapped_model` 仍为 `gpt-5.4`；`claude-opus-4-8` 已有精确映射到 `gpt-5.5`，`claude-opus-4-6` 和 `claude-opus-4-7` 精确映射缺失。
+- 只读快照显示 8 个 active+schedulable 的 OpenAI 账号没有 `claude-opus-4-6/4-7/4-8` 的冲突账号级映射；部分账号已有 4-6/4-7/4-8 -> `gpt-5.5`，多数账号没有账号级 `model_mapping`，会使用分组层 defaultMappedModel。
+- 一个非 schedulable OpenAI API key 类型账号存在 `claude-opus-4-6/4-7/4-8` passthrough 到 Claude 名称的映射；因当前不可调度，本阶段不把它作为生产流量阻塞项。
+- 决策：只收敛 OpenAI 分组层 `messages_dispatch_model_config`，把 Opus family 和 4-6/4-7/4-8 精确映射统一到 `gpt-5.5`；不为原本无 mapping 的账号新增 mapping，避免意外改变账号白名单语义。
+- 执行结果：6 个 OpenAI dispatch 分组均更新完成；Redis `apikey:auth:*` 快照清理到 0，`sub2api` 应用容器重启后 Docker health healthy，公开 `/health` ok。
+- 生产 direct smoke：`claude-opus-4-6`、`claude-opus-4-7`、`claude-opus-4-8` 均 HTTP 200，usage log 分别确认 `claude-opus-4-6→gpt-5.5`、`claude-opus-4-7→gpt-5.5`、`claude-opus-4-8→gpt-5.5`。
+- 发布后日志观察到的独立问题：API key 并发槽等待超时、上游 HTTP/2 `INTERNAL_ERROR`、`/v1/chat/completions` 直接请求 Claude Opus 被 Codex 上游拒绝、大上下文 context-window 错误；这些不是本次分组映射收敛导致，后续应单独治理。

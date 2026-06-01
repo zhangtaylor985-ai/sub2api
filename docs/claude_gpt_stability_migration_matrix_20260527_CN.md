@@ -83,7 +83,7 @@ Sub2API 已经有较好的底座：模型映射、账号调度、`prompt_cache_k
 1. Sub2API 不需要迁移旧项目整体架构。
 2. 最有价值的迁移目标是“错误边界 + 流式状态机 + 上下文不丢失 + 客户端分流”。
 3. P1 测试已补齐，并已根据用户“继续”的指令修复其中 4 个业务缺口。
-4. 本轮仍未执行部署或线上重启。
+4. 本小节是 2026-05-27 阶段结论；后续发布状态见下方 2026-06-01 复核。
 
 ## 2026-05-29 复核结论
 
@@ -94,6 +94,18 @@ Sub2API 已经有较好的底座：模型映射、账号调度、`prompt_cache_k
 - P2/P3 仍是后续任务：first activity 精准指标、raw SSE 轻量诊断索引、更多 fake upstream 黑盒矩阵、worker/provider 冷却架构不直接迁移。
 - 原生 Claude 路径未发现被当前 Claude->GPT 改动污染：原生 `/v1/messages` 仍走 `GatewayHandler.Messages` 的平台分流；OpenAI 分组启用 `/v1/messages dispatch` 后才进入 `OpenAIGatewayService.ForwardAsAnthropic`。
 - 已新增 `backend/internal/pkg/claudegptcompat`，把 Claude->GPT 专用的客户端识别、WebSearch query 清洗、synthetic/thinking 搜索进度、sources/url/citation 辅助抽成库；`apicompat` 只保留协议转换编排。
+
+## 2026-06-01 发布后复核
+
+已上线生产镜像 `zhangtaylor985/sub2api:main-19663655`，本地真实 Codex auth file 黑盒、Go 全量测试、前端 lint/typecheck/build、生产 canary 与正式 `/v1/messages` smoke 均通过。当前状态可以认为 P1 协议稳定性和 WebSearch 来源保留已达到一次生产发布标准，但矩阵仍不是“全部完成”。
+
+下一阶段优先级：
+
+1. **生产 Opus 映射一致性**：发布 smoke 发现测试 key `id=313` 的 `claude-opus-4-6/4-7` 仍落到 `gpt-5.4`。如果目标是所有 OpenAI dispatch 分组都执行 Opus -> GPT-5.5，需要单独审计并整理 `groups.messages_dispatch_model_config` 与 `accounts.credentials.model_mapping` 两层配置。
+2. **多轮 session 粘性黑盒**：继续用本地沙盒做“同一 TTY、多轮 body 变化、WebSearch 后继续追问、长上下文增长”的 account/response-chain 复核；生产只做低风险 canary。
+3. **fake upstream 矩阵**：为 `web_search_call added/done`、sources/url/annotations、200/SSE error frame、split delta、message-only terminal、unknown tool_result 做确定性 fake upstream 测试，减少依赖真实模型是否刚好触发某个事件。
+4. **观测与诊断**：补 raw SSE 轻量诊断索引和 first activity 精准指标，方便区分协议壳、真实 token、tool delta、上游错误和客户端取消。
+5. **长上下文窗口治理**：发布观察中仍有真实用户请求触发上游 context-window 502；这不是本次 WebSearch 修复导致，但需要后续从模型窗口、预估 token、错误提示和路由策略四个角度治理。
 
 ## 本轮已补测试与修复
 

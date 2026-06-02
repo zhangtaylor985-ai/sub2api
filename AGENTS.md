@@ -27,7 +27,7 @@
 - 线上运行方式：Docker Compose
 - Compose 文件：`/root/cliapp/sub2api/docker-compose.yml`
 - 当前容器：
-  - `sub2api`，镜像 `zhangtaylor985/sub2api:main-85cd117b`，健康检查通过，宿主机 `0.0.0.0:8080 -> 8080/tcp`
+  - `sub2api`，镜像 `zhangtaylor985/sub2api:main-191cbfcd`，健康检查通过，宿主机 `0.0.0.0:8080 -> 8080/tcp`
   - `sub2api-postgres`，镜像 `postgres:18-alpine`
   - `sub2api-redis`，镜像 `redis:8-alpine`
 - 线上挂载：
@@ -96,6 +96,7 @@
 - 2026-06-01：已上线 `zhangtaylor985/sub2api:main-d1d5efb2`。OpenAI `/v1/messages` dispatch 的账号粘性修复为“显式 session header / `prompt_cache_key` > Claude `metadata.user_id` > content fallback”。后续排查多轮跳账号时，先确认客户端是否发送稳定 metadata，再看 sticky cache 与 account 调度。
 - 2026-06-02：已上线 API Key 模型族策略与 Claude->GPT 错误黑盒，镜像 `zhangtaylor985/sub2api:main-32ddc96c`。生产库 `api_keys` 已新增 `allow_claude_family` / `allow_gpt_family`，并从旧 CLIProxyAPI audit policy 回填；客户端侧错误不得泄露 GPT/Codex/ChatGPT/auth file 内部信息，运维日志允许保留上游明细。
 - 2026-06-02：已上线 API Key 级 Claude -> GPT 目标模型覆盖，镜像 `zhangtaylor985/sub2api:main-85cd117b`。生产库 `api_keys` 已新增 `messages_dispatch_model_config`；`api_keys.id=125` 当前三类 Claude family 均覆盖到 `gpt-5.4`，分组默认不受影响。
+- 2026-06-02：已上线错误可观测性增强，镜像 `zhangtaylor985/sub2api:main-191cbfcd`。用户侧错误响应继续黑盒，但会在响应头 `X-Request-ID` 和错误体 `request_id` / `error.request_id` 返回同一个网关 request id，便于用 `ops_error_logs`、`ops_system_logs` 和 `/app/data/logs/sub2api.log` 反查。
 - 任务细节见：
   - `task_plan.md`
   - `findings.md`

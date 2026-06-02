@@ -339,3 +339,9 @@
   - 代码改动：新增 `internal/pkg/requestid`；网关 Anthropic/OpenAI/Responses JSON 错误、Anthropic/Responses SSE 错误、API key auth/middleware 错误均带同一个网关 `request_id`。
   - 定向测试通过：`go test ./internal/handler -run 'Test.*RequestID|TestGatewayAnthropicErrorResponseIncludesRequestID|TestOpenAIErrorResponseIncludesRequestID|TestResponsesErrorResponseIncludesRequestID|TestAnthropicStreamingErrorIncludesRequestID|TestResponsesFailedSSEIncludesRequestID|TestOpenAIMessagesClaudeGPTUpstreamErrorIsRedactedForAnthropicClient|TestRejectAPIKeyModelFamilyPolicy'`；`go test ./internal/service -run 'TestWriteAnthropic.*RequestID|TestForwardAsAnthropic|TestOpenAI'`；`go test ./internal/server/middleware -run 'TestRequestLogger|TestGatewayErrorWritersIncludeRequestID|TestLogger_AccessLogIncludesCoreFields'`。
   - 排查中一次生产 `head /app/data/config.yaml` 输出包含敏感配置内容；该信息未写入文档或最终回复，后续生产配置确认只输出非敏感片段或依赖代码默认值。
+  - 后端全量测试通过：`go test ./...`；提交并推送 `191cbfcd feat(observability): include request id in gateway errors` 到 `origin/main`。
+  - 生产 `/root/cliapp/sub2api-src` 已 fast-forward 到 `191cbfcd`，构建镜像 `zhangtaylor985/sub2api:main-191cbfcd` 成功。
+  - canary `sub2api-canary-191cbfcd` 绑定 `127.0.0.1:18080`，health 通过；invalid-key smoke 确认 `X-Request-ID` 与错误体 `request_id` 均为同一个传入 ID。
+  - 正式 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260602T092131Z`；正式 `sub2api` app 容器已切到 `zhangtaylor985/sub2api:main-191cbfcd`，Postgres/Redis 未重启。
+  - 正式验证通过：Docker health healthy，宿主机 `/health` 和公开 `https://cc.claudepool.com/health` 均正常；公开 invalid-key smoke 确认响应头和错误体都有同一个 request id。
+  - 反查验证通过：`sub2api-prod-rid-191cbfcd` 能在 `/app/data/logs/sub2api.log` 和 PG `ops_error_logs` 查到；canary 和临时 env 文件已清理。

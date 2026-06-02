@@ -35,6 +35,14 @@ Claude's response exceeded the 64000 output token maximum. To configure this beh
 
 错误 message 仍保持用户侧黑盒，不返回 GPT/Codex/auth file/内部路由细节。
 
+## 上线状态
+
+- 提交：`191cbfcd feat(observability): include request id in gateway errors`
+- 镜像：`zhangtaylor985/sub2api:main-191cbfcd`
+- Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260602T092131Z`
+- 发布范围：仅替换 Sub2API app 容器；Postgres/Redis 未重启。
+- 验证：后端全量 `go test ./...` 通过；canary 和正式环境 health 通过；公开 invalid-key smoke 确认 `X-Request-ID` 与错误体 `request_id` 一致；同一 ID 可在文件日志和 `ops_error_logs` 中反查。
+
 ## 排查口径
 
 用户报错时优先收集：

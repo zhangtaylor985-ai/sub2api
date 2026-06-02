@@ -96,6 +96,7 @@
 | 25. Claude -> GPT 上游错误黑盒 | complete | 已上线 `/v1/messages` dispatch 上游错误泛化；生产 smoke 确认客户端不暴露 GPT/Codex/ChatGPT/auth file/internal routing 错误 |
 | 26. API Key 级 Claude -> GPT 目标模型覆盖 | complete | 已上线 key 级覆盖并把生产 `api_keys.id=125` 配为 `gpt-5.4`；canary 与正式生产 smoke 均确认 `→gpt-5.4` |
 | 27. 生产错误可观测性与 Request ID 排查 | complete | 已确认截图为 Claude Code 本地输出上限口径；Sub2API 日志落点/级别已梳理；错误体 request_id 已实现、测试、上线到 `main-191cbfcd` |
+| 28. 生产全 API Key Claude -> GPT 映射收敛 | complete | 已全量写入 82 个有效 API Key 的 key 级 Opus/Sonnet 映射；Opus `→gpt-5.4` 黑盒通过，Sonnet `→gpt-5.3-codex` 映射生效但当前生产 ChatGPT/Codex 账号不支持该目标模型 |
 
 ## 决策记录
 
@@ -121,6 +122,7 @@
 - 2026-06-01：API Key 的 Claude-only/GPT-only 应按用户请求模型族判断，而不是按内部上游模型判断。Claude-only key 可以内部 Claude -> GPT，但用户不能直接请求 GPT family；GPT-only key 不能请求 Claude family。该策略必须 key 级表达，不能用当前空置且偏 group/channel 维度的 channel model restriction 代替。
 - 2026-06-02：Claude `/v1/messages` 经 OpenAI dispatch 到 GPT/Codex 时，上游错误属于内部路由错误；客户端错误响应必须泛化，不得包含 GPT/Codex/ChatGPT account/auth file/内部账号细节。该脱敏只作用于 Claude -> GPT 的 Anthropic 响应格式，不扩大到 OpenAI 原生 passthrough。
 - 2026-06-02：API Key 级 Claude -> GPT 目标模型覆盖应高于分组级 `messages_dispatch_model_config`，低于账号级 `credentials.model_mapping` 的最终上游改写/白名单语义。空 key 级配置必须表示“不覆盖”，继续走分组默认，避免影响已有 key。
+- 2026-06-02：全量 API Key Opus/Sonnet 目标模型收敛使用 API Key 级 `messages_dispatch_model_config`，不改账号级 `credentials.model_mapping`。Sonnet 目标按用户要求保持 `gpt-5.3-codex`；即使黑盒验证发现当前生产账号不支持该模型，也不擅自改成其他可用模型。
 
 ## 错误记录
 
@@ -151,3 +153,6 @@
 | 2026-06-02 | 首次生产更新 `messages_dispatch_model_config` 的 SQL 被 shell 引号吃掉 JSON 双引号，Postgres 报 `syntax error at or near ":"` | 该 SQL 未写入任何数据；改用外层 heredoc 直接喂给远端 `psql` 后更新成功 |
 | 2026-06-02 | 生产 Redis 清 auth cache 第一次命令被本地 shell 展开远端变量，导致 `tmp` 为空且未清理 | 改用远端 heredoc 执行脚本，成功删除 14 个 auth cache snapshot |
 | 2026-06-02 | 生产日志筛选使用 `rg`，但远端主机未安装 `rg` | 改用 `grep -Ei` 检查最近日志 |
+| 2026-06-02 | 全 API Key 映射收敛首次备份 SQL 被 shell 引号吃掉 `'{}'`，生成 0 行备份 | 未写库；立即重跑 heredoc 备份，得到 82 行有效备份文件 |
+| 2026-06-02 | 全 API Key 映射收敛清理 Redis auth cache 时先后遇到空 `REDISCLI_AUTH` 提示和一次远端变量引用失败 | 用 `env -u REDISCLI_AUTH` 复核并重新删除，最终 `apikey:auth:*` 剩余 0 |
+| 2026-06-02 | 全 API Key 映射收敛后一次只读 SQL 复核因 docker exec 环境变量和 JSON 引号处理失败 | 未写库；改为通过 stdin 把 SQL 传入容器内 `psql`，复核结果为 82/82/82/82 |

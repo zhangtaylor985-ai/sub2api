@@ -283,3 +283,13 @@
 - 当前缺口：Claude Code UI 通常不展示响应头；用户只给报错截图时，未必能拿到 `X-Request-ID`。因此需要在错误 JSON/SSE 体中也带同一个网关 `request_id`，但不能把 GPT/Codex/auth file 等内部路由细节写进用户侧错误 message。
 - `usage_logs.request_id` 常见值如 `generated:...`，属于用量/上游请求记录口径，不等同于 HTTP 网关 `X-Request-ID`。排查一次用户 HTTP 请求优先用网关 `request_id` 查 `ops_error_logs`、`ops_system_logs` 和文件日志；用量表作为补充证据。
 - 生产最近可观测到的真实 502 样本包含 `request_id`、`client_request_id`、`api_key_id`、`account_id`、`model`、`body_bytes` 和泛化错误；文件日志保留更具体的服务端错误，例如上游 context window 超限。客户端仍应只看到黑盒错误。
+
+## 2026-06-02 全 API Key Claude -> GPT 映射收敛
+
+- 生产未删除 API Key 共 82 个，全部绑定 OpenAI 分组；本次全量写入 API Key 级 `messages_dispatch_model_config`，统一 `opus_mapped_model=gpt-5.4`、`sonnet_mapped_model=gpt-5.3-codex`。
+- 写库前有效备份为 `/root/cliapp/sub2api/ops_backups/api_key_messages_dispatch_config_before_opus54_sonnet53codex_20260602T100209Z.tsv`，共 82 行；首次 0 行备份文件无效，不作为回滚依据。
+- Redis `apikey:auth:*` auth snapshot 已清到 0；生产复核 82 个有效 API Key 均已有 `opus_mapped_model=gpt-5.4` 和 `sonnet_mapped_model=gpt-5.3-codex`。
+- 分组层仍保留 Opus exact mapping 到 `gpt-5.5`，但代码优先级是 API Key family override 先于分组 exact mapping；因此全 key 级 `opus_mapped_model=gpt-5.4` 会实际覆盖分组层 Opus `gpt-5.5`。
+- 账号级 `credentials.model_mapping` 当前未设置相关白名单/改写，不会把 `gpt-5.3-codex` 或 `gpt-5.4` 再改成其他模型。
+- Opus 黑盒按 5 个 OpenAI 分组代表 key 验证均通过；`usage_logs` 确认 `claude-opus-4-7→gpt-5.4`。
+- Sonnet 黑盒按 5 个 OpenAI 分组代表 key 验证均失败，HTTP 502，客户端错误保持黑盒并带 request_id；服务端日志真实根因为：`The 'gpt-5.3-codex' model is not supported when using Codex with a ChatGPT account.` 当前生产 OpenAI OAuth 账号形态不支持 `gpt-5.3-codex`，不是 Sub2API 映射未生效。

@@ -345,3 +345,16 @@
   - 正式 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260602T092131Z`；正式 `sub2api` app 容器已切到 `zhangtaylor985/sub2api:main-191cbfcd`，Postgres/Redis 未重启。
   - 正式验证通过：Docker health healthy，宿主机 `/health` 和公开 `https://cc.claudepool.com/health` 均正常；公开 invalid-key smoke 确认响应头和错误体都有同一个 request id。
   - 反查验证通过：`sub2api-prod-rid-191cbfcd` 能在 `/app/data/logs/sub2api.log` 和 PG `ops_error_logs` 查到；canary 和临时 env 文件已清理。
+- 2026-06-02：开始生产全 API Key Claude -> GPT 映射收敛：
+  - 用户要求线上所有 Sub2API API Key 的 Opus 模型转 `gpt-5.4`，Sonnet 转 `gpt-5.3-codex`，完成后做 Sonnet 黑盒确认是否还报错。
+  - 本阶段默认使用已上线的 API Key 级 `messages_dispatch_model_config`，优先不改账号级 `credentials.model_mapping`，避免把无白名单账号意外变成限制账号。
+  - 需要先做只读快照：确认 key 级配置数量、OpenAI dispatch 分组配置、账号级映射是否会覆盖最终结果。
+- 2026-06-02：完成生产全 API Key Claude -> GPT 映射收敛：
+  - 只读快照：线上有效 API Key 共 82 个，均有 group；3 个已有 key 级覆盖，6 个 OpenAI dispatch 分组仍有分组层 Opus `gpt-5.5`，active+schedulable OpenAI 账号没有相关账号级 `credentials.model_mapping`。
+  - 备份：首次备份 SQL 因 shell 引号问题生成 0 行文件，未写库；有效备份为 `/root/cliapp/sub2api/ops_backups/api_key_messages_dispatch_config_before_opus54_sonnet53codex_20260602T100209Z.tsv`，共 82 行。
+  - 写库：对 `deleted_at IS NULL` 的 82 个 API Key 全量写入/合并 `messages_dispatch_model_config`：`opus_mapped_model=gpt-5.4`、`sonnet_mapped_model=gpt-5.3-codex`，保留已有其他字段。
+  - 缓存：清理 Redis `apikey:auth:*` snapshot，期间遇到空 `REDISCLI_AUTH` 提示和一次远端变量引用失败；最终成功删除 16 个 auth cache，剩余 0。
+  - 复核：通过容器内 `psql` stdin 复核，结果为 `total=82`、`opus_54=82`、`sonnet_53_codex=82`、`with_override=82`。
+  - Opus 黑盒：按 5 个 OpenAI 分组各取代表 key 请求 `claude-opus-4-7`，均 HTTP 200；usage log 确认 `claude-opus-4-7→gpt-5.4`。
+  - Sonnet 黑盒：同样 5 个代表 key 请求 `claude-sonnet-4-6`，均返回客户端黑盒 `502 api_error "Upstream request failed"` 并带 `request_id`；服务端日志显示真实根因为当前生产 ChatGPT/Codex 账号不支持 `gpt-5.3-codex`。
+  - 健康检查：正式 `sub2api` 仍运行 `zhangtaylor985/sub2api:main-191cbfcd`，Docker health healthy，宿主机与公开 `/health` 均 ok；最近 10 分钟未见 panic/fatal/migration/database failed 类硬错误。

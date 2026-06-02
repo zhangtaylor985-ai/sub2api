@@ -424,13 +424,16 @@ func openAIAnthropicCompatOptionsFromRequest(c *gin.Context, body []byte) apicom
 }
 
 // handleAnthropicErrorResponse reads an upstream error and returns it in
-// Anthropic error format.
+// Anthropic error format. The upstream target is internal to Claude->GPT
+// dispatch, so client-facing errors must not expose GPT/Codex/account details.
 func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
 ) (*OpenAIForwardResult, error) {
-	return s.handleCompatErrorResponse(resp, c, account, writeAnthropicError)
+	return s.handleCompatErrorResponse(resp, c, account, writeAnthropicError, compatErrorResponseOptions{
+		BlackBoxClientError: true,
+	})
 }
 
 // handleAnthropicBufferedStreamingResponse reads all Responses SSE events from

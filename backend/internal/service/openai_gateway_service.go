@@ -4204,6 +4204,10 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 // the compat paths (Chat Completions and Anthropic Messages).
 type compatErrorWriter func(c *gin.Context, statusCode int, errType, message string)
 
+type compatErrorResponseOptions struct {
+	BlackBoxClientError bool
+}
+
 // handleCompatErrorResponse is the shared non-failover error handler for the
 // Chat Completions and Anthropic Messages compat paths. It mirrors the logic of
 // handleErrorResponse (passthrough rules, ShouldHandleErrorCode, rate-limit
@@ -4214,7 +4218,12 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	c *gin.Context,
 	account *Account,
 	writeError compatErrorWriter,
+	options ...compatErrorResponseOptions,
 ) (*OpenAIForwardResult, error) {
+	var opt compatErrorResponseOptions
+	if len(options) > 0 {
+		opt = options[0]
+	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
@@ -4233,19 +4242,21 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 
-	// Apply error passthrough rules
-	if status, errType, errMsg, matched := applyErrorPassthroughRule(
-		c, account.Platform, resp.StatusCode, body,
-		http.StatusBadGateway, "api_error", "Upstream request failed",
-	); matched {
-		writeError(c, status, errType, errMsg)
-		if upstreamMsg == "" {
-			upstreamMsg = errMsg
+	if !opt.BlackBoxClientError {
+		// Apply error passthrough rules
+		if status, errType, errMsg, matched := applyErrorPassthroughRule(
+			c, account.Platform, resp.StatusCode, body,
+			http.StatusBadGateway, "api_error", "Upstream request failed",
+		); matched {
+			writeError(c, status, errType, errMsg)
+			if upstreamMsg == "" {
+				upstreamMsg = errMsg
+			}
+			if upstreamMsg == "" {
+				return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
+			}
+			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
 		}
-		if upstreamMsg == "" {
-			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
-		}
-		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
 	}
 
 	// Check custom error codes — if the account does not handle this status,
@@ -4292,6 +4303,11 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			ResponseBody:           body,
 			RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
 		}
+	}
+
+	if opt.BlackBoxClientError {
+		writeError(c, http.StatusBadGateway, "api_error", "Upstream request failed")
+		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
 
 	// Map status code to error type and write response

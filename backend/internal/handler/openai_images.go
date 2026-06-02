@@ -73,6 +73,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	if rejectAPIKeyModelFamilyPolicy(c, apiKey, parsed.Model, true, h.errorResponse) {
+		return
+	}
 
 	reqLog = reqLog.With(
 		zap.String("model", parsed.Model),

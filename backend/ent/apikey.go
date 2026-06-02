@@ -38,6 +38,10 @@ type APIKey struct {
 	Status string `json:"status,omitempty"`
 	// API key concurrency limit (0 = inherit from group/user)
 	Concurrency int `json:"concurrency,omitempty"`
+	// Whether this API key may request Claude-family models from user-facing endpoints
+	AllowClaudeFamily bool `json:"allow_claude_family,omitempty"`
+	// Whether this API key may request GPT/OpenAI-family models from user-facing endpoints
+	AllowGptFamily bool `json:"allow_gpt_family,omitempty"`
 	// Last usage time of this API key
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// Allowed IPs/CIDRs, e.g. ["192.168.1.100", "10.0.0.0/8"]
@@ -125,6 +129,8 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
 			values[i] = new([]byte)
+		case apikey.FieldAllowClaudeFamily, apikey.FieldAllowGptFamily:
+			values[i] = new(sql.NullBool)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
 		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID, apikey.FieldConcurrency:
@@ -209,6 +215,18 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field concurrency", values[i])
 			} else if value.Valid {
 				_m.Concurrency = int(value.Int64)
+			}
+		case apikey.FieldAllowClaudeFamily:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_claude_family", values[i])
+			} else if value.Valid {
+				_m.AllowClaudeFamily = value.Bool
+			}
+		case apikey.FieldAllowGptFamily:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_gpt_family", values[i])
+			} else if value.Valid {
+				_m.AllowGptFamily = value.Bool
 			}
 		case apikey.FieldLastUsedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -390,6 +408,12 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("concurrency=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Concurrency))
+	builder.WriteString(", ")
+	builder.WriteString("allow_claude_family=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowClaudeFamily))
+	builder.WriteString(", ")
+	builder.WriteString("allow_gpt_family=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowGptFamily))
 	builder.WriteString(", ")
 	if v := _m.LastUsedAt; v != nil {
 		builder.WriteString("last_used_at=")

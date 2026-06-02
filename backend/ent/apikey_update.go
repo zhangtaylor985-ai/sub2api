@@ -155,6 +155,34 @@ func (_u *APIKeyUpdate) AddConcurrency(v int) *APIKeyUpdate {
 	return _u
 }
 
+// SetAllowClaudeFamily sets the "allow_claude_family" field.
+func (_u *APIKeyUpdate) SetAllowClaudeFamily(v bool) *APIKeyUpdate {
+	_u.mutation.SetAllowClaudeFamily(v)
+	return _u
+}
+
+// SetNillableAllowClaudeFamily sets the "allow_claude_family" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableAllowClaudeFamily(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetAllowClaudeFamily(*v)
+	}
+	return _u
+}
+
+// SetAllowGptFamily sets the "allow_gpt_family" field.
+func (_u *APIKeyUpdate) SetAllowGptFamily(v bool) *APIKeyUpdate {
+	_u.mutation.SetAllowGptFamily(v)
+	return _u
+}
+
+// SetNillableAllowGptFamily sets the "allow_gpt_family" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableAllowGptFamily(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetAllowGptFamily(*v)
+	}
+	return _u
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_u *APIKeyUpdate) SetLastUsedAt(v time.Time) *APIKeyUpdate {
 	_u.mutation.SetLastUsedAt(v)
@@ -623,6 +651,12 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(apikey.FieldConcurrency, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.AllowClaudeFamily(); ok {
+		_spec.SetField(apikey.FieldAllowClaudeFamily, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowGptFamily(); ok {
+		_spec.SetField(apikey.FieldAllowGptFamily, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
 	}
@@ -966,6 +1000,34 @@ func (_u *APIKeyUpdateOne) SetNillableConcurrency(v *int) *APIKeyUpdateOne {
 // AddConcurrency adds value to the "concurrency" field.
 func (_u *APIKeyUpdateOne) AddConcurrency(v int) *APIKeyUpdateOne {
 	_u.mutation.AddConcurrency(v)
+	return _u
+}
+
+// SetAllowClaudeFamily sets the "allow_claude_family" field.
+func (_u *APIKeyUpdateOne) SetAllowClaudeFamily(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetAllowClaudeFamily(v)
+	return _u
+}
+
+// SetNillableAllowClaudeFamily sets the "allow_claude_family" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableAllowClaudeFamily(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetAllowClaudeFamily(*v)
+	}
+	return _u
+}
+
+// SetAllowGptFamily sets the "allow_gpt_family" field.
+func (_u *APIKeyUpdateOne) SetAllowGptFamily(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetAllowGptFamily(v)
+	return _u
+}
+
+// SetNillableAllowGptFamily sets the "allow_gpt_family" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableAllowGptFamily(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetAllowGptFamily(*v)
+	}
 	return _u
 }
 
@@ -1466,6 +1528,12 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(apikey.FieldConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllowClaudeFamily(); ok {
+		_spec.SetField(apikey.FieldAllowClaudeFamily, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowGptFamily(); ok {
+		_spec.SetField(apikey.FieldAllowGptFamily, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)

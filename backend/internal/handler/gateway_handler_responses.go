@@ -75,6 +75,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	if rejectAPIKeyModelFamilyPolicy(c, apiKey, reqModel, true, h.responsesErrorResponse) {
+		return
+	}
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 

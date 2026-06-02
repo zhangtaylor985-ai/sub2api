@@ -374,16 +374,20 @@ type AdminCreateAPIKeyInput struct {
 	RateLimit1d         float64
 	RateLimit7d         float64
 	Concurrency         int
+	AllowClaudeFamily   *bool
+	AllowGPTFamily      *bool
 	ResetRateLimitUsage bool
 }
 
 // AdminUpdateAPIKeyPolicyInput captures admin-managed API key policy fields.
 type AdminUpdateAPIKeyPolicyInput struct {
-	Status       *string
-	Quota        *float64
-	ExpiresAt    *time.Time
-	ClearExpires bool
-	Concurrency  *int
+	Status            *string
+	Quota             *float64
+	ExpiresAt         *time.Time
+	ClearExpires      bool
+	Concurrency       *int
+	AllowClaudeFamily *bool
+	AllowGPTFamily    *bool
 
 	RateLimit5h        *float64
 	RateLimit1d        *float64
@@ -2263,17 +2267,26 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCre
 	}
 
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         keyValue,
-		Name:        strings.TrimSpace(input.Name),
-		Status:      status,
-		Quota:       input.Quota,
-		QuotaUsed:   0,
-		ExpiresAt:   input.ExpiresAt,
-		RateLimit5h: input.RateLimit5h,
-		RateLimit1d: input.RateLimit1d,
-		RateLimit7d: input.RateLimit7d,
-		Concurrency: input.Concurrency,
+		UserID:               userID,
+		Key:                  keyValue,
+		Name:                 strings.TrimSpace(input.Name),
+		Status:               status,
+		Quota:                input.Quota,
+		QuotaUsed:            0,
+		ExpiresAt:            input.ExpiresAt,
+		RateLimit5h:          input.RateLimit5h,
+		RateLimit1d:          input.RateLimit1d,
+		RateLimit7d:          input.RateLimit7d,
+		Concurrency:          input.Concurrency,
+		AllowClaudeFamily:    true,
+		AllowGPTFamily:       true,
+		ModelFamilyPolicySet: true,
+	}
+	if input.AllowClaudeFamily != nil {
+		apiKey.AllowClaudeFamily = *input.AllowClaudeFamily
+	}
+	if input.AllowGPTFamily != nil {
+		apiKey.AllowGPTFamily = *input.AllowGPTFamily
 	}
 	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
 		return nil, fmt.Errorf("create api key: %w", err)
@@ -2510,6 +2523,14 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 			return nil, infraerrors.BadRequest("INVALID_API_KEY_CONCURRENCY", "concurrency must be non-negative")
 		}
 		apiKey.Concurrency = *input.Concurrency
+	}
+	if input.AllowClaudeFamily != nil {
+		apiKey.AllowClaudeFamily = *input.AllowClaudeFamily
+		apiKey.ModelFamilyPolicySet = true
+	}
+	if input.AllowGPTFamily != nil {
+		apiKey.AllowGPTFamily = *input.AllowGPTFamily
+		apiKey.ModelFamilyPolicySet = true
 	}
 	if input.ClearExpires {
 		apiKey.ExpiresAt = nil

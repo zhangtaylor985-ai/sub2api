@@ -473,6 +473,8 @@ WITH upserted AS (
     rate_limit_1d,
     rate_limit_7d,
     concurrency,
+    allow_claude_family,
+    allow_gpt_family,
     usage_5h,
     usage_1d,
     usage_7d,
@@ -504,6 +506,28 @@ WITH upserted AS (
       ELSE m.effective_weekly_budget_usd
     END,
     CASE WHEN m.source_group_id = 'legacy-ungrouped' THEN m.source_concurrency_limit ELSE 0 END,
+    NOT EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(
+        CASE
+          WHEN jsonb_typeof(m.policy_json->'excluded-models') = 'array'
+            THEN m.policy_json->'excluded-models'
+          ELSE '[]'::jsonb
+        END
+      ) AS excluded(pattern)
+      WHERE lower(trim(excluded.pattern)) = 'claude-*'
+    ),
+    NOT EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(
+        CASE
+          WHEN jsonb_typeof(m.policy_json->'excluded-models') = 'array'
+            THEN m.policy_json->'excluded-models'
+          ELSE '[]'::jsonb
+        END
+      ) AS excluded(pattern)
+      WHERE lower(trim(excluded.pattern)) IN ('gpt-*', 'chatgpt-*', 'o1*', 'o3*', 'o4*')
+    ),
     0,
     CASE WHEN m.token_package_remaining_usd > 0 THEN 0 ELSE m.daily_usage_usd END,
     CASE WHEN m.token_package_remaining_usd > 0 THEN 0 ELSE m.weekly_usage_usd END,
@@ -527,6 +551,8 @@ WITH upserted AS (
     rate_limit_1d = EXCLUDED.rate_limit_1d,
     rate_limit_7d = EXCLUDED.rate_limit_7d,
     concurrency = EXCLUDED.concurrency,
+    allow_claude_family = EXCLUDED.allow_claude_family,
+    allow_gpt_family = EXCLUDED.allow_gpt_family,
     usage_5h = EXCLUDED.usage_5h,
     usage_1d = EXCLUDED.usage_1d,
     usage_7d = EXCLUDED.usage_7d,

@@ -33,6 +33,10 @@ const (
 	FieldStatus = "status"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
+	// FieldAllowClaudeFamily holds the string denoting the allow_claude_family field in the database.
+	FieldAllowClaudeFamily = "allow_claude_family"
+	// FieldAllowGptFamily holds the string denoting the allow_gpt_family field in the database.
+	FieldAllowGptFamily = "allow_gpt_family"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
 	FieldLastUsedAt = "last_used_at"
 	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
@@ -106,6 +110,8 @@ var Columns = []string{
 	FieldGroupID,
 	FieldStatus,
 	FieldConcurrency,
+	FieldAllowClaudeFamily,
+	FieldAllowGptFamily,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
@@ -157,6 +163,10 @@ var (
 	StatusValidator func(string) error
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
+	// DefaultAllowClaudeFamily holds the default value on creation for the "allow_claude_family" field.
+	DefaultAllowClaudeFamily bool
+	// DefaultAllowGptFamily holds the default value on creation for the "allow_gpt_family" field.
+	DefaultAllowGptFamily bool
 	// DefaultQuota holds the default value on creation for the "quota" field.
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.
@@ -226,6 +236,16 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByConcurrency orders the results by the concurrency field.
 func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldConcurrency, opts...).ToFunc()
+}
+
+// ByAllowClaudeFamily orders the results by the allow_claude_family field.
+func ByAllowClaudeFamily(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowClaudeFamily, opts...).ToFunc()
+}
+
+// ByAllowGptFamily orders the results by the allow_gpt_family field.
+func ByAllowGptFamily(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowGptFamily, opts...).ToFunc()
 }
 
 // ByLastUsedAt orders the results by the last_used_at field.

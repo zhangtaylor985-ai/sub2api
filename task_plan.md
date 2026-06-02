@@ -91,6 +91,9 @@
 | 20. 2026-06-01 生产发布与上线观察 | complete | 已推送主线、构建并上线 `zhangtaylor985/sub2api:main-19663655`；canary 与正式 `/health`、直接 `/v1/messages` smoke 通过，canary 已清理 |
 | 21. 2026-06-01 生产 Opus -> GPT-5.5 映射收敛 | complete | 已更新 6 个 OpenAI dispatch 分组、清理 auth cache、重启 app；生产 4-6/4-7/4-8 direct smoke 与 usage log 均确认 `→gpt-5.5` |
 | 22. OpenAI dispatch 多轮 session 粘性修复 | complete | 已调整 session 信号优先级为显式 session > `metadata.user_id` > content fallback；补回归并通过后端全量测试 |
+| 23. API Key 模型族限制迁移 | local_blackbox_passed | 已新增 key 级 Claude/GPT family policy、从旧 audit policy 回填、gateway 入口黑盒校验；本地 HTTP 黑盒通过，待上线 |
+| 24. 2026-06-02 生产数据本地恢复 | complete | 已备份本地 PG17 沙盒，创建独立 PG18 恢复库并从线上 PG18 dump 恢复；关键表校验通过 |
+| 25. Claude -> GPT 上游错误黑盒 | local_blackbox_passed | `/v1/messages` dispatch 非 failover 上游错误已泛化，不向 Claude Code 客户端暴露 GPT/Codex/auth file/internal routing 错误；本地复现上游 Codex/ChatGPT 错误并验证客户端脱敏，待上线 |
 
 ## 决策记录
 
@@ -113,6 +116,8 @@
 - 2026-06-01：本次发布只替换 Sub2API app 容器；运行镜像从 `main-853b8019` 切到 `main-19663655`，Postgres/Redis 不动。生产测试 key 所在分组当前仍把 `claude-opus-4-7` 映射到 `gpt-5.4`，该配置问题不在本次代码发布中修改。
 - 2026-06-01：生产 Opus -> GPT-5.5 收敛优先改 OpenAI 分组 `messages_dispatch_model_config`；不为原本没有 `model_mapping` 的 active OpenAI OAuth 账号新增账号级映射，避免把“无限制账号”意外变成模型白名单账号。
 - 2026-06-01：OpenAI `/v1/messages` dispatch 的账号粘性应优先使用显式 session header / prompt_cache_key，其次使用 Claude `metadata.user_id`，最后才回退 content-based seed；这样与原生 Claude/Gateway 路径保持一致，也避免 compact/resume 改写首轮内容后换账号。
+- 2026-06-01：API Key 的 Claude-only/GPT-only 应按用户请求模型族判断，而不是按内部上游模型判断。Claude-only key 可以内部 Claude -> GPT，但用户不能直接请求 GPT family；GPT-only key 不能请求 Claude family。该策略必须 key 级表达，不能用当前空置且偏 group/channel 维度的 channel model restriction 代替。
+- 2026-06-02：Claude `/v1/messages` 经 OpenAI dispatch 到 GPT/Codex 时，上游错误属于内部路由错误；客户端错误响应必须泛化，不得包含 GPT/Codex/ChatGPT account/auth file/内部账号细节。该脱敏只作用于 Claude -> GPT 的 Anthropic 响应格式，不扩大到 OpenAI 原生 passthrough。
 
 ## 错误记录
 
@@ -138,3 +143,5 @@
 | 2026-06-01 | 生产 Redis auth snapshot 首次清理时 redis-cli 继承空 `REDISCLI_AUTH`，出现 AUTH 提示且未删除快照 | 改用 `env -u REDISCLI_AUTH` 复核并删除 15 个 `apikey:auth:*` 快照，最终剩余 0 |
 | 2026-06-01 | 生产 `claude-opus-4-8` usage log 查询的 shell 单引号被外层命令吃掉，SQL 报 `column "claude" does not exist` | 请求本身 HTTP 200；改用独立 quoted heredoc 重新查询，确认 `claude-opus-4-8→gpt-5.5` |
 | 2026-06-01 | 生产 canary 首次 `docker run` 复制正式容器 env 时带入空行，Docker 报 `invalid environment variable` | 未启动 canary、未影响正式容器；过滤空 env 后重新启动 canary，健康检查通过 |
+| 2026-06-02 | 在 `backend/` 工作目录内误用 `backend/internal/repository/api_key_repo.go` 路径执行 gofmt，报 `lstat ... no such file or directory` | 无文件改动；改用模块内相对路径 `internal/repository/api_key_repo.go` 后通过 |
+| 2026-06-02 | 本地黑盒插入测试用户时误用 `ON CONFLICT(email)`，但本地 `users.email` 无唯一约束 | 该 SQL 未写入测试数据；改为 `WHERE NOT EXISTS` 显式插入/更新后继续验证 |

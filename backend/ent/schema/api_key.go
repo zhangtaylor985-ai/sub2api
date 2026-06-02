@@ -50,6 +50,12 @@ func (APIKey) Fields() []ent.Field {
 		field.Int("concurrency").
 			Default(0).
 			Comment("API key concurrency limit (0 = inherit from group/user)"),
+		field.Bool("allow_claude_family").
+			Default(true).
+			Comment("Whether this API key may request Claude-family models from user-facing endpoints"),
+		field.Bool("allow_gpt_family").
+			Default(true).
+			Comment("Whether this API key may request GPT/OpenAI-family models from user-facing endpoints"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().

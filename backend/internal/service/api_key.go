@@ -35,8 +35,13 @@ type APIKey struct {
 	GroupID     *int64
 	Status      string
 	Concurrency int
-	IPWhitelist []string
-	IPBlacklist []string
+	// Model family policy is evaluated against the user-requested endpoint/model,
+	// not the internal upstream routing target.
+	AllowClaudeFamily    bool
+	AllowGPTFamily       bool
+	ModelFamilyPolicySet bool
+	IPWhitelist          []string
+	IPBlacklist          []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`

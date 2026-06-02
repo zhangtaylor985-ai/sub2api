@@ -33,6 +33,8 @@ type AdminUpdateAPIKeyGroupRequest struct {
 	ExpiresAt           *string  `json:"expires_at"`             // nil=不修改, ""=清空, RFC3339=设置
 	ResetQuota          *bool    `json:"reset_quota"`            // true=重置总额度已用量
 	Concurrency         *int     `json:"concurrency"`            // nil=不修改, 0=继承分组/用户, >0=单 key 并发
+	AllowClaudeFamily   *bool    `json:"allow_claude_family"`    // nil=不修改
+	AllowGPTFamily      *bool    `json:"allow_gpt_family"`       // nil=不修改
 	RateLimit5h         *float64 `json:"rate_limit_5h"`          // nil=不修改, 0=不限制
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
@@ -40,17 +42,19 @@ type AdminUpdateAPIKeyGroupRequest struct {
 }
 
 type AdminCreateAPIKeyRequest struct {
-	UserID      *int64  `json:"user_id"`
-	Name        string  `json:"name" binding:"required"`
-	CustomKey   *string `json:"custom_key"`
-	GroupID     *int64  `json:"group_id"`
-	Status      *string `json:"status"`
-	Quota       float64 `json:"quota"`
-	ExpiresAt   *string `json:"expires_at"`
-	RateLimit5h float64 `json:"rate_limit_5h"`
-	RateLimit1d float64 `json:"rate_limit_1d"`
-	RateLimit7d float64 `json:"rate_limit_7d"`
-	Concurrency int     `json:"concurrency"`
+	UserID            *int64  `json:"user_id"`
+	Name              string  `json:"name" binding:"required"`
+	CustomKey         *string `json:"custom_key"`
+	GroupID           *int64  `json:"group_id"`
+	Status            *string `json:"status"`
+	Quota             float64 `json:"quota"`
+	ExpiresAt         *string `json:"expires_at"`
+	RateLimit5h       float64 `json:"rate_limit_5h"`
+	RateLimit1d       float64 `json:"rate_limit_1d"`
+	RateLimit7d       float64 `json:"rate_limit_7d"`
+	Concurrency       int     `json:"concurrency"`
+	AllowClaudeFamily *bool   `json:"allow_claude_family"`
+	AllowGPTFamily    *bool   `json:"allow_gpt_family"`
 }
 
 // List handles listing API keys across all users.
@@ -116,17 +120,19 @@ func (h *AdminAPIKeyHandler) Create(c *gin.Context) {
 		expiresAt = &parsed
 	}
 	result, err := h.adminService.AdminCreateAPIKey(c.Request.Context(), service.AdminCreateAPIKeyInput{
-		UserID:      req.UserID,
-		Name:        req.Name,
-		CustomKey:   req.CustomKey,
-		GroupID:     req.GroupID,
-		Status:      req.Status,
-		Quota:       req.Quota,
-		ExpiresAt:   expiresAt,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
-		Concurrency: req.Concurrency,
+		UserID:            req.UserID,
+		Name:              req.Name,
+		CustomKey:         req.CustomKey,
+		GroupID:           req.GroupID,
+		Status:            req.Status,
+		Quota:             req.Quota,
+		ExpiresAt:         expiresAt,
+		RateLimit5h:       req.RateLimit5h,
+		RateLimit1d:       req.RateLimit1d,
+		RateLimit7d:       req.RateLimit7d,
+		Concurrency:       req.Concurrency,
+		AllowClaudeFamily: req.AllowClaudeFamily,
+		AllowGPTFamily:    req.AllowGPTFamily,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -217,6 +223,8 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 		Status:              req.Status,
 		Quota:               req.Quota,
 		Concurrency:         req.Concurrency,
+		AllowClaudeFamily:   req.AllowClaudeFamily,
+		AllowGPTFamily:      req.AllowGPTFamily,
 		RateLimit5h:         req.RateLimit5h,
 		RateLimit1d:         req.RateLimit1d,
 		RateLimit7d:         req.RateLimit7d,
@@ -252,6 +260,8 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 		req.ExpiresAt != nil ||
 		req.ResetQuota != nil ||
 		req.Concurrency != nil ||
+		req.AllowClaudeFamily != nil ||
+		req.AllowGPTFamily != nil ||
 		req.RateLimit5h != nil ||
 		req.RateLimit1d != nil ||
 		req.RateLimit7d != nil ||

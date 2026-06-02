@@ -159,6 +159,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	if rejectAPIKeyModelFamilyPolicy(c, apiKey, reqModel, true, h.errorResponse) {
+		return
+	}
 
 	streamResult := gjson.GetBytes(body, "stream")
 	if streamResult.Exists() && streamResult.Type != gjson.True && streamResult.Type != gjson.False {
@@ -613,6 +616,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	if rejectAPIKeyModelFamilyPolicy(c, apiKey, reqModel, false, h.anthropicErrorResponse) {
+		return
+	}
 	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
 	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
 	reqStream := gjson.GetBytes(body, "stream").Bool()

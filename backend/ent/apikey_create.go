@@ -127,6 +127,34 @@ func (_c *APIKeyCreate) SetNillableConcurrency(v *int) *APIKeyCreate {
 	return _c
 }
 
+// SetAllowClaudeFamily sets the "allow_claude_family" field.
+func (_c *APIKeyCreate) SetAllowClaudeFamily(v bool) *APIKeyCreate {
+	_c.mutation.SetAllowClaudeFamily(v)
+	return _c
+}
+
+// SetNillableAllowClaudeFamily sets the "allow_claude_family" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableAllowClaudeFamily(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetAllowClaudeFamily(*v)
+	}
+	return _c
+}
+
+// SetAllowGptFamily sets the "allow_gpt_family" field.
+func (_c *APIKeyCreate) SetAllowGptFamily(v bool) *APIKeyCreate {
+	_c.mutation.SetAllowGptFamily(v)
+	return _c
+}
+
+// SetNillableAllowGptFamily sets the "allow_gpt_family" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableAllowGptFamily(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetAllowGptFamily(*v)
+	}
+	return _c
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_c *APIKeyCreate) SetLastUsedAt(v time.Time) *APIKeyCreate {
 	_c.mutation.SetLastUsedAt(v)
@@ -405,6 +433,14 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
 	}
+	if _, ok := _c.mutation.AllowClaudeFamily(); !ok {
+		v := apikey.DefaultAllowClaudeFamily
+		_c.mutation.SetAllowClaudeFamily(v)
+	}
+	if _, ok := _c.mutation.AllowGptFamily(); !ok {
+		v := apikey.DefaultAllowGptFamily
+		_c.mutation.SetAllowGptFamily(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -477,6 +513,12 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "APIKey.concurrency"`)}
+	}
+	if _, ok := _c.mutation.AllowClaudeFamily(); !ok {
+		return &ValidationError{Name: "allow_claude_family", err: errors.New(`ent: missing required field "APIKey.allow_claude_family"`)}
+	}
+	if _, ok := _c.mutation.AllowGptFamily(); !ok {
+		return &ValidationError{Name: "allow_gpt_family", err: errors.New(`ent: missing required field "APIKey.allow_gpt_family"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -559,6 +601,14 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(apikey.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
+	}
+	if value, ok := _c.mutation.AllowClaudeFamily(); ok {
+		_spec.SetField(apikey.FieldAllowClaudeFamily, field.TypeBool, value)
+		_node.AllowClaudeFamily = value
+	}
+	if value, ok := _c.mutation.AllowGptFamily(); ok {
+		_spec.SetField(apikey.FieldAllowGptFamily, field.TypeBool, value)
+		_node.AllowGptFamily = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -833,6 +883,30 @@ func (u *APIKeyUpsert) UpdateConcurrency() *APIKeyUpsert {
 // AddConcurrency adds v to the "concurrency" field.
 func (u *APIKeyUpsert) AddConcurrency(v int) *APIKeyUpsert {
 	u.Add(apikey.FieldConcurrency, v)
+	return u
+}
+
+// SetAllowClaudeFamily sets the "allow_claude_family" field.
+func (u *APIKeyUpsert) SetAllowClaudeFamily(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldAllowClaudeFamily, v)
+	return u
+}
+
+// UpdateAllowClaudeFamily sets the "allow_claude_family" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateAllowClaudeFamily() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldAllowClaudeFamily)
+	return u
+}
+
+// SetAllowGptFamily sets the "allow_gpt_family" field.
+func (u *APIKeyUpsert) SetAllowGptFamily(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldAllowGptFamily, v)
+	return u
+}
+
+// UpdateAllowGptFamily sets the "allow_gpt_family" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateAllowGptFamily() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldAllowGptFamily)
 	return u
 }
 
@@ -1281,6 +1355,34 @@ func (u *APIKeyUpsertOne) AddConcurrency(v int) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateConcurrency() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetAllowClaudeFamily sets the "allow_claude_family" field.
+func (u *APIKeyUpsertOne) SetAllowClaudeFamily(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAllowClaudeFamily(v)
+	})
+}
+
+// UpdateAllowClaudeFamily sets the "allow_claude_family" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateAllowClaudeFamily() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAllowClaudeFamily()
+	})
+}
+
+// SetAllowGptFamily sets the "allow_gpt_family" field.
+func (u *APIKeyUpsertOne) SetAllowGptFamily(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAllowGptFamily(v)
+	})
+}
+
+// UpdateAllowGptFamily sets the "allow_gpt_family" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateAllowGptFamily() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAllowGptFamily()
 	})
 }
 
@@ -1940,6 +2042,34 @@ func (u *APIKeyUpsertBulk) AddConcurrency(v int) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateConcurrency() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetAllowClaudeFamily sets the "allow_claude_family" field.
+func (u *APIKeyUpsertBulk) SetAllowClaudeFamily(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAllowClaudeFamily(v)
+	})
+}
+
+// UpdateAllowClaudeFamily sets the "allow_claude_family" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateAllowClaudeFamily() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAllowClaudeFamily()
+	})
+}
+
+// SetAllowGptFamily sets the "allow_gpt_family" field.
+func (u *APIKeyUpsertBulk) SetAllowGptFamily(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAllowGptFamily(v)
+	})
+}
+
+// UpdateAllowGptFamily sets the "allow_gpt_family" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateAllowGptFamily() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAllowGptFamily()
 	})
 }
 

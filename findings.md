@@ -218,5 +218,49 @@
 - `/v1/messages` OpenAI dispatch 入口此前先调用 `GenerateSessionHash(c, body)`，该方法在没有显式 `session_id`/`conversation_id`/`prompt_cache_key` 时会从 body 的 model、tools、system 和第一条 user 消息生成 content-based seed。
 - 因为 content fallback 通常非空，后续 `resolveOpenAIMessagesMetadataSession` 很少有机会使用 Claude `metadata.user_id`；这与原生 `GatewayService.GenerateSessionHash(parsed)` 的“metadata.user_id session_id 最高优先级”口径不一致。
 - 风险：普通多轮 replay 若第一条 user/system/tools 稳定，content seed 能粘住；但 compact/resume 或 body 被客户端改写，第一条 user/system/tools 变化时，同一个 Claude session 可能生成不同 session hash，从而换 OpenAI/Codex account。
+- 2026-06-01 复核：Sub2API 原本已有 Redis `sticky_session:{groupID}:openai:{hash} -> account_id` 一小时缓存；本次 `d1d5efb2` 没有新增第二套缓存，只调整 OpenAI `/v1/messages` dispatch 的 session hash 来源优先级。该调整不是照搬旧 CLIProxyAPI，而是让 OpenAI dispatch 路径对齐 Sub2API 原生 Claude/Gateway 路径的 `metadata.user_id` 优先语义。
+- 与 `ForwardAsAnthropic` 内部 prompt cache / `previous_response_id` 复用不同，OpenAI dispatch session hash 只决定“本轮选哪个 OpenAI/Codex account”；上游缓存键仍由 `ForwardAsAnthropic` 根据 `metadata.user_id`、cache_control 或完整消息 digest 自行派生。
 - 本地修复：新增 `resolveOpenAIMessagesSessionSignals`，优先级调整为显式 session header / `prompt_cache_key` > Claude `metadata.user_id` > content-based fallback；`metadata.user_id` 仍只影响账号粘性，不在 handler 层生成 `prompt_cache_key`。
 - 回归测试覆盖：metadata 在 body 改写时保持相同 session hash；无 metadata 时仍按 content fallback 区分不同首轮内容；显式 `session_id` 优先于 metadata。
+
+## API Key 模型族限制迁移状态
+
+- CLIProxyAPI 旧项目的 API Key 模型族限制来自 `policy_json.excluded-models`，管理端把它展示为“允许 Claude 系列 / 允许 GPT 系列”。默认 GPT 隐藏模式包括 `gpt-*`、`chatgpt-*`、`o1*`、`o3*`、`o4*`，Claude 隐藏模式包括 `claude-*`。
+- 旧项目中限制判定发生在用户请求命名空间：middleware 明确写着 access controls evaluated against the client-requested model namespace，downstream routing/fallback targets remain unaffected by excluded-models。因此 Claude-only key 的含义是“允许用户请求 Claude 模型，不允许直接请求 GPT 模型”；它仍然可以在内部黑盒地走 Claude -> GPT 路由。
+- 线上旧 CLIProxyAPI 配置快照中，API Key 策略大致分布为：Claude-only 293、GPT-only 6、both 80。这说明这不是少量边缘配置，而是生产策略的一部分。
+- 线上 Sub2API 已迁移一部分 key，并在 `cliproxy_legacy_api_key_migration.source_policy_json` 中保留旧 policy JSON。已迁移有效 key 的旧策略快照为：Claude-only 57、GPT-only 2、both 23。
+- 但 Sub2API 当前 `api_keys` 运行时字段没有保存 `allow_claude_family` / `allow_gpt_family` / `excluded_models` 等策略；迁移 SQL 只把旧策略保存到 audit 表，没有写入可执行字段。
+- 2026-06-01 线上 Sub2API 实际状态复核：app 镜像为 `zhangtaylor985/sub2api:main-3f0dad5d`；有效 API Key 82 个、有效分组 8 个、`channels` 0、`channel_groups` 0、`channel_model_pricing` 0。
+- Sub2API 有 `channels.restrict_models` 与 `channel_model_pricing` 机制，但线上 `channels` / `channel_groups` / `channel_model_pricing` 为空，且该机制是渠道/分组维度，不适合表达同一个 CP Legacy 分组内混合存在的 Claude-only、GPT-only、both API Key。
+- 当前线上 CP Legacy key 基本都挂在 OpenAI 分组，分组 `allow_messages_dispatch=true`；路由根据 key 所属 group platform 进入 OpenAI gateway。由于缺少 key 级模型族限制，旧项目中的 Claude-only/GPT-only 语义目前没有在 Sub2API 运行时生效。
+- 黑盒边界：实现时不能按“内部上游是否 GPT”阻断 Claude-only。正确语义应是按用户请求的 endpoint/model 判断：Claude-only 允许 `/v1/messages` 请求 `claude-*` 并内部 Claude -> GPT；但应阻断直接 OpenAI endpoint 或 GPT family 模型请求。GPT-only 则应阻断用户请求 `claude-*`，允许用户请求 GPT family。
+- 下一步建议新增 Sub2API key 级模型族策略，而不是复用 channel 限制：在 API key 运行时模型中增加可迁移、可缓存、可管理的 allow family 字段或独立策略表；从 `cliproxy_legacy_api_key_migration.source_policy_json` 回填现有 82 个迁移 key；在 gateway handler 前统一做用户侧模型族校验，并返回协议兼容、无内部 GPT/Codex 细节的泛化 403。
+
+## API Key 模型族策略实现
+
+- 2026-06-02 本地实现采用 `api_keys.allow_claude_family` / `api_keys.allow_gpt_family` 两个运行时字段，而不是 channel 限制或独立策略表。原因：旧策略是 per API key，当前线上 channel 表为空，且同一分组内可能同时存在 Claude-only、GPT-only、both key。
+- 策略只看用户侧请求命名空间和入口形态，不看内部上游模型。Claude-only key 可以通过 `/v1/messages` 请求 `claude-*`，内部仍可黑盒调度到 GPT；但不能使用 OpenAI 形态入口 `/v1/responses`、`/v1/chat/completions`、Images。
+- GPT-only key 阻断用户请求 `claude-*`；both key 允许两类模型族。未设置策略的旧内存构造对象默认视为 both-allowed，避免测试或旧路径因 bool 零值误判全禁。
+- 迁移 `144_add_api_key_model_family_policy.sql` 在本地 PG18 生产恢复库试跑通过，并且幂等复跑通过。回填后的有效 key 分布为 `both=23`、`claude_only=57`、`gpt_only=2`，与此前 audit 表统计一致。
+- 管理端 API Key 列表和创建/编辑弹窗新增“模型族权限”字段，便于以后直接维护 `allow_claude_family` / `allow_gpt_family`。
+
+## Claude -> GPT 错误黑盒
+
+- 2026-06-02 修复点在 OpenAI `/v1/messages` dispatch 的 Anthropic 兼容错误出口：`handleAnthropicErrorResponse` 现在调用 `handleCompatErrorResponse` 的 black-box 模式。
+- black-box 模式会跳过 error passthrough 规则，并把非 failover 上游 HTTP 错误写成 Anthropic 形态的 `502 api_error "Upstream request failed"`；上游状态、request id、消息和可选 body 仍保留在 ops/log 错误上下文中。
+- 该模式不影响 OpenAI 原生 chat/responses passthrough，也不改变原生 Claude 账号路径。目标是避免 Claude Code 客户端在 Claude->GPT 路径看到 `gpt-*`、`Codex`、`ChatGPT account`、auth file 或内部路由细节。
+- 本地黑盒复现 `claude-sonnet-4-6 -> gpt-5.3-codex` 上游不支持错误时，客户端只收到 `502 api_error "Upstream request failed"`，响应体不含 `gpt-5.3-codex`、`Codex`、`ChatGPT account`；服务端日志仍保留真实上游错误，便于管理员排查。
+- 本地正向黑盒确认：Claude-only key 通过 `/v1/messages` 请求 `claude-opus-4-7` 时不会被内部 `gpt-5.5` 映射误伤，客户端得到 Claude 形态 `200 OK`，返回 `model` 仍是 `claude-opus-4-7`。
+
+## 2026-06-02 生产数据本地恢复准备
+
+- 只读探测确认线上容器：`sub2api` 当前镜像 `zhangtaylor985/sub2api:main-6dc024d4`，`sub2api-postgres` 为 `postgres:18-alpine`，`sub2api-redis` 为 `redis:8-alpine`，容器 healthy。
+- 线上当前数据库名为 `sub2api`，数据库体量约 `1663 MB`。
+- 本地当前可用 Sub2API 沙盒依赖容器为 `sub2api-postgres-local` 和 `sub2api-redis-local`，Postgres 版本 `17.6`，本地库约 `15 MB`。
+- 版本风险：线上 PG18 逻辑备份恢复到本地 PG17 属于跨大版本向下恢复，不应作为默认路径。更安全的路径是在本地单独启动 PG18 恢复容器或升级本地恢复目标，再导入生产 dump。
+- 建议默认不覆盖现有本地沙盒库；先创建独立本地恢复库并保留本地旧库备份，确认可查询后再决定是否切换本地应用使用该库。
+- 执行结果：已创建独立本地恢复容器 `sub2api-postgres-restore-pg18`，镜像 `postgres:18-alpine`，监听 `127.0.0.1:5434`，数据目录 `deploy/postgres_data_prod_restore_pg18/`。
+- 本地 PG17 沙盒恢复前备份：`deploy/db_backups/local_pg17_sub2api_before_prod_restore_20260602T011651Z.dump`。
+- 生产 dump：`deploy/db_backups/prod_sub2api_pg18_20260602T011802Z.dump`，大小约 `62M`，SHA256 `4190943e33860b2e89ea0f767685fde1196f659be04c721b9895c13117e1e7f5`；dump 和 restore 日志同目录保存。
+- 恢复校验：本地 PG18 恢复库 `public` 表数 77；关键表行数 `users=83`、`api_keys=82`、`groups=8`、`accounts=12`、`account_groups=88`、`cliproxy_legacy_api_key_migration=82`，与线上对照一致。
+- `usage_logs` 本地恢复后为 1,041,547；线上恢复后即时对照为 1,041,565。差异 18 行来自生产在 dump 之后继续写入，符合在线只读逻辑备份预期。

@@ -240,6 +240,55 @@ func TestForwardAsAnthropic_MappedClaudeModelAcceptsChatUsageShape(t *testing.T)
 	require.Equal(t, "gpt-5.5", gjson.GetBytes(upstream.lastBody, "model").String())
 }
 
+func TestForwardAsAnthropic_UpstreamModelCapabilityErrorIsBlackBoxed(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"claude-opus-4-7","max_tokens":16,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamErr := `{"error":{"message":"The 'gpt-5.3-codex' model is not supported when using Codex with a ChatGPT account.","type":"invalid_request_error"}}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_capability"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamErr)),
+	}}
+
+	svc := &OpenAIGatewayService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          1,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+			"model_mapping": map[string]any{
+				"gpt-5.3-codex": "gpt-5.3-codex",
+			},
+		},
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.3-codex")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	respBody := rec.Body.String()
+	require.Equal(t, "api_error", gjson.Get(respBody, "error.type").String())
+	require.Equal(t, "Upstream request failed", gjson.Get(respBody, "error.message").String())
+	require.NotContains(t, respBody, "gpt-")
+	require.NotContains(t, respBody, "Codex")
+	require.NotContains(t, respBody, "ChatGPT")
+	require.NotContains(t, respBody, "chatgpt")
+}
+
 func TestForwardAsAnthropic_InjectsPromptCacheKeyForAPIKeyMessagesDispatch(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)

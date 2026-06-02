@@ -1393,6 +1393,7 @@ export default {
         limits: 'Quota / Rate Limits',
         usage: 'Usage',
         concurrency: 'Concurrency',
+        modelAccess: 'Model Family',
         status: 'Status',
         expiresAt: 'Expires At',
         createdAt: 'Created At',
@@ -1414,6 +1415,9 @@ export default {
         weeklyWindowHint: 'Changing this resets weekly rate-limit usage; the end time is always 7 days after the start',
         fiveHourLimit: '5-hour Limit USD',
         concurrency: 'Concurrency Limit',
+        modelAccess: 'Model family access',
+        allowClaudeFamily: 'Allow Claude',
+        allowGPTFamily: 'Allow GPT/OpenAI',
         expiresAt: 'Expires At',
         zeroUnlimited: '0 = unlimited',
         zeroInheritGroupLimit: '0 = inherit group limit',
@@ -1431,6 +1435,9 @@ export default {
         invalidWeeklyWindowStart: 'Invalid weekly window start time',
         invalidWeeklyWindowRange: 'Weekly window start must be within the past 7 days and not later than now'
       },
+      modelAccessClaude: 'Claude',
+      modelAccessGPT: 'GPT',
+      modelAccessNone: 'None',
       created: 'API key created',
       updated: 'API key policy updated'
     },

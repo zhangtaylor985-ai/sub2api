@@ -100,53 +100,55 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	concurrency        *int
-	addconcurrency     *int
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                  Op
+	typ                 string
+	id                  *int64
+	created_at          *time.Time
+	updated_at          *time.Time
+	deleted_at          *time.Time
+	key                 *string
+	name                *string
+	status              *string
+	concurrency         *int
+	addconcurrency      *int
+	allow_claude_family *bool
+	allow_gpt_family    *bool
+	last_used_at        *time.Time
+	ip_whitelist        *[]string
+	appendip_whitelist  []string
+	ip_blacklist        *[]string
+	appendip_blacklist  []string
+	quota               *float64
+	addquota            *float64
+	quota_used          *float64
+	addquota_used       *float64
+	expires_at          *time.Time
+	rate_limit_5h       *float64
+	addrate_limit_5h    *float64
+	rate_limit_1d       *float64
+	addrate_limit_1d    *float64
+	rate_limit_7d       *float64
+	addrate_limit_7d    *float64
+	usage_5h            *float64
+	addusage_5h         *float64
+	usage_1d            *float64
+	addusage_1d         *float64
+	usage_7d            *float64
+	addusage_7d         *float64
+	window_5h_start     *time.Time
+	window_1d_start     *time.Time
+	window_7d_start     *time.Time
+	clearedFields       map[string]struct{}
+	user                *int64
+	cleareduser         bool
+	group               *int64
+	clearedgroup        bool
+	usage_logs          map[int64]struct{}
+	removedusage_logs   map[int64]struct{}
+	clearedusage_logs   bool
+	done                bool
+	oldValue            func(context.Context) (*APIKey, error)
+	predicates          []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -615,6 +617,78 @@ func (m *APIKeyMutation) AddedConcurrency() (r int, exists bool) {
 func (m *APIKeyMutation) ResetConcurrency() {
 	m.concurrency = nil
 	m.addconcurrency = nil
+}
+
+// SetAllowClaudeFamily sets the "allow_claude_family" field.
+func (m *APIKeyMutation) SetAllowClaudeFamily(b bool) {
+	m.allow_claude_family = &b
+}
+
+// AllowClaudeFamily returns the value of the "allow_claude_family" field in the mutation.
+func (m *APIKeyMutation) AllowClaudeFamily() (r bool, exists bool) {
+	v := m.allow_claude_family
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowClaudeFamily returns the old "allow_claude_family" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldAllowClaudeFamily(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowClaudeFamily is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowClaudeFamily requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowClaudeFamily: %w", err)
+	}
+	return oldValue.AllowClaudeFamily, nil
+}
+
+// ResetAllowClaudeFamily resets all changes to the "allow_claude_family" field.
+func (m *APIKeyMutation) ResetAllowClaudeFamily() {
+	m.allow_claude_family = nil
+}
+
+// SetAllowGptFamily sets the "allow_gpt_family" field.
+func (m *APIKeyMutation) SetAllowGptFamily(b bool) {
+	m.allow_gpt_family = &b
+}
+
+// AllowGptFamily returns the value of the "allow_gpt_family" field in the mutation.
+func (m *APIKeyMutation) AllowGptFamily() (r bool, exists bool) {
+	v := m.allow_gpt_family
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowGptFamily returns the old "allow_gpt_family" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldAllowGptFamily(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowGptFamily is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowGptFamily requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowGptFamily: %w", err)
+	}
+	return oldValue.AllowGptFamily, nil
+}
+
+// ResetAllowGptFamily resets all changes to the "allow_gpt_family" field.
+func (m *APIKeyMutation) ResetAllowGptFamily() {
+	m.allow_gpt_family = nil
 }
 
 // SetLastUsedAt sets the "last_used_at" field.
@@ -1582,7 +1656,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1609,6 +1683,12 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.concurrency != nil {
 		fields = append(fields, apikey.FieldConcurrency)
+	}
+	if m.allow_claude_family != nil {
+		fields = append(fields, apikey.FieldAllowClaudeFamily)
+	}
+	if m.allow_gpt_family != nil {
+		fields = append(fields, apikey.FieldAllowGptFamily)
 	}
 	if m.last_used_at != nil {
 		fields = append(fields, apikey.FieldLastUsedAt)
@@ -1681,6 +1761,10 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case apikey.FieldConcurrency:
 		return m.Concurrency()
+	case apikey.FieldAllowClaudeFamily:
+		return m.AllowClaudeFamily()
+	case apikey.FieldAllowGptFamily:
+		return m.AllowGptFamily()
 	case apikey.FieldLastUsedAt:
 		return m.LastUsedAt()
 	case apikey.FieldIPWhitelist:
@@ -1738,6 +1822,10 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldStatus(ctx)
 	case apikey.FieldConcurrency:
 		return m.OldConcurrency(ctx)
+	case apikey.FieldAllowClaudeFamily:
+		return m.OldAllowClaudeFamily(ctx)
+	case apikey.FieldAllowGptFamily:
+		return m.OldAllowGptFamily(ctx)
 	case apikey.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
 	case apikey.FieldIPWhitelist:
@@ -1839,6 +1927,20 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetConcurrency(v)
+		return nil
+	case apikey.FieldAllowClaudeFamily:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowClaudeFamily(v)
+		return nil
+	case apikey.FieldAllowGptFamily:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowGptFamily(v)
 		return nil
 	case apikey.FieldLastUsedAt:
 		v, ok := value.(time.Time)
@@ -2188,6 +2290,12 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldConcurrency:
 		m.ResetConcurrency()
+		return nil
+	case apikey.FieldAllowClaudeFamily:
+		m.ResetAllowClaudeFamily()
+		return nil
+	case apikey.FieldAllowGptFamily:
+		m.ResetAllowGptFamily()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ResetLastUsedAt()

@@ -25,6 +25,8 @@ export interface AdminUpdateApiKeyPolicyPayload {
   rate_limit_7d?: number
   window_7d_start?: string
   reset_rate_limit_usage?: boolean
+  allow_claude_family?: boolean
+  allow_gpt_family?: boolean
 }
 
 export interface AdminAPIKeyFilters {
@@ -48,6 +50,8 @@ export interface AdminCreateAPIKeyPayload {
   rate_limit_1d?: number
   rate_limit_7d?: number
   concurrency?: number
+  allow_claude_family?: boolean
+  allow_gpt_family?: boolean
 }
 
 export async function listApiKeys(

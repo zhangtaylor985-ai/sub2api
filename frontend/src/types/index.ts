@@ -567,6 +567,8 @@ export interface ApiKey {
   quota: number // Quota limit in USD (0 = unlimited)
   quota_used: number // Used quota amount in USD
   concurrency: number // API key concurrency override (0 = inherit group/user)
+  allow_claude_family: boolean
+  allow_gpt_family: boolean
   expires_at: string | null // Expiration time (null = never expires)
   created_at: string
   updated_at: string
@@ -601,6 +603,8 @@ export interface CreateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   status?: 'active' | 'inactive'
+  allow_claude_family?: boolean
+  allow_gpt_family?: boolean
 }
 
 export interface UpdateApiKeyRequest {
@@ -618,6 +622,8 @@ export interface UpdateApiKeyRequest {
   rate_limit_7d?: number
   window_7d_start?: string | null
   reset_rate_limit_usage?: boolean
+  allow_claude_family?: boolean
+  allow_gpt_family?: boolean
 }
 
 export interface CreateGroupRequest {

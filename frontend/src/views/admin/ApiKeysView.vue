@@ -125,6 +125,12 @@
             </span>
           </template>
 
+          <template #cell-model_access="{ row }">
+            <span class="text-xs text-gray-600 dark:text-dark-300">
+              {{ formatModelAccess(row) }}
+            </span>
+          </template>
+
           <template #cell-status="{ value }">
             <span :class="['badge', statusClass(value)]">{{ value }}</span>
           </template>
@@ -239,6 +245,19 @@
             <span class="input-label">{{ t('admin.apiKeys.form.expiresAt') }}</span>
             <input v-model="createForm.expires_at_local" type="datetime-local" class="input" />
           </label>
+          <div class="space-y-2 md:col-span-2">
+            <span class="input-label">{{ t('admin.apiKeys.form.modelAccess') }}</span>
+            <div class="flex flex-wrap gap-4 text-sm text-gray-700 dark:text-dark-200">
+              <label class="inline-flex items-center gap-2">
+                <input v-model="createForm.allow_claude_family" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>{{ t('admin.apiKeys.form.allowClaudeFamily') }}</span>
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input v-model="createForm.allow_gpt_family" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>{{ t('admin.apiKeys.form.allowGPTFamily') }}</span>
+              </label>
+            </div>
+          </div>
         </div>
       </form>
       <template #footer>
@@ -318,6 +337,19 @@
               </template>
             </span>
           </label>
+          <div class="space-y-2 md:col-span-2">
+            <span class="input-label">{{ t('admin.apiKeys.form.modelAccess') }}</span>
+            <div class="flex flex-wrap gap-4 text-sm text-gray-700 dark:text-dark-200">
+              <label class="inline-flex items-center gap-2">
+                <input v-model="editForm.allow_claude_family" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>{{ t('admin.apiKeys.form.allowClaudeFamily') }}</span>
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input v-model="editForm.allow_gpt_family" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>{{ t('admin.apiKeys.form.allowGPTFamily') }}</span>
+              </label>
+            </div>
+          </div>
         </div>
         <div class="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-dark-300">
           <label class="inline-flex items-center gap-2">
@@ -407,6 +439,8 @@ const defaultCreateForm = () => ({
   rate_limit_1d: 0,
   rate_limit_7d: 0,
   concurrency: 0,
+  allow_claude_family: true,
+  allow_gpt_family: true,
   expires_at_local: ''
 })
 
@@ -420,6 +454,8 @@ const editForm = reactive({
   rate_limit_1d: 0,
   rate_limit_7d: 0,
   concurrency: 0,
+  allow_claude_family: true,
+  allow_gpt_family: true,
   expires_at_local: '',
   window_7d_start_local: '',
   clear_expires_at: false,
@@ -458,6 +494,7 @@ const columns = computed<Column[]>(() => [
   { key: 'limits', label: t('admin.apiKeys.columns.limits') },
   { key: 'usage', label: t('admin.apiKeys.columns.usage') },
   { key: 'concurrency', label: t('admin.apiKeys.columns.concurrency'), sortable: true },
+  { key: 'model_access', label: t('admin.apiKeys.columns.modelAccess') },
   { key: 'status', label: t('admin.apiKeys.columns.status'), sortable: true },
   { key: 'expires_at', label: t('admin.apiKeys.columns.expiresAt'), sortable: true },
   { key: 'created_at', label: t('admin.apiKeys.columns.createdAt'), sortable: true },
@@ -576,6 +613,13 @@ const formatConcurrency = (key: ApiKey) => {
   return t('admin.apiKeys.inherited')
 }
 
+const formatModelAccess = (key: ApiKey) => {
+  const parts: string[] = []
+  if (key.allow_claude_family) parts.push(t('admin.apiKeys.modelAccessClaude'))
+  if (key.allow_gpt_family) parts.push(t('admin.apiKeys.modelAccessGPT'))
+  return parts.length > 0 ? parts.join(' / ') : t('admin.apiKeys.modelAccessNone')
+}
+
 const statusClass = (status: string) => {
   if (status === 'active') return 'badge-success'
   if (status === 'inactive') return 'badge-gray'
@@ -680,6 +724,8 @@ const openEditDialog = (key: ApiKey) => {
   editForm.rate_limit_1d = key.rate_limit_1d || 0
   editForm.rate_limit_7d = key.rate_limit_7d || 0
   editForm.concurrency = key.concurrency || 0
+  editForm.allow_claude_family = key.allow_claude_family !== false
+  editForm.allow_gpt_family = key.allow_gpt_family !== false
   editForm.expires_at_local = toDateTimeLocal(key.expires_at)
   editForm.window_7d_start_local = toDateTimeLocal(key.window_7d_start)
   editForm.clear_expires_at = false
@@ -712,6 +758,8 @@ const handleCreate = async () => {
       rate_limit_1d: numericValue(createForm.rate_limit_1d),
       rate_limit_7d: numericValue(createForm.rate_limit_7d),
       concurrency: numericValue(createForm.concurrency),
+      allow_claude_family: createForm.allow_claude_family,
+      allow_gpt_family: createForm.allow_gpt_family,
       expires_at: expiresAt || undefined
     })
     apiKeys.value.unshift(result.api_key)
@@ -744,6 +792,8 @@ const handleUpdate = async () => {
       rate_limit_1d: numericValue(editForm.rate_limit_1d),
       rate_limit_7d: numericValue(editForm.rate_limit_7d),
       concurrency: numericValue(editForm.concurrency),
+      allow_claude_family: editForm.allow_claude_family,
+      allow_gpt_family: editForm.allow_gpt_family,
       expires_at: editForm.clear_expires_at || editForm.expires_at_local ? expiresAt : undefined,
       window_7d_start: weeklyWindowStart,
       reset_quota: editForm.reset_quota,

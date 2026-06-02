@@ -246,3 +246,49 @@
   - canary sticky 验证：三轮 `claude-opus-4-7` 请求 body 首轮内容不同但 metadata 相同，均 HTTP 200，usage log 全部命中生产 `account_id=2`，且 `claude-opus-4-7→gpt-5.5`。
   - 正式上线：Compose 备份 `/root/cliapp/sub2api/docker-compose.yml.bak.20260601T083344Z`，正式 app 容器切到 `zhangtaylor985/sub2api:main-d1d5efb2`；Postgres/Redis 未重启；canary 已清理。
   - 正式验证：Docker health healthy，宿主机和公开 `/health` ok；两轮 production direct `/v1/messages` body 变化 sticky smoke 均 HTTP 200，usage log 全部命中 `account_id=11`，且 `claude-opus-4-7→gpt-5.5`；近 5 分钟日志未见 panic/fatal/migration failed/cannot allocate/auth failed。
+- 2026-06-01：回应 session 粘性疑问并复核边界：
+  - 确认 Sub2API 原本已有一小时 `session_hash -> account_id` 缓存；本次没有新增第二套会话缓存，也不是把 CLIProxyAPI 的 session 系统搬进来。
+  - 本次修正的实际内容是 OpenAI `/v1/messages` dispatch 的 `session_hash` 输入来源：先用显式 session，再用 Claude `metadata.user_id`，最后才用 content fallback；这样已有的一小时缓存才能在 Claude Code compact/resume 改写 body 时仍命中同一会话。
+  - 该能力属于 Claude -> GPT 稳定性目标的一部分，但后续表述应避免说成“新增会话缓存”，更准确说法是“OpenAI dispatch session hash 来源修正”。
+- 2026-06-01：确认 API Key 模型族限制迁移状态：
+  - 线上当前 Sub2API app 容器镜像为 `zhangtaylor985/sub2api:main-3f0dad5d`，Docker health healthy；本次确认以该线上实际状态为准。
+  - 旧 CLIProxyAPI 的 Claude-only / GPT-only 是按用户请求的模型命名空间判断，不按内部路由后的上游模型判断；Claude-only key 仍可黑盒地内部 Claude -> GPT。
+  - 旧生产策略快照包含 Claude-only 293、GPT-only 6、both 80；Sub2API 已迁移的有效 key 中，audit 表保留了 Claude-only 57、GPT-only 2、both 23 的旧策略。
+  - 当前 Sub2API 只把旧 `policy_json` 保存在 `cliproxy_legacy_api_key_migration.source_policy_json`，没有迁入 `api_keys` 可执行字段，也没有在 handler/middleware 中执行 key 级 Claude/GPT family 限制。
+  - 线上 `channels` / `channel_groups` / `channel_model_pricing` 为空，现有 channel 模型限制机制不能承担本次 per-key family policy。
+  - 结论：这是尚未迁移的生产策略缺口。下一步应新增 key 级模型族策略与迁移脚本，并保证错误响应对用户黑盒，不暴露内部 GPT/Codex 路由。
+- 2026-06-02：开始生产数据本地恢复准备：
+  - 已确认工作区有既有未提交修改，本次只追加 planning 记录，不回滚或覆盖。
+  - 只读确认线上 `sub2api-postgres` 为 Postgres 18，当前数据库约 1663 MB；线上 app/Postgres/Redis 容器 healthy。
+  - 本地当前运行 `sub2api-postgres-local` 为 Postgres 17.6，库约 15 MB；直接把 PG18 dump 覆盖恢复到 PG17 不作为默认方案。
+  - 一次远端 SQL 工具版本查询因 shell 引号错误失败，无写入、无生产影响；后续改用简单容器内命令完成版本确认。
+  - 推荐下一步：用户确认后，创建独立本地 PG18 恢复容器和本地备份目录，从线上用 `pg_dump -Fc` 生成压缩逻辑备份，通过 SSH 流式落盘到本地，再 `pg_restore --clean --if-exists --no-owner --no-privileges` 导入独立恢复库并做行数/健康校验。
+- 2026-06-02：完成生产数据本地恢复：
+  - 本地 PG17 沙盒已先行备份到 `deploy/db_backups/local_pg17_sub2api_before_prod_restore_20260602T011651Z.dump`。
+  - 已拉取 `postgres:18-alpine` 并启动独立恢复容器 `sub2api-postgres-restore-pg18`，监听 `127.0.0.1:5434`，不覆盖现有 `sub2api-postgres-local`。
+  - 已从线上 `sub2api-postgres` 通过 `pg_dump -Fc --no-owner --no-acl` 只读流式导出到 `deploy/db_backups/prod_sub2api_pg18_20260602T011802Z.dump`；dump 文件权限为 600。
+  - 已用 `pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error` 导入本地 PG18 恢复库，restore 命令退出 0。
+  - 校验通过：本地恢复库 `public` 表数 77；`users=83`、`api_keys=82`、`groups=8`、`accounts=12`、`account_groups=88`、`cliproxy_legacy_api_key_migration=82` 与线上一致。
+  - `usage_logs` 本地为 1,041,547，线上即时对照为 1,041,565；差异 18 行是 dump 后生产继续写入，符合预期。
+  - 已补充 `deploy/.gitignore`，忽略 `db_backups/` 和 `postgres_data_prod_restore_pg18/`，避免本地数据库和敏感 dump 文件进入 Git。
+- 2026-06-02：开始 API Key 模型族策略与 Claude->GPT 错误黑盒实现：
+  - 设计边界：`api_keys` 新增 `allow_claude_family` / `allow_gpt_family`，认证快照版本升级，gateway 入口按客户端请求模型族校验。
+  - Claude-only 只阻断用户直接请求 GPT/OpenAI family；不会因为内部 Claude -> GPT 上游模型是 GPT 而阻断 `/v1/messages` Claude 请求。
+  - Claude->GPT 上游错误脱敏只作用于 OpenAI `/v1/messages` dispatch 的 Anthropic 响应格式，OpenAI 原生路径仍保持现有错误处理策略。
+- 2026-06-02：完成本地实现与自动化回归：
+  - 新增 `backend/migrations/144_add_api_key_model_family_policy.sql`，并同步 `backend/manual_migrations/migrate_cliproxy_admin_api_keys.sql`，从旧 `excluded-models` 回填 allow-family 字段。
+  - 新增 service/handler 模型族策略 helper；gateway 入口已覆盖 Claude `/v1/messages`、OpenAI `/v1/messages` dispatch、`/v1/responses`、`/v1/chat/completions`、Images。
+  - 管理端 API/DTO/前端已支持查看、创建和编辑 `allow_claude_family` / `allow_gpt_family`。
+  - Claude->GPT 上游错误脱敏已加单测，覆盖上游返回 `gpt-5.3-codex` / `Codex` / `ChatGPT account` 时客户端响应不泄漏。
+  - 本地 PG18 生产恢复库执行新迁移通过，回填结果 `both=23`、`claude_only=57`、`gpt_only=2`；幂等复跑通过。
+  - 定向测试通过：service/handler/DTO/repository/migrations 相关测试均通过。
+  - 后端全量通过：`go test ./...`。
+  - 前端通过：`corepack pnpm@9.15.9 run lint:check`、`corepack pnpm@9.15.9 run typecheck`、`corepack pnpm@9.15.9 run build`；仅保留既有 Vite dynamic import/chunk size/Browserslist 警告。
+- 2026-06-02：完成本地 HTTP 黑盒验证：
+  - 本地 `sub2api-local` 已重编译并重启，`127.0.0.1:8080/health` 返回 ok；本地 `sub2api-postgres-local` 已执行新 migration。
+  - 创建本轮专用测试 key：Claude-only、GPT-only、both，均绑定本地 OpenAI dispatch 分组 `Local Codex GPT`。
+  - Claude-only 直接请求 `/v1/chat/completions` 的 `gpt-5.5` 返回 `403 permission_error "Model access denied"`。
+  - Claude-only 即使在 OpenAI 形态 `/v1/chat/completions` 请求 `claude-opus-4-7`，也返回同样黑盒 403，确认 OpenAI endpoint 被按 key 策略阻断。
+  - GPT-only 请求 Claude `/v1/messages` 的 `claude-opus-4-7` 返回 Anthropic 形态 `403 permission_error "Model access denied"`。
+  - both key 请求 `claude-sonnet-4-6` 复现上游 `gpt-5.3-codex` / Codex / ChatGPT account 错误时，客户端只收到 `502 api_error "Upstream request failed"`；服务端日志保留真实上游错误。
+  - Claude-only key 请求 `/v1/messages` 的 `claude-opus-4-7` 正向通过，返回 `200 OK` 和 `OK`，客户端 `model` 保持 `claude-opus-4-7`，未因内部 `gpt-5.5` 映射被拒绝。

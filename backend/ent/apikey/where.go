@@ -100,6 +100,16 @@ func Concurrency(v int) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldConcurrency, v))
 }
 
+// AllowClaudeFamily applies equality check predicate on the "allow_claude_family" field. It's identical to AllowClaudeFamilyEQ.
+func AllowClaudeFamily(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldAllowClaudeFamily, v))
+}
+
+// AllowGptFamily applies equality check predicate on the "allow_gpt_family" field. It's identical to AllowGptFamilyEQ.
+func AllowGptFamily(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldAllowGptFamily, v))
+}
+
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
 func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
@@ -578,6 +588,26 @@ func ConcurrencyLT(v int) predicate.APIKey {
 // ConcurrencyLTE applies the LTE predicate on the "concurrency" field.
 func ConcurrencyLTE(v int) predicate.APIKey {
 	return predicate.APIKey(sql.FieldLTE(FieldConcurrency, v))
+}
+
+// AllowClaudeFamilyEQ applies the EQ predicate on the "allow_claude_family" field.
+func AllowClaudeFamilyEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldAllowClaudeFamily, v))
+}
+
+// AllowClaudeFamilyNEQ applies the NEQ predicate on the "allow_claude_family" field.
+func AllowClaudeFamilyNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldAllowClaudeFamily, v))
+}
+
+// AllowGptFamilyEQ applies the EQ predicate on the "allow_gpt_family" field.
+func AllowGptFamilyEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldAllowGptFamily, v))
+}
+
+// AllowGptFamilyNEQ applies the NEQ predicate on the "allow_gpt_family" field.
+func AllowGptFamilyNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldAllowGptFamily, v))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.

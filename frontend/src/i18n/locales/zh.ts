@@ -1397,6 +1397,7 @@ export default {
         limits: '额度 / 限速',
         usage: '用量',
         concurrency: '并发',
+        modelAccess: '模型族',
         status: '状态',
         expiresAt: '过期时间',
         createdAt: '创建时间',
@@ -1418,6 +1419,9 @@ export default {
         weeklyWindowHint: '修改后会重置周限额用量；结束时间固定为起点后 7 天',
         fiveHourLimit: '5 小时限额 USD',
         concurrency: '并发上限',
+        modelAccess: '模型族权限',
+        allowClaudeFamily: '允许 Claude',
+        allowGPTFamily: '允许 GPT/OpenAI',
         expiresAt: '过期时间',
         zeroUnlimited: '0 表示不限',
         zeroInheritGroupLimit: '0 表示继承分组限额',
@@ -1435,6 +1439,9 @@ export default {
         invalidWeeklyWindowStart: '周限额周期起点格式无效',
         invalidWeeklyWindowRange: '周限额周期起点必须在过去 7 天内，且不能晚于当前时间'
       },
+      modelAccessClaude: 'Claude',
+      modelAccessGPT: 'GPT',
+      modelAccessNone: '未开放',
       created: 'API Key 已创建',
       updated: 'API Key 策略已更新'
     },

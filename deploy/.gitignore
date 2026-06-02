@@ -8,7 +8,9 @@ postgres_data/
 redis_data/
 data_local_host/
 postgres_data_pg17_local/
+postgres_data_prod_restore_pg18/
 redis_data_local/
+db_backups/
 
 # Environment configuration (contains sensitive information)
 .env

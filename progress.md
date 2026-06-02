@@ -292,3 +292,14 @@
   - GPT-only 请求 Claude `/v1/messages` 的 `claude-opus-4-7` 返回 Anthropic 形态 `403 permission_error "Model access denied"`。
   - both key 请求 `claude-sonnet-4-6` 复现上游 `gpt-5.3-codex` / Codex / ChatGPT account 错误时，客户端只收到 `502 api_error "Upstream request failed"`；服务端日志保留真实上游错误。
   - Claude-only key 请求 `/v1/messages` 的 `claude-opus-4-7` 正向通过，返回 `200 OK` 和 `OK`，客户端 `model` 保持 `claude-opus-4-7`，未因内部 `gpt-5.5` 映射被拒绝。
+- 2026-06-02：完成生产上线 `32ddc96c`：
+  - 本地提交并推送 `32ddc96c feat(api-keys): enforce model family access` 到 `origin/main`。
+  - 生产 `/root/cliapp/sub2api-src` 已 fast-forward 到 `32ddc96c`；Compose 备份为 `/root/cliapp/sub2api/docker-compose.yml.bak.20260602T044729Z`。
+  - 生产执行 `backend/migrations/144_add_api_key_model_family_policy.sql` 通过，初始回填分布为 `claude_only=57`、`gpt_only=2`、`both=23`。
+  - 按用户要求将 3 把指定 API key 调整为支持 GPT family，并清理 auth snapshot；最终有效 key 分布为 `claude_only=55`、`gpt_only=2`、`both=25`。
+  - 构建镜像 `zhangtaylor985/sub2api:main-32ddc96c` 成功。
+  - canary `sub2api-canary-32ddc96c` 绑定 `127.0.0.1:18080`，health 通过；3 把指定 key 的 `/v1/chat/completions` `gpt-5.5` smoke 均 `200 OK`；`claude-opus-4-7` `/v1/messages` smoke `200 OK`；`claude-sonnet-4-6` 上游不支持错误返回 `502 api_error "Upstream request failed"` 且客户端侧 `leak=false`。
+  - 正式容器已切到 `zhangtaylor985/sub2api:main-32ddc96c`，Postgres/Redis 未重启；Docker health healthy，宿主机与公开 `/health` 均通过。
+  - 正式生产 smoke 通过：3 把指定 key 的 GPT 请求均 `200 OK`；Claude->GPT Opus 正向 `200 OK`；Sonnet 上游错误黑盒 `leak=false`。
+  - canary 和临时 env 文件已清理。
+  - 观察说明：生产日志仍保留上游真实错误，例如 `gpt-5.3-codex` / Codex / ChatGPT account，用于管理员排查；客户端响应已验证不泄漏。

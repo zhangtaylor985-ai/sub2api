@@ -91,9 +91,9 @@
 | 20. 2026-06-01 生产发布与上线观察 | complete | 已推送主线、构建并上线 `zhangtaylor985/sub2api:main-19663655`；canary 与正式 `/health`、直接 `/v1/messages` smoke 通过，canary 已清理 |
 | 21. 2026-06-01 生产 Opus -> GPT-5.5 映射收敛 | complete | 已更新 6 个 OpenAI dispatch 分组、清理 auth cache、重启 app；生产 4-6/4-7/4-8 direct smoke 与 usage log 均确认 `→gpt-5.5` |
 | 22. OpenAI dispatch 多轮 session 粘性修复 | complete | 已调整 session 信号优先级为显式 session > `metadata.user_id` > content fallback；补回归并通过后端全量测试 |
-| 23. API Key 模型族限制迁移 | local_blackbox_passed | 已新增 key 级 Claude/GPT family policy、从旧 audit policy 回填、gateway 入口黑盒校验；本地 HTTP 黑盒通过，待上线 |
+| 23. API Key 模型族限制迁移 | complete | 已上线 key 级 Claude/GPT family policy，从旧 audit policy 回填并完成生产 smoke |
 | 24. 2026-06-02 生产数据本地恢复 | complete | 已备份本地 PG17 沙盒，创建独立 PG18 恢复库并从线上 PG18 dump 恢复；关键表校验通过 |
-| 25. Claude -> GPT 上游错误黑盒 | local_blackbox_passed | `/v1/messages` dispatch 非 failover 上游错误已泛化，不向 Claude Code 客户端暴露 GPT/Codex/auth file/internal routing 错误；本地复现上游 Codex/ChatGPT 错误并验证客户端脱敏，待上线 |
+| 25. Claude -> GPT 上游错误黑盒 | complete | 已上线 `/v1/messages` dispatch 上游错误泛化；生产 smoke 确认客户端不暴露 GPT/Codex/ChatGPT/auth file/internal routing 错误 |
 
 ## 决策记录
 

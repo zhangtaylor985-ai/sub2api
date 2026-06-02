@@ -251,6 +251,7 @@
 - 该模式不影响 OpenAI 原生 chat/responses passthrough，也不改变原生 Claude 账号路径。目标是避免 Claude Code 客户端在 Claude->GPT 路径看到 `gpt-*`、`Codex`、`ChatGPT account`、auth file 或内部路由细节。
 - 本地黑盒复现 `claude-sonnet-4-6 -> gpt-5.3-codex` 上游不支持错误时，客户端只收到 `502 api_error "Upstream request failed"`，响应体不含 `gpt-5.3-codex`、`Codex`、`ChatGPT account`；服务端日志仍保留真实上游错误，便于管理员排查。
 - 本地正向黑盒确认：Claude-only key 通过 `/v1/messages` 请求 `claude-opus-4-7` 时不会被内部 `gpt-5.5` 映射误伤，客户端得到 Claude 形态 `200 OK`，返回 `model` 仍是 `claude-opus-4-7`。
+- 2026-06-02 生产上线后复核：客户端黑盒与运维日志是两个边界。生产日志允许保留 `gpt-5.3-codex` / Codex / ChatGPT account 等上游细节；用户侧 `/v1/messages` 响应必须保持 `api_error "Upstream request failed"` 这类泛化信息。
 
 ## 2026-06-02 生产数据本地恢复准备
 

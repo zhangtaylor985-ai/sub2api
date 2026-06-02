@@ -274,3 +274,12 @@
 - 生产 dump：`deploy/db_backups/prod_sub2api_pg18_20260602T011802Z.dump`，大小约 `62M`，SHA256 `4190943e33860b2e89ea0f767685fde1196f659be04c721b9895c13117e1e7f5`；dump 和 restore 日志同目录保存。
 - 恢复校验：本地 PG18 恢复库 `public` 表数 77；关键表行数 `users=83`、`api_keys=82`、`groups=8`、`accounts=12`、`account_groups=88`、`cliproxy_legacy_api_key_migration=82`，与线上对照一致。
 - `usage_logs` 本地恢复后为 1,041,547；线上恢复后即时对照为 1,041,565。差异 18 行来自生产在 dump 之后继续写入，符合在线只读逻辑备份预期。
+
+## 2026-06-02 生产错误可观测性与 Request ID
+
+- 用户截图中的 `Claude's response exceeded the 64000 output token maximum... CLAUDE_CODE_MAX_OUTPUT_TOKENS` 是 Claude Code 客户端本地输出上限报错口径；线上 Sub2API 最近 2 小时日志未检索到该原文或 `CLAUDE_CODE_MAX_OUTPUT_TOKENS`，因此不能按“Sub2API 上游错误原样返回”处理。
+- 线上 Sub2API 当前日志体系并不为空：全局 `RequestLogger` 会生成/保留 `X-Request-ID`，access log、内容审核日志、ops error log、ops system log 均能按该 ID 关联；公网与容器本地响应头都已验证返回 `X-Request-ID`。
+- 线上日志落点有三层：Docker stdout/stderr（`docker logs sub2api`）、容器文件 `/app/data/logs/sub2api.log` 及轮转压缩文件、Postgres `ops_system_logs` / `ops_error_logs`。当前日志级别按代码默认和实际输出判断为 `info`，日志同时输出 stdout 与文件，轮转默认 100MB/7 天/压缩。
+- 当前缺口：Claude Code UI 通常不展示响应头；用户只给报错截图时，未必能拿到 `X-Request-ID`。因此需要在错误 JSON/SSE 体中也带同一个网关 `request_id`，但不能把 GPT/Codex/auth file 等内部路由细节写进用户侧错误 message。
+- `usage_logs.request_id` 常见值如 `generated:...`，属于用量/上游请求记录口径，不等同于 HTTP 网关 `X-Request-ID`。排查一次用户 HTTP 请求优先用网关 `request_id` 查 `ops_error_logs`、`ops_system_logs` 和文件日志；用量表作为补充证据。
+- 生产最近可观测到的真实 502 样本包含 `request_id`、`client_request_id`、`api_key_id`、`account_id`、`model`、`body_bytes` 和泛化错误；文件日志保留更具体的服务端错误，例如上游 context window 超限。客户端仍应只看到黑盒错误。

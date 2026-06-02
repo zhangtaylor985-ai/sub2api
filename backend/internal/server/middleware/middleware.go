@@ -6,6 +6,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestid"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -57,8 +58,9 @@ func GetForcePlatformFromContext(c *gin.Context) (string, bool) {
 
 // ErrorResponse 标准错误响应结构
 type ErrorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // NewErrorResponse 创建错误响应
@@ -71,7 +73,11 @@ func NewErrorResponse(code, message string) ErrorResponse {
 
 // AbortWithError 中断请求并返回JSON错误
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
-	c.JSON(statusCode, NewErrorResponse(code, message))
+	resp := NewErrorResponse(code, message)
+	if c != nil {
+		resp.RequestID = requestid.FromRequest(c.Request)
+	}
+	c.JSON(statusCode, resp)
 	c.Abort()
 }
 
@@ -84,21 +90,29 @@ type GatewayErrorWriter func(c *gin.Context, status int, message string)
 
 // AnthropicErrorWriter 按 Anthropic API 规范输出错误
 func AnthropicErrorWriter(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{
+	body := gin.H{
 		"type":  "error",
 		"error": gin.H{"type": "permission_error", "message": message},
-	})
+	}
+	if rid := requestid.FromRequest(c.Request); rid != "" {
+		body["request_id"] = rid
+	}
+	c.JSON(status, body)
 }
 
 // GoogleErrorWriter 按 Google API 规范输出错误
 func GoogleErrorWriter(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{
+	body := gin.H{
 		"error": gin.H{
 			"code":    status,
 			"message": message,
 			"status":  googleapi.HTTPStatusToGoogleStatus(status),
 		},
-	})
+	}
+	if rid := requestid.FromRequest(c.Request); rid != "" {
+		body["request_id"] = rid
+	}
+	c.JSON(status, body)
 }
 
 // RequireGroupAssignment 检查 API Key 是否已分配到分组，

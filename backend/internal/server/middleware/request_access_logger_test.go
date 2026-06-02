@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 type testLogSink struct {
@@ -109,6 +110,58 @@ func TestRequestLogger_KeepIncomingRequestID(t *testing.T) {
 	}
 	if got := w.Header().Get(requestIDHeader); got != "rid-fixed" {
 		t.Fatalf("header=%q, want rid-fixed", got)
+	}
+}
+
+func TestGatewayErrorWritersIncludeRequestID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name      string
+		writeErr  GatewayErrorWriter
+		wantPath  string
+		wantValue string
+	}{
+		{
+			name:      "abort with generic error",
+			writeErr:  func(c *gin.Context, status int, message string) { AbortWithError(c, status, "DENIED", message) },
+			wantPath:  "request_id",
+			wantValue: "rid-writer",
+		},
+		{
+			name:      "anthropic error",
+			writeErr:  AnthropicErrorWriter,
+			wantPath:  "request_id",
+			wantValue: "rid-writer",
+		},
+		{
+			name:      "google error",
+			writeErr:  GoogleErrorWriter,
+			wantPath:  "request_id",
+			wantValue: "rid-writer",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := gin.New()
+			r.Use(RequestLogger())
+			r.GET("/t", func(c *gin.Context) {
+				tt.writeErr(c, http.StatusForbidden, "denied")
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/t", nil)
+			req.Header.Set(requestIDHeader, "rid-writer")
+			r.ServeHTTP(w, req)
+
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("status=%d", w.Code)
+			}
+			if got := gjson.GetBytes(w.Body.Bytes(), tt.wantPath).String(); got != tt.wantValue {
+				t.Fatalf("%s=%q, want %q; body=%s", tt.wantPath, got, tt.wantValue, w.Body.String())
+			}
+		})
 	}
 }
 

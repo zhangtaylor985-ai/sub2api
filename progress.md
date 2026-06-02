@@ -327,3 +327,15 @@
   - 正式 smoke 通过：`claude-opus-4-7`、`claude-sonnet-4-6` 均 HTTP 200，usage log 分别确认 `→gpt-5.4`。
   - canary 和临时 env 文件已清理。
   - 观察项：最近正式日志仍有其他 API Key 的 Sonnet 请求继承分组映射到 `gpt-5.3-codex` 后上游报错，以及个别并发槽等待超时；这些不是本次 key 级覆盖导致，后续可单独治理。
+- 2026-06-02：开始生产错误可观测性排查：
+  - 用户提供 Claude Code 报错截图：`Claude's response exceeded the 64000 output token maximum... CLAUDE_CODE_MAX_OUTPUT_TOKENS`。
+  - 初步判断该报错很可能来自 Claude Code 客户端本地输出上限，而不是 Sub2API 上游模型错误；需要用线上日志与 request id 能力确认。
+  - 本轮目标：确认生产日志系统、当前日志级别/输出位置、客户端是否可拿到 Request ID，以及后续如何做到“用户报错即可快速查服务端日志”。
+  - 线上只读确认：当前 app 容器 `sub2api` healthy，镜像 `zhangtaylor985/sub2api:main-85cd117b`；运行环境未设置 `LOG_LEVEL`，结合代码默认和实际输出，当前日志级别为 `info`。
+  - 线上最近 2 小时日志未检索到 `CLAUDE_CODE_MAX_OUTPUT_TOKENS` 或 `64000 output token` 原文；该截图更符合 Claude Code 客户端本地输出上限报错。
+  - 线上日志落点确认：`docker logs sub2api`、`/app/data/logs/sub2api.log` 及轮转压缩日志、PG `ops_system_logs` / `ops_error_logs`。
+  - 生产公网与本地响应头确认已有 `X-Request-ID`；调用方传入 `X-Request-ID` 时会保留该值。
+  - 当前缺口：Claude Code UI 不展示响应头，用户截图通常拿不到 ID；因此本轮新增错误响应体内 `request_id`，同时保持错误 message 黑盒。
+  - 代码改动：新增 `internal/pkg/requestid`；网关 Anthropic/OpenAI/Responses JSON 错误、Anthropic/Responses SSE 错误、API key auth/middleware 错误均带同一个网关 `request_id`。
+  - 定向测试通过：`go test ./internal/handler -run 'Test.*RequestID|TestGatewayAnthropicErrorResponseIncludesRequestID|TestOpenAIErrorResponseIncludesRequestID|TestResponsesErrorResponseIncludesRequestID|TestAnthropicStreamingErrorIncludesRequestID|TestResponsesFailedSSEIncludesRequestID|TestOpenAIMessagesClaudeGPTUpstreamErrorIsRedactedForAnthropicClient|TestRejectAPIKeyModelFamilyPolicy'`；`go test ./internal/service -run 'TestWriteAnthropic.*RequestID|TestForwardAsAnthropic|TestOpenAI'`；`go test ./internal/server/middleware -run 'TestRequestLogger|TestGatewayErrorWritersIncludeRequestID|TestLogger_AccessLogIncludesCoreFields'`。
+  - 排查中一次生产 `head /app/data/config.yaml` 输出包含敏感配置内容；该信息未写入文档或最终回复，后续生产配置确认只输出非敏感片段或依赖代码默认值。

@@ -55,6 +55,57 @@ ssh root@204.168.245.138 \
   "docker logs sub2api --tail 200"
 ```
 
+## Production Logs And Request ID
+
+Sub2API returns `X-Request-ID` on HTTP responses. If a user reports a gateway error, ask for:
+
+- The visible error text and approximate time.
+- `X-Request-ID` from client debug logs or HTTP headers when available.
+- API key owner/name only if needed; never ask the user to paste raw API keys in shared notes.
+
+Current production log locations:
+
+- Docker stdout/stderr: `docker logs sub2api`.
+- Rotated file logs inside the app container: `/app/data/logs/sub2api.log`.
+- Postgres indexes: `ops_error_logs` and `ops_system_logs`.
+
+Find one request by request id:
+
+```bash
+RID='<request-id>'
+
+ssh root@204.168.245.138 \
+  "docker exec sub2api sh -lc 'grep -F \"$RID\" /app/data/logs/sub2api.log | tail -80'"
+
+ssh root@204.168.245.138 \
+  "docker exec -i sub2api-postgres sh -lc 'psql -U \"\${POSTGRES_USER:-sub2api}\" -d \"\${POSTGRES_DB:-sub2api}\" -F \"|\" -At'" <<SQL
+SELECT created_at, request_id, client_request_id, api_key_id, account_id,
+       platform, model, status_code, upstream_status_code, error_phase,
+       error_type, severity, left(error_message, 200)
+FROM ops_error_logs
+WHERE request_id = '$RID' OR client_request_id = '$RID'
+ORDER BY id DESC
+LIMIT 20;
+SQL
+```
+
+Recent error overview:
+
+```bash
+ssh root@204.168.245.138 \
+  "docker exec -i sub2api-postgres sh -lc 'psql -U \"\${POSTGRES_USER:-sub2api}\" -d \"\${POSTGRES_DB:-sub2api}\" -F \"|\" -At'" <<'SQL'
+SELECT created_at, request_id, client_request_id, api_key_id, account_id,
+       platform, model, status_code, error_phase, error_type, severity,
+       left(error_message, 160)
+FROM ops_error_logs
+WHERE created_at > now() - interval '30 minutes'
+ORDER BY id DESC
+LIMIT 20;
+SQL
+```
+
+Note: `usage_logs.request_id` is for usage/billing idempotency and can differ from the HTTP gateway `X-Request-ID`; use it as supporting evidence, not as the primary user-facing lookup id.
+
 ## Keep This Skill Current
 
 - 线上地址、容器名、反代入口、部署目录或关键排查 SQL 变化时，优先更新本文件。

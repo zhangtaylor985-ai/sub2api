@@ -95,6 +95,7 @@
 | 24. 2026-06-02 生产数据本地恢复 | complete | 已备份本地 PG17 沙盒，创建独立 PG18 恢复库并从线上 PG18 dump 恢复；关键表校验通过 |
 | 25. Claude -> GPT 上游错误黑盒 | complete | 已上线 `/v1/messages` dispatch 上游错误泛化；生产 smoke 确认客户端不暴露 GPT/Codex/ChatGPT/auth file/internal routing 错误 |
 | 26. API Key 级 Claude -> GPT 目标模型覆盖 | complete | 已上线 key 级覆盖并把生产 `api_keys.id=125` 配为 `gpt-5.4`；canary 与正式生产 smoke 均确认 `→gpt-5.4` |
+| 27. 生产错误可观测性与 Request ID 排查 | in_progress | 正在确认 Claude Code 64000 输出上限报错来源、Sub2API 当前日志级别/日志落点、request id 返回能力与缺口 |
 
 ## 决策记录
 

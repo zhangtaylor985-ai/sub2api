@@ -895,13 +895,7 @@ func resolveOpenAIMessagesSessionSignals(gatewayService *service.OpenAIGatewaySe
 
 // anthropicErrorResponse writes an error in Anthropic Messages API format.
 func (h *OpenAIGatewayHandler) anthropicErrorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
-		"type": "error",
-		"error": gin.H{
-			"type":    errType,
-			"message": message,
-		},
-	})
+	c.JSON(status, anthropicErrorBody(c, errType, message))
 }
 
 // anthropicStreamingAwareError handles errors that may occur during streaming,
@@ -910,13 +904,7 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 	if streamStarted {
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			errPayload, _ := json.Marshal(gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type":    errType,
-					"message": message,
-				},
-			})
+			errPayload, _ := json.Marshal(anthropicErrorBody(c, errType, message))
 			fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errPayload) //nolint:errcheck
 			flusher.Flush()
 		}
@@ -1728,7 +1716,11 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
 			// SSE 错误事件固定 schema，使用 Quote 直拼可避免额外 Marshal 分配。
-			errorEvent := "event: error\ndata: " + `{"error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}` + "\n\n"
+			errorObj := `{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message)
+			if rid := gatewayRequestID(c); rid != "" {
+				errorObj += `,"request_id":` + strconv.Quote(rid)
+			}
+			errorEvent := "event: error\ndata: " + `{"error":` + errorObj + `}}` + "\n\n"
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 			}
@@ -1770,12 +1762,7 @@ func shouldLogOpenAIForwardFailureAsWarn(c *gin.Context, wroteFallback bool) boo
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": message,
-		},
-	})
+	c.JSON(status, openAIErrorBody(c, errType, message))
 }
 
 func setOpenAIClientTransportHTTP(c *gin.Context) {

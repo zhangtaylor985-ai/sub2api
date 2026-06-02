@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestid"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -544,17 +545,21 @@ func openAICompatResponseFailureMessage(resp *apicompat.ResponsesResponse, paylo
 	return "upstream response failed"
 }
 
-func writeAnthropicStreamErrorEvent(w io.Writer, errType, message string) {
+func writeAnthropicStreamErrorEvent(w io.Writer, requestID, errType, message string) {
 	if w == nil {
 		return
 	}
-	payload, _ := json.Marshal(map[string]any{
+	body := map[string]any{
 		"type": "error",
 		"error": map[string]string{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if requestID = strings.TrimSpace(requestID); requestID != "" {
+		body["request_id"] = requestID
+	}
+	payload, _ := json.Marshal(body)
 	_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", payload)
 }
 
@@ -794,6 +799,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	}
 
 	// processDataLine handles a single "data: ..." SSE line from upstream.
+	gatewayRequestID := requestid.FromRequest(c.Request)
 	var terminalErr error
 	processDataLine := func(payload string) bool {
 		if firstChunk {
@@ -805,7 +811,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		if msg := openAICompatSSEPayloadErrorMessage(payload); msg != "" {
 			terminalErr = fmt.Errorf("upstream SSE error: %s", msg)
 			if !clientDisconnected {
-				writeAnthropicStreamErrorEvent(c.Writer, "api_error", "Upstream stream error")
+				writeAnthropicStreamErrorEvent(c.Writer, gatewayRequestID, "api_error", "Upstream stream error")
 				c.Writer.Flush()
 			}
 			return true
@@ -835,7 +841,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			msg := openAICompatResponseFailureMessage(event.Response, payload)
 			terminalErr = fmt.Errorf("upstream response failed: %s", msg)
 			if !clientDisconnected {
-				writeAnthropicStreamErrorEvent(c.Writer, "api_error", "Upstream response failed")
+				writeAnthropicStreamErrorEvent(c.Writer, gatewayRequestID, "api_error", "Upstream response failed")
 				c.Writer.Flush()
 			}
 			return true
@@ -1076,13 +1082,17 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 // writeAnthropicError writes an error response in Anthropic Messages API format.
 func writeAnthropicError(c *gin.Context, statusCode int, errType, message string) {
-	c.JSON(statusCode, gin.H{
+	body := gin.H{
 		"type": "error",
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if rid := requestid.FromRequest(c.Request); rid != "" {
+		body["request_id"] = rid
+	}
+	c.JSON(statusCode, body)
 }
 
 func copyOpenAIUsageFromResponsesUsage(usage *apicompat.ResponsesUsage) OpenAIUsage {

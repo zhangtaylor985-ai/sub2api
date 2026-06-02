@@ -25,3 +25,33 @@ func TestNormalizeOpenAIMessagesDispatchModelConfig(t *testing.T) {
 		"claude-sonnet-4-5-20250929": "gpt-5.2",
 	}, cfg.ExactModelMappings)
 }
+
+func TestAPIKeyResolveMessagesDispatchModel_DoesNotUseDefaults(t *testing.T) {
+	t.Parallel()
+
+	key := &APIKey{
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			OpusMappedModel: "gpt-5.4",
+		},
+	}
+
+	require.Equal(t, "gpt-5.4", key.ResolveMessagesDispatchModel("claude-opus-4-7"))
+	require.Empty(t, key.ResolveMessagesDispatchModel("claude-sonnet-4-6"))
+	require.Empty(t, key.ResolveMessagesDispatchModel("claude-haiku-4-5"))
+}
+
+func TestAPIKeyResolveMessagesDispatchModel_ExactMappingWins(t *testing.T) {
+	t.Parallel()
+
+	key := &APIKey{
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			SonnetMappedModel: "gpt-5.4",
+			ExactModelMappings: map[string]string{
+				"claude-sonnet-4-6": "gpt-5.5",
+			},
+		},
+	}
+
+	require.Equal(t, "gpt-5.5", key.ResolveMessagesDispatchModel("claude-sonnet-4-6"))
+	require.Equal(t, "gpt-5.4", key.ResolveMessagesDispatchModel("claude-sonnet-4-7"))
+}

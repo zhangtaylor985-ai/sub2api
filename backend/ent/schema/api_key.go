@@ -56,6 +56,9 @@ func (APIKey) Fields() []ent.Field {
 		field.Bool("allow_gpt_family").
 			Default(true).
 			Comment("Whether this API key may request GPT/OpenAI-family models from user-facing endpoints"),
+		field.JSON("messages_dispatch_model_config", domain.OpenAIMessagesDispatchModelConfig{}).
+			Default(domain.OpenAIMessagesDispatchModelConfig{}).
+			Comment("API key-level OpenAI Messages dispatch model override"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().

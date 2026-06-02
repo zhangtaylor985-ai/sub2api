@@ -258,6 +258,26 @@
               </label>
             </div>
           </div>
+          <div class="space-y-3 md:col-span-2">
+            <div>
+              <span class="input-label">{{ t('admin.apiKeys.form.dispatchOverride') }}</span>
+              <div class="input-hint">{{ t('admin.apiKeys.form.dispatchOverrideHint') }}</div>
+            </div>
+            <div class="grid gap-3 md:grid-cols-3">
+              <label class="space-y-1">
+                <span class="input-label">{{ t('admin.apiKeys.form.opusMappedModel') }}</span>
+                <input v-model="createForm.dispatch_opus_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+              </label>
+              <label class="space-y-1">
+                <span class="input-label">{{ t('admin.apiKeys.form.sonnetMappedModel') }}</span>
+                <input v-model="createForm.dispatch_sonnet_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+              </label>
+              <label class="space-y-1">
+                <span class="input-label">{{ t('admin.apiKeys.form.haikuMappedModel') }}</span>
+                <input v-model="createForm.dispatch_haiku_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+              </label>
+            </div>
+          </div>
         </div>
       </form>
       <template #footer>
@@ -350,6 +370,26 @@
               </label>
             </div>
           </div>
+          <div class="space-y-3 md:col-span-2">
+            <div>
+              <span class="input-label">{{ t('admin.apiKeys.form.dispatchOverride') }}</span>
+              <div class="input-hint">{{ t('admin.apiKeys.form.dispatchOverrideHint') }}</div>
+            </div>
+            <div class="grid gap-3 md:grid-cols-3">
+              <label class="space-y-1">
+                <span class="input-label">{{ t('admin.apiKeys.form.opusMappedModel') }}</span>
+                <input v-model="editForm.dispatch_opus_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+              </label>
+              <label class="space-y-1">
+                <span class="input-label">{{ t('admin.apiKeys.form.sonnetMappedModel') }}</span>
+                <input v-model="editForm.dispatch_sonnet_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+              </label>
+              <label class="space-y-1">
+                <span class="input-label">{{ t('admin.apiKeys.form.haikuMappedModel') }}</span>
+                <input v-model="editForm.dispatch_haiku_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+              </label>
+            </div>
+          </div>
         </div>
         <div class="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-dark-300">
           <label class="inline-flex items-center gap-2">
@@ -388,7 +428,7 @@ import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
-import type { AdminGroup, ApiKey } from '@/types'
+import type { AdminGroup, ApiKey, OpenAIMessagesDispatchModelConfig } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -441,6 +481,10 @@ const defaultCreateForm = () => ({
   concurrency: 0,
   allow_claude_family: true,
   allow_gpt_family: true,
+  dispatch_opus_mapped_model: '',
+  dispatch_sonnet_mapped_model: '',
+  dispatch_haiku_mapped_model: '',
+  dispatch_exact_model_mappings: {} as Record<string, string>,
   expires_at_local: ''
 })
 
@@ -456,6 +500,10 @@ const editForm = reactive({
   concurrency: 0,
   allow_claude_family: true,
   allow_gpt_family: true,
+  dispatch_opus_mapped_model: '',
+  dispatch_sonnet_mapped_model: '',
+  dispatch_haiku_mapped_model: '',
+  dispatch_exact_model_mappings: {} as Record<string, string>,
   expires_at_local: '',
   window_7d_start_local: '',
   clear_expires_at: false,
@@ -617,7 +665,50 @@ const formatModelAccess = (key: ApiKey) => {
   const parts: string[] = []
   if (key.allow_claude_family) parts.push(t('admin.apiKeys.modelAccessClaude'))
   if (key.allow_gpt_family) parts.push(t('admin.apiKeys.modelAccessGPT'))
-  return parts.length > 0 ? parts.join(' / ') : t('admin.apiKeys.modelAccessNone')
+  const base = parts.length > 0 ? parts.join(' / ') : t('admin.apiKeys.modelAccessNone')
+  const override = formatDispatchOverride(key.messages_dispatch_model_config)
+  return override ? `${base} · ${override}` : base
+}
+
+const dispatchConfigFromForm = (form: {
+  dispatch_opus_mapped_model: string
+  dispatch_sonnet_mapped_model: string
+  dispatch_haiku_mapped_model: string
+  dispatch_exact_model_mappings?: Record<string, string>
+}): OpenAIMessagesDispatchModelConfig => ({
+  opus_mapped_model: form.dispatch_opus_mapped_model.trim(),
+  sonnet_mapped_model: form.dispatch_sonnet_mapped_model.trim(),
+  haiku_mapped_model: form.dispatch_haiku_mapped_model.trim(),
+  exact_model_mappings: form.dispatch_exact_model_mappings || {}
+})
+
+const applyDispatchConfigToForm = (
+  form: {
+    dispatch_opus_mapped_model: string
+    dispatch_sonnet_mapped_model: string
+    dispatch_haiku_mapped_model: string
+    dispatch_exact_model_mappings?: Record<string, string>
+  },
+  config?: OpenAIMessagesDispatchModelConfig | null
+) => {
+  form.dispatch_opus_mapped_model = config?.opus_mapped_model?.trim() || ''
+  form.dispatch_sonnet_mapped_model = config?.sonnet_mapped_model?.trim() || ''
+  form.dispatch_haiku_mapped_model = config?.haiku_mapped_model?.trim() || ''
+  form.dispatch_exact_model_mappings = { ...(config?.exact_model_mappings || {}) }
+}
+
+const formatDispatchOverride = (config?: OpenAIMessagesDispatchModelConfig | null) => {
+  if (!config) return ''
+  const values = [
+    config.opus_mapped_model?.trim(),
+    config.sonnet_mapped_model?.trim(),
+    config.haiku_mapped_model?.trim()
+  ].filter(Boolean)
+  if (values.length === 0 && Object.keys(config.exact_model_mappings || {}).length === 0) return ''
+  const unique = Array.from(new Set(values))
+  return unique.length === 1
+    ? t('admin.apiKeys.dispatchOverrideShort', { model: unique[0] })
+    : t('admin.apiKeys.dispatchOverrideMixed')
 }
 
 const statusClass = (status: string) => {
@@ -726,6 +817,7 @@ const openEditDialog = (key: ApiKey) => {
   editForm.concurrency = key.concurrency || 0
   editForm.allow_claude_family = key.allow_claude_family !== false
   editForm.allow_gpt_family = key.allow_gpt_family !== false
+  applyDispatchConfigToForm(editForm, key.messages_dispatch_model_config)
   editForm.expires_at_local = toDateTimeLocal(key.expires_at)
   editForm.window_7d_start_local = toDateTimeLocal(key.window_7d_start)
   editForm.clear_expires_at = false
@@ -760,6 +852,7 @@ const handleCreate = async () => {
       concurrency: numericValue(createForm.concurrency),
       allow_claude_family: createForm.allow_claude_family,
       allow_gpt_family: createForm.allow_gpt_family,
+      messages_dispatch_model_config: dispatchConfigFromForm(createForm),
       expires_at: expiresAt || undefined
     })
     apiKeys.value.unshift(result.api_key)
@@ -794,6 +887,7 @@ const handleUpdate = async () => {
       concurrency: numericValue(editForm.concurrency),
       allow_claude_family: editForm.allow_claude_family,
       allow_gpt_family: editForm.allow_gpt_family,
+      messages_dispatch_model_config: dispatchConfigFromForm(editForm),
       expires_at: editForm.clear_expires_at || editForm.expires_at_local ? expiresAt : undefined,
       window_7d_start: weeklyWindowStart,
       reset_quota: editForm.reset_quota,

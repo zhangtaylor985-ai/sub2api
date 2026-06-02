@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { ApiKey, PaginatedResponse } from '@/types'
+import type { ApiKey, OpenAIMessagesDispatchModelConfig, PaginatedResponse } from '@/types'
 
 export interface UpdateApiKeyGroupResult {
   api_key: ApiKey
@@ -27,6 +27,7 @@ export interface AdminUpdateApiKeyPolicyPayload {
   reset_rate_limit_usage?: boolean
   allow_claude_family?: boolean
   allow_gpt_family?: boolean
+  messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 }
 
 export interface AdminAPIKeyFilters {
@@ -52,6 +53,7 @@ export interface AdminCreateAPIKeyPayload {
   concurrency?: number
   allow_claude_family?: boolean
   allow_gpt_family?: boolean
+  messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 }
 
 export async function listApiKeys(

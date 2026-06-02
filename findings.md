@@ -253,6 +253,13 @@
 - 本地正向黑盒确认：Claude-only key 通过 `/v1/messages` 请求 `claude-opus-4-7` 时不会被内部 `gpt-5.5` 映射误伤，客户端得到 Claude 形态 `200 OK`，返回 `model` 仍是 `claude-opus-4-7`。
 - 2026-06-02 生产上线后复核：客户端黑盒与运维日志是两个边界。生产日志允许保留 `gpt-5.3-codex` / Codex / ChatGPT account 等上游细节；用户侧 `/v1/messages` 响应必须保持 `api_error "Upstream request failed"` 这类泛化信息。
 
+## API Key 级 Claude -> GPT 目标模型覆盖
+
+- 当前 Sub2API 的 Claude -> GPT 目标模型映射有两层：分组级 `groups.messages_dispatch_model_config` 生成 OpenAI `/v1/messages` dispatch 的 `defaultMappedModel`，账号级 `accounts.credentials.model_mapping` 再做最终上游模型映射和账号支持模型约束。
+- 现有 API Key 运行时模型只有 `allow_claude_family` / `allow_gpt_family` 这类“是否允许请求模型族”的策略，没有“该 key 的 Claude 请求应默认转到 `gpt-5.5` 还是 `gpt-5.4`”的目标模型覆盖。
+- 旧 CLIProxyAPI 有 per-key `claude-gpt-target-family`，用于覆盖全局 Claude -> GPT target family。Sub2API 如果要支持同一分组内不同 key 使用不同 GPT 目标模型，需要新增 key 级配置，否则只能通过拆分分组或账号映射绕行，维护性较差。
+- 新增能力的优先级建议为：账号级 `credentials.model_mapping` 最终改写/白名单 > API key 级 dispatch 映射覆盖 > 分组级 dispatch 映射 > 代码默认值。空 API key 配置必须表示不覆盖。
+
 ## 2026-06-02 生产数据本地恢复准备
 
 - 只读探测确认线上容器：`sub2api` 当前镜像 `zhangtaylor985/sub2api:main-6dc024d4`，`sub2api-postgres` 为 `postgres:18-alpine`，`sub2api-redis` 为 `redis:8-alpine`，容器 healthy。

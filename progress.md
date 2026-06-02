@@ -303,3 +303,17 @@
   - 正式生产 smoke 通过：3 把指定 key 的 GPT 请求均 `200 OK`；Claude->GPT Opus 正向 `200 OK`；Sonnet 上游错误黑盒 `leak=false`。
   - canary 和临时 env 文件已清理。
   - 观察说明：生产日志仍保留上游真实错误，例如 `gpt-5.3-codex` / Codex / ChatGPT account，用于管理员排查；客户端响应已验证不泄漏。
+- 2026-06-02：开始 API Key 级 Claude -> GPT 目标模型覆盖任务：
+  - 用户要求将一把指定 API key 的 Claude -> GPT 规则改为 `gpt-5.4`，并确认 Sub2API 是否已有 per-key 目标模型规则。
+  - 初步结论：当前 Sub2API 已有分组级 `groups.messages_dispatch_model_config` 与账号级 `accounts.credentials.model_mapping`，但没有 API key 级 Claude -> GPT target override。
+  - 旧 CLIProxyAPI 参考能力是 per API key `claude-gpt-target-family`；Sub2API 应新增同等运维能力，但保持原生 Claude 路径不受影响。
+- 2026-06-02：完成 API Key 级 Claude -> GPT 目标模型覆盖本地实现初版：
+  - `api_keys` 新增 `messages_dispatch_model_config` JSONB，空对象表示继承分组。
+  - OpenAI `/v1/messages` dispatch 解析优先级调整为 API key 覆盖优先，未命中时回退分组配置；账号级 `credentials.model_mapping` 仍保留最终上游改写/白名单职责。
+  - 认证缓存版本升到 v13，并在 snapshot 中保存 key 级覆盖配置。
+  - Admin API 和管理端 API Key 创建/编辑弹窗已支持 Opus/Sonnet/Haiku family 覆盖；当前 UI 保留隐藏 exact mapping，避免保存时误清理未来高级配置。
+  - 定向测试通过：service dispatch resolver、handler dispatch resolver、repository auth preload、auth cache roundtrip。
+- 2026-06-02：完成生产只读确认：
+  - 用户指定 key 对应生产 `api_keys.id=125`，名称 `dyer`，绑定 OpenAI 分组 `CP Legacy double`。
+  - 该分组当前 dispatch 配置是 Opus -> `gpt-5.5`、Sonnet -> `gpt-5.3-codex`、Haiku -> `gpt-5.4-mini`；因此不能通过分组层修改实现“只让这把 key 转 `gpt-5.4`”。
+  - 保持现有 key 模型族权限不变，只新增这把 key 的 Claude -> GPT dispatch override。

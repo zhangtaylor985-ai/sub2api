@@ -237,6 +237,11 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 		Key:     "k-roundtrip",
 		Name:    "Audit Key",
 		Status:  StatusActive,
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			OpusMappedModel:   "gpt-5.4",
+			SonnetMappedModel: "gpt-5.4",
+			HaikuMappedModel:  "gpt-5.4",
+		},
 		User: &User{
 			ID:          2,
 			Status:      StatusActive,
@@ -269,6 +274,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 
 	require.NotNil(t, roundTrip)
 	require.Equal(t, apiKey.Name, roundTrip.Name)
+	require.Equal(t, apiKey.MessagesDispatchModelConfig, roundTrip.MessagesDispatchModelConfig)
 	require.NotNil(t, roundTrip.Group)
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }

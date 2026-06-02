@@ -100,55 +100,56 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                  Op
-	typ                 string
-	id                  *int64
-	created_at          *time.Time
-	updated_at          *time.Time
-	deleted_at          *time.Time
-	key                 *string
-	name                *string
-	status              *string
-	concurrency         *int
-	addconcurrency      *int
-	allow_claude_family *bool
-	allow_gpt_family    *bool
-	last_used_at        *time.Time
-	ip_whitelist        *[]string
-	appendip_whitelist  []string
-	ip_blacklist        *[]string
-	appendip_blacklist  []string
-	quota               *float64
-	addquota            *float64
-	quota_used          *float64
-	addquota_used       *float64
-	expires_at          *time.Time
-	rate_limit_5h       *float64
-	addrate_limit_5h    *float64
-	rate_limit_1d       *float64
-	addrate_limit_1d    *float64
-	rate_limit_7d       *float64
-	addrate_limit_7d    *float64
-	usage_5h            *float64
-	addusage_5h         *float64
-	usage_1d            *float64
-	addusage_1d         *float64
-	usage_7d            *float64
-	addusage_7d         *float64
-	window_5h_start     *time.Time
-	window_1d_start     *time.Time
-	window_7d_start     *time.Time
-	clearedFields       map[string]struct{}
-	user                *int64
-	cleareduser         bool
-	group               *int64
-	clearedgroup        bool
-	usage_logs          map[int64]struct{}
-	removedusage_logs   map[int64]struct{}
-	clearedusage_logs   bool
-	done                bool
-	oldValue            func(context.Context) (*APIKey, error)
-	predicates          []predicate.APIKey
+	op                             Op
+	typ                            string
+	id                             *int64
+	created_at                     *time.Time
+	updated_at                     *time.Time
+	deleted_at                     *time.Time
+	key                            *string
+	name                           *string
+	status                         *string
+	concurrency                    *int
+	addconcurrency                 *int
+	allow_claude_family            *bool
+	allow_gpt_family               *bool
+	messages_dispatch_model_config *domain.OpenAIMessagesDispatchModelConfig
+	last_used_at                   *time.Time
+	ip_whitelist                   *[]string
+	appendip_whitelist             []string
+	ip_blacklist                   *[]string
+	appendip_blacklist             []string
+	quota                          *float64
+	addquota                       *float64
+	quota_used                     *float64
+	addquota_used                  *float64
+	expires_at                     *time.Time
+	rate_limit_5h                  *float64
+	addrate_limit_5h               *float64
+	rate_limit_1d                  *float64
+	addrate_limit_1d               *float64
+	rate_limit_7d                  *float64
+	addrate_limit_7d               *float64
+	usage_5h                       *float64
+	addusage_5h                    *float64
+	usage_1d                       *float64
+	addusage_1d                    *float64
+	usage_7d                       *float64
+	addusage_7d                    *float64
+	window_5h_start                *time.Time
+	window_1d_start                *time.Time
+	window_7d_start                *time.Time
+	clearedFields                  map[string]struct{}
+	user                           *int64
+	cleareduser                    bool
+	group                          *int64
+	clearedgroup                   bool
+	usage_logs                     map[int64]struct{}
+	removedusage_logs              map[int64]struct{}
+	clearedusage_logs              bool
+	done                           bool
+	oldValue                       func(context.Context) (*APIKey, error)
+	predicates                     []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -689,6 +690,42 @@ func (m *APIKeyMutation) OldAllowGptFamily(ctx context.Context) (v bool, err err
 // ResetAllowGptFamily resets all changes to the "allow_gpt_family" field.
 func (m *APIKeyMutation) ResetAllowGptFamily() {
 	m.allow_gpt_family = nil
+}
+
+// SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
+func (m *APIKeyMutation) SetMessagesDispatchModelConfig(damdmc domain.OpenAIMessagesDispatchModelConfig) {
+	m.messages_dispatch_model_config = &damdmc
+}
+
+// MessagesDispatchModelConfig returns the value of the "messages_dispatch_model_config" field in the mutation.
+func (m *APIKeyMutation) MessagesDispatchModelConfig() (r domain.OpenAIMessagesDispatchModelConfig, exists bool) {
+	v := m.messages_dispatch_model_config
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMessagesDispatchModelConfig returns the old "messages_dispatch_model_config" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldMessagesDispatchModelConfig(ctx context.Context) (v domain.OpenAIMessagesDispatchModelConfig, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMessagesDispatchModelConfig is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMessagesDispatchModelConfig requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMessagesDispatchModelConfig: %w", err)
+	}
+	return oldValue.MessagesDispatchModelConfig, nil
+}
+
+// ResetMessagesDispatchModelConfig resets all changes to the "messages_dispatch_model_config" field.
+func (m *APIKeyMutation) ResetMessagesDispatchModelConfig() {
+	m.messages_dispatch_model_config = nil
 }
 
 // SetLastUsedAt sets the "last_used_at" field.
@@ -1656,7 +1693,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 27)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1689,6 +1726,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.allow_gpt_family != nil {
 		fields = append(fields, apikey.FieldAllowGptFamily)
+	}
+	if m.messages_dispatch_model_config != nil {
+		fields = append(fields, apikey.FieldMessagesDispatchModelConfig)
 	}
 	if m.last_used_at != nil {
 		fields = append(fields, apikey.FieldLastUsedAt)
@@ -1765,6 +1805,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowClaudeFamily()
 	case apikey.FieldAllowGptFamily:
 		return m.AllowGptFamily()
+	case apikey.FieldMessagesDispatchModelConfig:
+		return m.MessagesDispatchModelConfig()
 	case apikey.FieldLastUsedAt:
 		return m.LastUsedAt()
 	case apikey.FieldIPWhitelist:
@@ -1826,6 +1868,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldAllowClaudeFamily(ctx)
 	case apikey.FieldAllowGptFamily:
 		return m.OldAllowGptFamily(ctx)
+	case apikey.FieldMessagesDispatchModelConfig:
+		return m.OldMessagesDispatchModelConfig(ctx)
 	case apikey.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
 	case apikey.FieldIPWhitelist:
@@ -1941,6 +1985,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowGptFamily(v)
+		return nil
+	case apikey.FieldMessagesDispatchModelConfig:
+		v, ok := value.(domain.OpenAIMessagesDispatchModelConfig)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMessagesDispatchModelConfig(v)
 		return nil
 	case apikey.FieldLastUsedAt:
 		v, ok := value.(time.Time)
@@ -2296,6 +2347,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldAllowGptFamily:
 		m.ResetAllowGptFamily()
+		return nil
+	case apikey.FieldMessagesDispatchModelConfig:
+		m.ResetMessagesDispatchModelConfig()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ResetLastUsedAt()

@@ -569,6 +569,7 @@ export interface ApiKey {
   concurrency: number // API key concurrency override (0 = inherit group/user)
   allow_claude_family: boolean
   allow_gpt_family: boolean
+  messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   expires_at: string | null // Expiration time (null = never expires)
   created_at: string
   updated_at: string
@@ -605,6 +606,7 @@ export interface CreateApiKeyRequest {
   status?: 'active' | 'inactive'
   allow_claude_family?: boolean
   allow_gpt_family?: boolean
+  messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 }
 
 export interface UpdateApiKeyRequest {
@@ -624,6 +626,7 @@ export interface UpdateApiKeyRequest {
   reset_rate_limit_usage?: boolean
   allow_claude_family?: boolean
   allow_gpt_family?: boolean
+  messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 }
 
 export interface CreateGroupRequest {

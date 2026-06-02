@@ -113,11 +113,17 @@ func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesMessagesDispatchModelConf
 		Name:    "Dispatch Key",
 		GroupID: &group.ID,
 		Status:  service.StatusActive,
+		MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
+			OpusMappedModel:   "gpt-5.4",
+			SonnetMappedModel: "gpt-5.4",
+			HaikuMappedModel:  "gpt-5.4",
+		},
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, key))
 
 	got, err := s.repo.GetByKeyForAuth(s.ctx, key.Key)
 	s.Require().NoError(err)
+	s.Require().Equal(key.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
 	s.Require().NotNil(got.Group)
 	s.Require().True(got.Group.AllowMessagesDispatch)
 	s.Require().Equal("gpt-5.4", got.Group.DefaultMappedModel)

@@ -59,12 +59,23 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 	if g == nil {
 		return ""
 	}
+	return resolveOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig, requestedModel, true)
+}
+
+func (k *APIKey) ResolveMessagesDispatchModel(requestedModel string) string {
+	if k == nil {
+		return ""
+	}
+	return resolveOpenAIMessagesDispatchModelConfig(k.MessagesDispatchModelConfig, requestedModel, false)
+}
+
+func resolveOpenAIMessagesDispatchModelConfig(cfg OpenAIMessagesDispatchModelConfig, requestedModel string, includeDefaults bool) string {
 	requestedModel = strings.TrimSpace(requestedModel)
 	if requestedModel == "" {
 		return ""
 	}
 
-	cfg := normalizeOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig)
+	cfg = normalizeOpenAIMessagesDispatchModelConfig(cfg)
 	if mappedModel := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mappedModel != "" {
 		return mappedModel
 	}
@@ -74,15 +85,24 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 		if mappedModel := strings.TrimSpace(cfg.OpusMappedModel); mappedModel != "" {
 			return mappedModel
 		}
+		if !includeDefaults {
+			return ""
+		}
 		return defaultOpenAIMessagesDispatchOpusMappedModel
 	case "sonnet":
 		if mappedModel := strings.TrimSpace(cfg.SonnetMappedModel); mappedModel != "" {
 			return mappedModel
 		}
+		if !includeDefaults {
+			return ""
+		}
 		return defaultOpenAIMessagesDispatchSonnetMappedModel
 	case "haiku":
 		if mappedModel := strings.TrimSpace(cfg.HaikuMappedModel); mappedModel != "" {
 			return mappedModel
+		}
+		if !includeDefaults {
+			return ""
 		}
 		return defaultOpenAIMessagesDispatchHaikuMappedModel
 	default:

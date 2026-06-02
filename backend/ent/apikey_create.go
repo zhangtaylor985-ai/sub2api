@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKeyCreate is the builder for creating a APIKey entity.
@@ -151,6 +152,20 @@ func (_c *APIKeyCreate) SetAllowGptFamily(v bool) *APIKeyCreate {
 func (_c *APIKeyCreate) SetNillableAllowGptFamily(v *bool) *APIKeyCreate {
 	if v != nil {
 		_c.SetAllowGptFamily(*v)
+	}
+	return _c
+}
+
+// SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
+func (_c *APIKeyCreate) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *APIKeyCreate {
+	_c.mutation.SetMessagesDispatchModelConfig(v)
+	return _c
+}
+
+// SetNillableMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMessagesDispatchModelConfig) *APIKeyCreate {
+	if v != nil {
+		_c.SetMessagesDispatchModelConfig(*v)
 	}
 	return _c
 }
@@ -441,6 +456,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultAllowGptFamily
 		_c.mutation.SetAllowGptFamily(v)
 	}
+	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
+		v := apikey.DefaultMessagesDispatchModelConfig
+		_c.mutation.SetMessagesDispatchModelConfig(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -519,6 +538,9 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowGptFamily(); !ok {
 		return &ValidationError{Name: "allow_gpt_family", err: errors.New(`ent: missing required field "APIKey.allow_gpt_family"`)}
+	}
+	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
+		return &ValidationError{Name: "messages_dispatch_model_config", err: errors.New(`ent: missing required field "APIKey.messages_dispatch_model_config"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -609,6 +631,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowGptFamily(); ok {
 		_spec.SetField(apikey.FieldAllowGptFamily, field.TypeBool, value)
 		_node.AllowGptFamily = value
+	}
+	if value, ok := _c.mutation.MessagesDispatchModelConfig(); ok {
+		_spec.SetField(apikey.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+		_node.MessagesDispatchModelConfig = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -907,6 +933,18 @@ func (u *APIKeyUpsert) SetAllowGptFamily(v bool) *APIKeyUpsert {
 // UpdateAllowGptFamily sets the "allow_gpt_family" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateAllowGptFamily() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldAllowGptFamily)
+	return u
+}
+
+// SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
+func (u *APIKeyUpsert) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *APIKeyUpsert {
+	u.Set(apikey.FieldMessagesDispatchModelConfig, v)
+	return u
+}
+
+// UpdateMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateMessagesDispatchModelConfig() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldMessagesDispatchModelConfig)
 	return u
 }
 
@@ -1383,6 +1421,20 @@ func (u *APIKeyUpsertOne) SetAllowGptFamily(v bool) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateAllowGptFamily() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateAllowGptFamily()
+	})
+}
+
+// SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
+func (u *APIKeyUpsertOne) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetMessagesDispatchModelConfig(v)
+	})
+}
+
+// UpdateMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateMessagesDispatchModelConfig() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateMessagesDispatchModelConfig()
 	})
 }
 
@@ -2070,6 +2122,20 @@ func (u *APIKeyUpsertBulk) SetAllowGptFamily(v bool) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateAllowGptFamily() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateAllowGptFamily()
+	})
+}
+
+// SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
+func (u *APIKeyUpsertBulk) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetMessagesDispatchModelConfig(v)
+	})
+}
+
+// UpdateMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateMessagesDispatchModelConfig() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateMessagesDispatchModelConfig()
 	})
 }
 

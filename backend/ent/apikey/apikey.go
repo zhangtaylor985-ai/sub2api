@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
@@ -37,6 +38,8 @@ const (
 	FieldAllowClaudeFamily = "allow_claude_family"
 	// FieldAllowGptFamily holds the string denoting the allow_gpt_family field in the database.
 	FieldAllowGptFamily = "allow_gpt_family"
+	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
+	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
 	FieldLastUsedAt = "last_used_at"
 	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
@@ -112,6 +115,7 @@ var Columns = []string{
 	FieldConcurrency,
 	FieldAllowClaudeFamily,
 	FieldAllowGptFamily,
+	FieldMessagesDispatchModelConfig,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
@@ -167,6 +171,8 @@ var (
 	DefaultAllowClaudeFamily bool
 	// DefaultAllowGptFamily holds the default value on creation for the "allow_gpt_family" field.
 	DefaultAllowGptFamily bool
+	// DefaultMessagesDispatchModelConfig holds the default value on creation for the "messages_dispatch_model_config" field.
+	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultQuota holds the default value on creation for the "quota" field.
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.

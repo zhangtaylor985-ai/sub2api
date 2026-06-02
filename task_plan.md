@@ -94,6 +94,7 @@
 | 23. API Key 模型族限制迁移 | complete | 已上线 key 级 Claude/GPT family policy，从旧 audit policy 回填并完成生产 smoke |
 | 24. 2026-06-02 生产数据本地恢复 | complete | 已备份本地 PG17 沙盒，创建独立 PG18 恢复库并从线上 PG18 dump 恢复；关键表校验通过 |
 | 25. Claude -> GPT 上游错误黑盒 | complete | 已上线 `/v1/messages` dispatch 上游错误泛化；生产 smoke 确认客户端不暴露 GPT/Codex/ChatGPT/auth file/internal routing 错误 |
+| 26. API Key 级 Claude -> GPT 目标模型覆盖 | in_progress | 确认现有 Sub2API 只有分组级/账号级映射；本阶段新增 key 级覆盖，并把用户指定 key 配为 `gpt-5.4` |
 
 ## 决策记录
 
@@ -118,6 +119,7 @@
 - 2026-06-01：OpenAI `/v1/messages` dispatch 的账号粘性应优先使用显式 session header / prompt_cache_key，其次使用 Claude `metadata.user_id`，最后才回退 content-based seed；这样与原生 Claude/Gateway 路径保持一致，也避免 compact/resume 改写首轮内容后换账号。
 - 2026-06-01：API Key 的 Claude-only/GPT-only 应按用户请求模型族判断，而不是按内部上游模型判断。Claude-only key 可以内部 Claude -> GPT，但用户不能直接请求 GPT family；GPT-only key 不能请求 Claude family。该策略必须 key 级表达，不能用当前空置且偏 group/channel 维度的 channel model restriction 代替。
 - 2026-06-02：Claude `/v1/messages` 经 OpenAI dispatch 到 GPT/Codex 时，上游错误属于内部路由错误；客户端错误响应必须泛化，不得包含 GPT/Codex/ChatGPT account/auth file/内部账号细节。该脱敏只作用于 Claude -> GPT 的 Anthropic 响应格式，不扩大到 OpenAI 原生 passthrough。
+- 2026-06-02：API Key 级 Claude -> GPT 目标模型覆盖应高于分组级 `messages_dispatch_model_config`，低于账号级 `credentials.model_mapping` 的最终上游改写/白名单语义。空 key 级配置必须表示“不覆盖”，继续走分组默认，避免影响已有 key。
 
 ## 错误记录
 

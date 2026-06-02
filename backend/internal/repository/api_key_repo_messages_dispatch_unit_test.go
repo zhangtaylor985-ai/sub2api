@@ -67,12 +67,18 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 		Name:    "Dispatch Key Unit",
 		GroupID: &group.ID,
 		Status:  service.StatusActive,
+		MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
+			OpusMappedModel:   "gpt-5.4",
+			SonnetMappedModel: "gpt-5.4",
+			HaikuMappedModel:  "gpt-5.4",
+		},
 	}
 	require.NoError(t, repo.Create(ctx, key))
 
 	got, err := repo.GetByKeyForAuth(ctx, key.Key)
 	require.NoError(t, err)
 	require.Equal(t, key.Name, got.Name)
+	require.Equal(t, key.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
 	require.NotNil(t, got.Group)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
 	require.Equal(t, 2, got.Group.Concurrency)

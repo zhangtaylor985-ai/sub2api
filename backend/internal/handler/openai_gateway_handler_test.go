@@ -469,6 +469,25 @@ func TestOpenAIEnsureResponsesDependencies(t *testing.T) {
 }
 
 func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
+	t.Run("api_key_override_wins_over_group_mapping", func(t *testing.T) {
+		apiKey := &service.APIKey{
+			MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
+				OpusMappedModel:   "gpt-5.4",
+				SonnetMappedModel: "gpt-5.4",
+				HaikuMappedModel:  "gpt-5.4",
+			},
+			Group: &service.Group{
+				MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
+					OpusMappedModel:   "gpt-5.5",
+					SonnetMappedModel: "gpt-5.3-codex",
+					HaikuMappedModel:  "gpt-5.4-mini",
+				},
+			},
+		}
+		require.Equal(t, "gpt-5.4", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-opus-4-7"))
+		require.Equal(t, "gpt-5.4", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-6"))
+	})
+
 	t.Run("exact_claude_model_override_wins", func(t *testing.T) {
 		apiKey := &service.APIKey{
 			Group: &service.Group{

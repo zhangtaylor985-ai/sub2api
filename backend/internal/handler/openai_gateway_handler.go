@@ -40,7 +40,13 @@ type OpenAIGatewayHandler struct {
 }
 
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
-	if apiKey == nil || apiKey.Group == nil {
+	if apiKey == nil {
+		return ""
+	}
+	if mappedModel := strings.TrimSpace(apiKey.ResolveMessagesDispatchModel(requestedModel)); mappedModel != "" {
+		return mappedModel
+	}
+	if apiKey.Group == nil {
 		return ""
 	}
 	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))

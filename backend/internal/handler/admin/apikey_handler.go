@@ -26,35 +26,37 @@ func NewAdminAPIKeyHandler(adminService service.AdminService) *AdminAPIKeyHandle
 
 // AdminUpdateAPIKeyGroupRequest represents the request to update an API key.
 type AdminUpdateAPIKeyGroupRequest struct {
-	GroupID             *int64   `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
-	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
-	Status              *string  `json:"status"`                 // nil=不修改, active/inactive
-	Quota               *float64 `json:"quota"`                  // nil=不修改, 0=不限制
-	ExpiresAt           *string  `json:"expires_at"`             // nil=不修改, ""=清空, RFC3339=设置
-	ResetQuota          *bool    `json:"reset_quota"`            // true=重置总额度已用量
-	Concurrency         *int     `json:"concurrency"`            // nil=不修改, 0=继承分组/用户, >0=单 key 并发
-	AllowClaudeFamily   *bool    `json:"allow_claude_family"`    // nil=不修改
-	AllowGPTFamily      *bool    `json:"allow_gpt_family"`       // nil=不修改
-	RateLimit5h         *float64 `json:"rate_limit_5h"`          // nil=不修改, 0=不限制
-	RateLimit1d         *float64 `json:"rate_limit_1d"`
-	RateLimit7d         *float64 `json:"rate_limit_7d"`
-	Window7dStart       *string  `json:"window_7d_start"` // nil=不修改, ""=清空, RFC3339=设置当前 7d 窗口起点
+	GroupID                     *int64                                     `json:"group_id"`                       // nil=不修改, 0=解绑, >0=绑定到目标分组
+	ResetRateLimitUsage         *bool                                      `json:"reset_rate_limit_usage"`         // true=重置 5h/1d/7d 限速用量
+	Status                      *string                                    `json:"status"`                         // nil=不修改, active/inactive
+	Quota                       *float64                                   `json:"quota"`                          // nil=不修改, 0=不限制
+	ExpiresAt                   *string                                    `json:"expires_at"`                     // nil=不修改, ""=清空, RFC3339=设置
+	ResetQuota                  *bool                                      `json:"reset_quota"`                    // true=重置总额度已用量
+	Concurrency                 *int                                       `json:"concurrency"`                    // nil=不修改, 0=继承分组/用户, >0=单 key 并发
+	AllowClaudeFamily           *bool                                      `json:"allow_claude_family"`            // nil=不修改
+	AllowGPTFamily              *bool                                      `json:"allow_gpt_family"`               // nil=不修改
+	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"` // nil=不修改
+	RateLimit5h                 *float64                                   `json:"rate_limit_5h"`                  // nil=不修改, 0=不限制
+	RateLimit1d                 *float64                                   `json:"rate_limit_1d"`
+	RateLimit7d                 *float64                                   `json:"rate_limit_7d"`
+	Window7dStart               *string                                    `json:"window_7d_start"` // nil=不修改, ""=清空, RFC3339=设置当前 7d 窗口起点
 }
 
 type AdminCreateAPIKeyRequest struct {
-	UserID            *int64  `json:"user_id"`
-	Name              string  `json:"name" binding:"required"`
-	CustomKey         *string `json:"custom_key"`
-	GroupID           *int64  `json:"group_id"`
-	Status            *string `json:"status"`
-	Quota             float64 `json:"quota"`
-	ExpiresAt         *string `json:"expires_at"`
-	RateLimit5h       float64 `json:"rate_limit_5h"`
-	RateLimit1d       float64 `json:"rate_limit_1d"`
-	RateLimit7d       float64 `json:"rate_limit_7d"`
-	Concurrency       int     `json:"concurrency"`
-	AllowClaudeFamily *bool   `json:"allow_claude_family"`
-	AllowGPTFamily    *bool   `json:"allow_gpt_family"`
+	UserID                      *int64                                     `json:"user_id"`
+	Name                        string                                     `json:"name" binding:"required"`
+	CustomKey                   *string                                    `json:"custom_key"`
+	GroupID                     *int64                                     `json:"group_id"`
+	Status                      *string                                    `json:"status"`
+	Quota                       float64                                    `json:"quota"`
+	ExpiresAt                   *string                                    `json:"expires_at"`
+	RateLimit5h                 float64                                    `json:"rate_limit_5h"`
+	RateLimit1d                 float64                                    `json:"rate_limit_1d"`
+	RateLimit7d                 float64                                    `json:"rate_limit_7d"`
+	Concurrency                 int                                        `json:"concurrency"`
+	AllowClaudeFamily           *bool                                      `json:"allow_claude_family"`
+	AllowGPTFamily              *bool                                      `json:"allow_gpt_family"`
+	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 }
 
 // List handles listing API keys across all users.
@@ -120,19 +122,20 @@ func (h *AdminAPIKeyHandler) Create(c *gin.Context) {
 		expiresAt = &parsed
 	}
 	result, err := h.adminService.AdminCreateAPIKey(c.Request.Context(), service.AdminCreateAPIKeyInput{
-		UserID:            req.UserID,
-		Name:              req.Name,
-		CustomKey:         req.CustomKey,
-		GroupID:           req.GroupID,
-		Status:            req.Status,
-		Quota:             req.Quota,
-		ExpiresAt:         expiresAt,
-		RateLimit5h:       req.RateLimit5h,
-		RateLimit1d:       req.RateLimit1d,
-		RateLimit7d:       req.RateLimit7d,
-		Concurrency:       req.Concurrency,
-		AllowClaudeFamily: req.AllowClaudeFamily,
-		AllowGPTFamily:    req.AllowGPTFamily,
+		UserID:                      req.UserID,
+		Name:                        req.Name,
+		CustomKey:                   req.CustomKey,
+		GroupID:                     req.GroupID,
+		Status:                      req.Status,
+		Quota:                       req.Quota,
+		ExpiresAt:                   expiresAt,
+		RateLimit5h:                 req.RateLimit5h,
+		RateLimit1d:                 req.RateLimit1d,
+		RateLimit7d:                 req.RateLimit7d,
+		Concurrency:                 req.Concurrency,
+		AllowClaudeFamily:           req.AllowClaudeFamily,
+		AllowGPTFamily:              req.AllowGPTFamily,
+		MessagesDispatchModelConfig: req.MessagesDispatchModelConfig,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -220,16 +223,17 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 	}
 
 	input := service.AdminUpdateAPIKeyPolicyInput{
-		Status:              req.Status,
-		Quota:               req.Quota,
-		Concurrency:         req.Concurrency,
-		AllowClaudeFamily:   req.AllowClaudeFamily,
-		AllowGPTFamily:      req.AllowGPTFamily,
-		RateLimit5h:         req.RateLimit5h,
-		RateLimit1d:         req.RateLimit1d,
-		RateLimit7d:         req.RateLimit7d,
-		ResetQuota:          req.ResetQuota != nil && *req.ResetQuota,
-		ResetRateLimitUsage: req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage,
+		Status:                      req.Status,
+		Quota:                       req.Quota,
+		Concurrency:                 req.Concurrency,
+		AllowClaudeFamily:           req.AllowClaudeFamily,
+		AllowGPTFamily:              req.AllowGPTFamily,
+		MessagesDispatchModelConfig: req.MessagesDispatchModelConfig,
+		RateLimit5h:                 req.RateLimit5h,
+		RateLimit1d:                 req.RateLimit1d,
+		RateLimit7d:                 req.RateLimit7d,
+		ResetQuota:                  req.ResetQuota != nil && *req.ResetQuota,
+		ResetRateLimitUsage:         req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage,
 	}
 
 	if req.ExpiresAt != nil {
@@ -262,6 +266,7 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 		req.Concurrency != nil ||
 		req.AllowClaudeFamily != nil ||
 		req.AllowGPTFamily != nil ||
+		req.MessagesDispatchModelConfig != nil ||
 		req.RateLimit5h != nil ||
 		req.RateLimit1d != nil ||
 		req.RateLimit7d != nil ||

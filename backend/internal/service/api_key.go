@@ -40,8 +40,11 @@ type APIKey struct {
 	AllowClaudeFamily    bool
 	AllowGPTFamily       bool
 	ModelFamilyPolicySet bool
-	IPWhitelist          []string
-	IPBlacklist          []string
+	// Optional API key-level override for Claude /v1/messages dispatch to OpenAI/Codex.
+	// Empty config means inherit the group's messages dispatch mapping.
+	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
+	IPWhitelist                 []string
+	IPBlacklist                 []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`

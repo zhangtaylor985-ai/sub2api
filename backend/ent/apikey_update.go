@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKeyUpdate is the builder for updating APIKey entities.
@@ -179,6 +180,20 @@ func (_u *APIKeyUpdate) SetAllowGptFamily(v bool) *APIKeyUpdate {
 func (_u *APIKeyUpdate) SetNillableAllowGptFamily(v *bool) *APIKeyUpdate {
 	if v != nil {
 		_u.SetAllowGptFamily(*v)
+	}
+	return _u
+}
+
+// SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
+func (_u *APIKeyUpdate) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *APIKeyUpdate {
+	_u.mutation.SetMessagesDispatchModelConfig(v)
+	return _u
+}
+
+// SetNillableMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMessagesDispatchModelConfig) *APIKeyUpdate {
+	if v != nil {
+		_u.SetMessagesDispatchModelConfig(*v)
 	}
 	return _u
 }
@@ -657,6 +672,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AllowGptFamily(); ok {
 		_spec.SetField(apikey.FieldAllowGptFamily, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
+		_spec.SetField(apikey.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
 	}
@@ -1027,6 +1045,20 @@ func (_u *APIKeyUpdateOne) SetAllowGptFamily(v bool) *APIKeyUpdateOne {
 func (_u *APIKeyUpdateOne) SetNillableAllowGptFamily(v *bool) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetAllowGptFamily(*v)
+	}
+	return _u
+}
+
+// SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
+func (_u *APIKeyUpdateOne) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *APIKeyUpdateOne {
+	_u.mutation.SetMessagesDispatchModelConfig(v)
+	return _u
+}
+
+// SetNillableMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMessagesDispatchModelConfig) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetMessagesDispatchModelConfig(*v)
 	}
 	return _u
 }
@@ -1534,6 +1566,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.AllowGptFamily(); ok {
 		_spec.SetField(apikey.FieldAllowGptFamily, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
+		_spec.SetField(apikey.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)

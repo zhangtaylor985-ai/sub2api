@@ -363,31 +363,33 @@ type AdminAPIKeyListFilters struct {
 }
 
 type AdminCreateAPIKeyInput struct {
-	UserID              *int64
-	Name                string
-	CustomKey           *string
-	GroupID             *int64
-	Status              *string
-	Quota               float64
-	ExpiresAt           *time.Time
-	RateLimit5h         float64
-	RateLimit1d         float64
-	RateLimit7d         float64
-	Concurrency         int
-	AllowClaudeFamily   *bool
-	AllowGPTFamily      *bool
-	ResetRateLimitUsage bool
+	UserID                      *int64
+	Name                        string
+	CustomKey                   *string
+	GroupID                     *int64
+	Status                      *string
+	Quota                       float64
+	ExpiresAt                   *time.Time
+	RateLimit5h                 float64
+	RateLimit1d                 float64
+	RateLimit7d                 float64
+	Concurrency                 int
+	AllowClaudeFamily           *bool
+	AllowGPTFamily              *bool
+	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
+	ResetRateLimitUsage         bool
 }
 
 // AdminUpdateAPIKeyPolicyInput captures admin-managed API key policy fields.
 type AdminUpdateAPIKeyPolicyInput struct {
-	Status            *string
-	Quota             *float64
-	ExpiresAt         *time.Time
-	ClearExpires      bool
-	Concurrency       *int
-	AllowClaudeFamily *bool
-	AllowGPTFamily    *bool
+	Status                      *string
+	Quota                       *float64
+	ExpiresAt                   *time.Time
+	ClearExpires                bool
+	Concurrency                 *int
+	AllowClaudeFamily           *bool
+	AllowGPTFamily              *bool
+	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 
 	RateLimit5h        *float64
 	RateLimit1d        *float64
@@ -2282,6 +2284,9 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCre
 		AllowGPTFamily:       true,
 		ModelFamilyPolicySet: true,
 	}
+	if input.MessagesDispatchModelConfig != nil {
+		apiKey.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
+	}
 	if input.AllowClaudeFamily != nil {
 		apiKey.AllowClaudeFamily = *input.AllowClaudeFamily
 	}
@@ -2531,6 +2536,9 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 	if input.AllowGPTFamily != nil {
 		apiKey.AllowGPTFamily = *input.AllowGPTFamily
 		apiKey.ModelFamilyPolicySet = true
+	}
+	if input.MessagesDispatchModelConfig != nil {
+		apiKey.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
 	}
 	if input.ClearExpires {
 		apiKey.ExpiresAt = nil

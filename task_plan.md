@@ -94,7 +94,7 @@
 | 23. API Key 模型族限制迁移 | complete | 已上线 key 级 Claude/GPT family policy，从旧 audit policy 回填并完成生产 smoke |
 | 24. 2026-06-02 生产数据本地恢复 | complete | 已备份本地 PG17 沙盒，创建独立 PG18 恢复库并从线上 PG18 dump 恢复；关键表校验通过 |
 | 25. Claude -> GPT 上游错误黑盒 | complete | 已上线 `/v1/messages` dispatch 上游错误泛化；生产 smoke 确认客户端不暴露 GPT/Codex/ChatGPT/auth file/internal routing 错误 |
-| 26. API Key 级 Claude -> GPT 目标模型覆盖 | in_progress | 确认现有 Sub2API 只有分组级/账号级映射；本阶段新增 key 级覆盖，并把用户指定 key 配为 `gpt-5.4` |
+| 26. API Key 级 Claude -> GPT 目标模型覆盖 | complete | 已上线 key 级覆盖并把生产 `api_keys.id=125` 配为 `gpt-5.4`；canary 与正式生产 smoke 均确认 `→gpt-5.4` |
 
 ## 决策记录
 
@@ -147,3 +147,6 @@
 | 2026-06-01 | 生产 canary 首次 `docker run` 复制正式容器 env 时带入空行，Docker 报 `invalid environment variable` | 未启动 canary、未影响正式容器；过滤空 env 后重新启动 canary，健康检查通过 |
 | 2026-06-02 | 在 `backend/` 工作目录内误用 `backend/internal/repository/api_key_repo.go` 路径执行 gofmt，报 `lstat ... no such file or directory` | 无文件改动；改用模块内相对路径 `internal/repository/api_key_repo.go` 后通过 |
 | 2026-06-02 | 本地黑盒插入测试用户时误用 `ON CONFLICT(email)`，但本地 `users.email` 无唯一约束 | 该 SQL 未写入测试数据；改为 `WHERE NOT EXISTS` 显式插入/更新后继续验证 |
+| 2026-06-02 | 首次生产更新 `messages_dispatch_model_config` 的 SQL 被 shell 引号吃掉 JSON 双引号，Postgres 报 `syntax error at or near ":"` | 该 SQL 未写入任何数据；改用外层 heredoc 直接喂给远端 `psql` 后更新成功 |
+| 2026-06-02 | 生产 Redis 清 auth cache 第一次命令被本地 shell 展开远端变量，导致 `tmp` 为空且未清理 | 改用远端 heredoc 执行脚本，成功删除 14 个 auth cache snapshot |
+| 2026-06-02 | 生产日志筛选使用 `rg`，但远端主机未安装 `rg` | 改用 `grep -Ei` 检查最近日志 |

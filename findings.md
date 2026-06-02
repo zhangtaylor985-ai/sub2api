@@ -259,6 +259,8 @@
 - 现有 API Key 运行时模型只有 `allow_claude_family` / `allow_gpt_family` 这类“是否允许请求模型族”的策略，没有“该 key 的 Claude 请求应默认转到 `gpt-5.5` 还是 `gpt-5.4`”的目标模型覆盖。
 - 旧 CLIProxyAPI 有 per-key `claude-gpt-target-family`，用于覆盖全局 Claude -> GPT target family。Sub2API 如果要支持同一分组内不同 key 使用不同 GPT 目标模型，需要新增 key 级配置，否则只能通过拆分分组或账号映射绕行，维护性较差。
 - 新增能力的优先级建议为：账号级 `credentials.model_mapping` 最终改写/白名单 > API key 级 dispatch 映射覆盖 > 分组级 dispatch 映射 > 代码默认值。空 API key 配置必须表示不覆盖。
+- 2026-06-02 实现后的实际优先级：API key 级覆盖先决定 OpenAI `/v1/messages` dispatch 的 `defaultMappedModel`；未命中才回退分组级配置。账号级 `credentials.model_mapping` 仍在后续 OpenAI account 解析中作为最终改写和白名单，不被 key 级覆盖绕过。
+- 生产 `api_keys.id=125` 所在分组仍保持 Opus -> `gpt-5.5`、Sonnet -> `gpt-5.3-codex`、Haiku -> `gpt-5.4-mini`；本次只给该 key 设置 key 级覆盖到 `gpt-5.4`，不影响同组其他 key。
 
 ## 2026-06-02 生产数据本地恢复准备
 

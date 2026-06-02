@@ -317,3 +317,13 @@
   - 用户指定 key 对应生产 `api_keys.id=125`，名称 `dyer`，绑定 OpenAI 分组 `CP Legacy double`。
   - 该分组当前 dispatch 配置是 Opus -> `gpt-5.5`、Sonnet -> `gpt-5.3-codex`、Haiku -> `gpt-5.4-mini`；因此不能通过分组层修改实现“只让这把 key 转 `gpt-5.4`”。
   - 保持现有 key 模型族权限不变，只新增这把 key 的 Claude -> GPT dispatch override。
+- 2026-06-02：完成 API Key 级 Claude -> GPT 覆盖生产上线：
+  - 提交并推送 `85cd117b feat(api-keys): add claude gpt dispatch override` 到 `origin/main`。
+  - 生产 `/root/cliapp/sub2api-src` fast-forward 到 `85cd117b`，构建镜像 `zhangtaylor985/sub2api:main-85cd117b` 成功。
+  - canary `sub2api-canary-85cd117b` 绑定 `127.0.0.1:18080`，health 通过；migration `145_add_api_key_messages_dispatch_model_config.sql` 已写入 `schema_migrations`。
+  - 生产 `api_keys.id=125` 的 `messages_dispatch_model_config` 已设置为 Opus/Sonnet/Haiku -> `gpt-5.4`，并清理 Redis 14 个 auth cache snapshot。
+  - canary smoke 通过：`claude-opus-4-7`、`claude-sonnet-4-6` 均 HTTP 200，usage log 分别确认 `→gpt-5.4`。
+  - 正式 app 容器已切到 `zhangtaylor985/sub2api:main-85cd117b`，Postgres/Redis 未重启；本地和公开 `/health` 均正常。
+  - 正式 smoke 通过：`claude-opus-4-7`、`claude-sonnet-4-6` 均 HTTP 200，usage log 分别确认 `→gpt-5.4`。
+  - canary 和临时 env 文件已清理。
+  - 观察项：最近正式日志仍有其他 API Key 的 Sonnet 请求继承分组映射到 `gpt-5.3-codex` 后上游报错，以及个别并发槽等待超时；这些不是本次 key 级覆盖导致，后续可单独治理。

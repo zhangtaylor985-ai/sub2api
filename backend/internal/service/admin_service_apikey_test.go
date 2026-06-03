@@ -109,10 +109,15 @@ func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Co
 
 // apiKeyRepoStubForGroupUpdate implements APIKeyRepository for AdminUpdateAPIKeyGroupID tests.
 type apiKeyRepoStubForGroupUpdate struct {
-	key       *APIKey
-	getErr    error
-	updateErr error
-	updated   *APIKey // captures what was passed to Update
+	key               *APIKey
+	getErr            error
+	updateErr         error
+	updated           *APIKey // captures what was passed to Update
+	addedPackages     []APIKeyTokenPackage
+	listPackages      []APIKeyTokenPackage
+	listUsages        []APIKeyTokenPackageUsage
+	tokenRemaining    float64
+	tokenRemainingErr error
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {
@@ -190,6 +195,35 @@ func (s *apiKeyRepoStubForGroupUpdate) GetRateLimitData(context.Context, int64) 
 }
 func (s *apiKeyRepoStubForGroupUpdate) UpdateGroupIDByUserAndGroup(context.Context, int64, int64, int64) (int64, error) {
 	panic("unexpected")
+}
+func (s *apiKeyRepoStubForGroupUpdate) GetTokenPackageRemaining(context.Context, int64) (float64, error) {
+	if s.tokenRemainingErr != nil {
+		return 0, s.tokenRemainingErr
+	}
+	return s.tokenRemaining, nil
+}
+func (s *apiKeyRepoStubForGroupUpdate) AddTokenPackage(_ context.Context, id int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	pkg := APIKeyTokenPackage{
+		ID:        int64(len(s.addedPackages) + 1),
+		APIKeyID:  id,
+		AmountUSD: amount,
+		Note:      note,
+		CreatedBy: createdBy,
+		StartedAt: time.Now().UTC(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	s.addedPackages = append(s.addedPackages, pkg)
+	return &pkg, nil
+}
+func (s *apiKeyRepoStubForGroupUpdate) ListTokenPackages(context.Context, int64, int) ([]APIKeyTokenPackage, error) {
+	return append([]APIKeyTokenPackage(nil), s.listPackages...), nil
+}
+func (s *apiKeyRepoStubForGroupUpdate) ListTokenPackageUsage(context.Context, int64, int) ([]APIKeyTokenPackageUsage, error) {
+	return append([]APIKeyTokenPackageUsage(nil), s.listUsages...), nil
 }
 
 // groupRepoStubForGroupUpdate implements GroupRepository for AdminUpdateAPIKeyGroupID tests.
@@ -523,6 +557,69 @@ func TestAdminService_AdminUpdateAPIKeyPolicy_RejectsExpiredWeeklyWindowStart(t 
 	require.Error(t, err)
 	require.Equal(t, "INVALID_RATE_LIMIT_WINDOW", infraerrors.Reason(err))
 	require.Nil(t, apiKeyRepo.updated)
+}
+
+func TestAdminService_AdminAddAPIKeyTokenPackage_AppendsPackageAndInvalidatesAuthCache(t *testing.T) {
+	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusActive}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	cache := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, authCacheInvalidator: cache}
+
+	pkg, err := svc.AdminAddAPIKeyTokenPackage(context.Background(), 1, 25.5, "manual top-up", "admin")
+
+	require.NoError(t, err)
+	require.NotNil(t, pkg)
+	require.Equal(t, int64(1), pkg.APIKeyID)
+	require.Equal(t, 25.5, pkg.AmountUSD)
+	require.Equal(t, "manual top-up", pkg.Note)
+	require.Equal(t, "admin", pkg.CreatedBy)
+	require.Len(t, apiKeyRepo.addedPackages, 1)
+	require.Equal(t, []string{"sk-test"}, cache.keys)
+}
+
+func TestAdminService_AdminAddAPIKeyTokenPackage_RejectsInvalidAmount(t *testing.T) {
+	svc := &adminServiceImpl{apiKeyRepo: &apiKeyRepoStubForGroupUpdate{}}
+
+	_, err := svc.AdminAddAPIKeyTokenPackage(context.Background(), 1, 0, "", "admin")
+
+	require.Error(t, err)
+	require.Equal(t, "INVALID_TOKEN_PACKAGE_AMOUNT", infraerrors.Reason(err))
+}
+
+func TestAdminService_AdminListAPIKeyTokenPackages_ReturnsLedger(t *testing.T) {
+	now := time.Now().UTC()
+	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusActive}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{
+		key:            existing,
+		tokenRemaining: 12.75,
+		listPackages: []APIKeyTokenPackage{{
+			ID:        7,
+			APIKeyID:  1,
+			AmountUSD: 20,
+			UsedUSD:   7.25,
+			Note:      "top-up",
+			StartedAt: now,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		listUsages: []APIKeyTokenPackageUsage{{
+			ID:          11,
+			PackageID:   7,
+			APIKeyID:    1,
+			CostUSD:     1.5,
+			RequestedAt: now,
+			CreatedAt:   now,
+		}},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	summary, err := svc.AdminListAPIKeyTokenPackages(context.Background(), 1)
+
+	require.NoError(t, err)
+	require.NotNil(t, summary)
+	require.Equal(t, 12.75, summary.Remaining)
+	require.Len(t, summary.Packages, 1)
+	require.Len(t, summary.Usages, 1)
 }
 
 // ---------------------------------------------------------------------------

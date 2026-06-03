@@ -298,6 +298,50 @@
             </div>
           </div>
 
+          <!-- Token Package Card -->
+          <div
+            v-if="tokenPackageSummary"
+            class="fade-up fade-up-delay-3 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
+          >
+            <div class="px-8 py-5 border-b border-gray-200 dark:border-dark-700">
+              <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.tokenPackages') }}</h3>
+            </div>
+            <div class="grid grid-cols-1 gap-px bg-gray-100 dark:bg-dark-800 sm:grid-cols-3">
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.packageTotal') }}</div>
+                <div class="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ usd(tokenPackageSummary.total_usd) }}</div>
+              </div>
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.packageUsed') }}</div>
+                <div class="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ usd(tokenPackageSummary.used_usd) }}</div>
+              </div>
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.packageRemaining') }}</div>
+                <div class="text-lg font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{{ usd(tokenPackageSummary.remaining_usd) }}</div>
+              </div>
+            </div>
+            <div v-if="tokenPackageUsageRows.length > 0" class="overflow-x-auto">
+              <table class="w-full">
+                <thead>
+                  <tr class="border-t border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950">
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.time') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.packageUsed') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(row, i) in tokenPackageUsageRows"
+                    :key="i"
+                    class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
+                  >
+                    <td class="px-4 py-3 text-sm whitespace-nowrap text-gray-700 dark:text-dark-200">{{ formatDateTimeShort(row.requested_at || row.created_at) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right font-medium text-gray-900 dark:text-white">{{ usd(row.cost_usd) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- Daily Usage Table -->
           <div
             v-if="showDailyUsage"
@@ -833,12 +877,35 @@ interface DailyUsageRow {
   actual_cost?: number
 }
 
+interface TokenPackageUsageRow {
+  cost_usd: number
+  requested_at?: string
+  created_at?: string
+}
+
+interface TokenPackageSummary {
+  total_usd: number
+  used_usd: number
+  remaining_usd: number
+  usage?: TokenPackageUsageRow[]
+}
+
 const dailyUsageRows = computed<DailyUsageRow[]>(() => {
   const rows = resultData.value?.daily_usage
   return Array.isArray(rows) ? rows : []
 })
 
 const showDailyUsage = computed(() => Boolean(resultData.value && Array.isArray(resultData.value.daily_usage)))
+
+const tokenPackageSummary = computed<TokenPackageSummary | null>(() => {
+  const summary = resultData.value?.token_packages
+  return summary && Number(summary.total_usd || 0) > 0 ? summary : null
+})
+
+const tokenPackageUsageRows = computed<TokenPackageUsageRow[]>(() => {
+  const rows = tokenPackageSummary.value?.usage
+  return Array.isArray(rows) ? rows : []
+})
 
 // ==================== Utility Functions ====================
 
@@ -857,6 +924,14 @@ function formatDate(iso: string | null | undefined): string {
   const d = new Date(iso)
   const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
   return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+function formatDateTimeShort(iso: string | null | undefined): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '-'
+  const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
+  return d.toLocaleString(loc, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function formatWindowBoundary(iso: string | null | undefined): string {

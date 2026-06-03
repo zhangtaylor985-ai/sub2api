@@ -128,6 +128,11 @@ export default {
     used: 'Used',
     detailInfo: 'Detail Information',
     tokenStats: 'Token Statistics',
+    tokenPackages: 'Token Packages',
+    packageTotal: 'Package Total',
+    packageUsed: 'Package Used',
+    packageRemaining: 'Package Remaining',
+    time: 'Time',
     dailyDetail: 'Daily Detail',
     modelStats: 'Model Usage Statistics',
     // Table headers
@@ -1377,6 +1382,8 @@ export default {
       searchPlaceholder: 'Search key, name, user email, or username...',
       create: 'Create API Key',
       editPolicy: 'Edit Policy',
+      addTokenPackage: 'Add Package',
+      viewTokenPackages: 'View Packages',
       allStatus: 'All Status',
       allGroups: 'All Groups',
       ungrouped: 'No Group',
@@ -1386,6 +1393,11 @@ export default {
       neverExpires: 'Never Expires',
       generated: 'Auto-generate',
       weeklyPeriod: 'Weekly period',
+      tokenPackageTotal: 'Package Total',
+      tokenPackageUsed: 'Package Used',
+      tokenPackageRemaining: 'Package Remaining',
+      tokenPackageHistory: 'Package Records',
+      tokenPackageUsageHistory: 'Package Usage Records',
       columns: {
         key: 'API Key',
         owner: 'Owner',
@@ -1429,13 +1441,20 @@ export default {
         zeroInheritConcurrency: '0 = inherit group / user concurrency',
         resetQuota: 'Reset total usage',
         resetRateUsage: 'Reset rate-limit window usage',
-        clearExpires: 'Clear expiration'
+        clearExpires: 'Clear expiration',
+        tokenPackageAmount: 'Package Amount USD',
+        tokenPackageAmountHint: 'Consumed only after daily/weekly limits are full; existing usage is not reset',
+        tokenPackageNote: 'Note',
+        tokenPackageNotePlaceholder: 'e.g. June traffic top-up'
       },
       errors: {
         nameRequired: 'Please enter an API key name',
         loadFailed: 'Failed to load API keys',
         createFailed: 'Failed to create API key',
         updateFailed: 'Failed to update API key',
+        loadTokenPackagesFailed: 'Failed to load package records',
+        addTokenPackageFailed: 'Failed to add package',
+        tokenPackageAmountRequired: 'Please enter an amount greater than 0',
         invalidExpiresAt: 'Invalid expiration time',
         invalidWeeklyWindowStart: 'Invalid weekly window start time',
         invalidWeeklyWindowRange: 'Weekly window start must be within the past 7 days and not later than now'
@@ -1446,7 +1465,8 @@ export default {
       dispatchOverrideShort: 'Claude->GPT {model}',
       dispatchOverrideMixed: 'Claude->GPT custom',
       created: 'API key created',
-      updated: 'API key policy updated'
+      updated: 'API key policy updated',
+      tokenPackageAdded: 'Package added'
     },
 
     // Dashboard

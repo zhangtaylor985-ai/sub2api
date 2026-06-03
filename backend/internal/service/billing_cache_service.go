@@ -96,6 +96,10 @@ type apiKeyRateLimitLoader interface {
 	GetRateLimitData(ctx context.Context, keyID int64) (*APIKeyRateLimitData, error)
 }
 
+type apiKeyTokenPackageRemainingLoader interface {
+	GetTokenPackageRemaining(ctx context.Context, keyID int64) (float64, error)
+}
+
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
@@ -655,12 +659,31 @@ func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *AP
 		return ErrAPIKeyRateLimit5hExceeded
 	}
 	if limit1d > 0 && usage1d >= limit1d {
+		if s.hasAPIKeyTokenPackageRemaining(ctx, apiKey.ID) {
+			return nil
+		}
 		return ErrAPIKeyRateLimit1dExceeded
 	}
 	if limit7d > 0 && usage7d >= limit7d {
+		if s.hasAPIKeyTokenPackageRemaining(ctx, apiKey.ID) {
+			return nil
+		}
 		return ErrAPIKeyRateLimit7dExceeded
 	}
 	return nil
+}
+
+func (s *BillingCacheService) hasAPIKeyTokenPackageRemaining(ctx context.Context, keyID int64) bool {
+	loader, ok := s.apiKeyRateLimitLoader.(apiKeyTokenPackageRemainingLoader)
+	if !ok || loader == nil {
+		return false
+	}
+	remaining, err := loader.GetTokenPackageRemaining(ctx, keyID)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: token package remaining lookup failed for api key %d: %v", keyID, err)
+		return false
+	}
+	return remaining > 0
 }
 
 // QueueUpdateAPIKeyRateLimitUsage asynchronously updates rate limit usage in the cache.
@@ -720,7 +743,7 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
 	if isSubscriptionMode {
-		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
+		if err := s.checkSubscriptionEligibility(ctx, user.ID, apiKey, group, subscription); err != nil {
 			return err
 		}
 	} else {
@@ -857,7 +880,7 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 }
 
 // checkSubscriptionEligibility 检查订阅模式资格
-func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, userID int64, group *Group, subscription *UserSubscription) error {
+func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, userID int64, apiKey *APIKey, group *Group, subscription *UserSubscription) error {
 	// 获取订阅缓存数据
 	subData, err := s.GetSubscriptionStatus(ctx, userID, group.ID)
 	if err != nil {
@@ -883,10 +906,16 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 
 	// 检查限额（使用传入的Group限额配置）
 	if group.HasDailyLimit() && subData.DailyUsage >= *group.DailyLimitUSD {
+		if apiKey != nil && s.hasAPIKeyTokenPackageRemaining(ctx, apiKey.ID) {
+			return nil
+		}
 		return ErrDailyLimitExceeded
 	}
 
 	if group.HasWeeklyLimit() && subData.WeeklyUsage >= *group.WeeklyLimitUSD {
+		if apiKey != nil && s.hasAPIKeyTokenPackageRemaining(ctx, apiKey.ID) {
+			return nil
+		}
 		return ErrWeeklyLimitExceeded
 	}
 

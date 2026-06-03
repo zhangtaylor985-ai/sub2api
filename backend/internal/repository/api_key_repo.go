@@ -685,6 +685,104 @@ func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (resu
 	return data, rows.Err()
 }
 
+// GetTokenPackageRemaining returns the active remaining token package allowance for an API key.
+func (r *apiKeyRepository) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
+	var remaining float64
+	err := scanSingleRow(ctx, r.sql, `
+		SELECT COALESCE(SUM(GREATEST(amount_usd - used_usd, 0)), 0)
+		FROM api_key_token_packages
+		WHERE api_key_id = $1 AND started_at <= NOW()`,
+		[]any{id},
+		&remaining)
+	if err != nil {
+		return 0, err
+	}
+	return remaining, nil
+}
+
+// AddTokenPackage creates a new token package top-up for an API key.
+func (r *apiKeyRepository) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*service.APIKeyTokenPackage, error) {
+	if amount <= 0 {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	var exists bool
+	if err := scanSingleRow(ctx, r.sql, `SELECT EXISTS(SELECT 1 FROM api_keys WHERE id = $1 AND deleted_at IS NULL)`, []any{id}, &exists); err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, service.ErrAPIKeyNotFound
+	}
+
+	pkg := &service.APIKeyTokenPackage{}
+	err := scanSingleRow(ctx, r.sql, `
+		INSERT INTO api_key_token_packages (api_key_id, amount_usd, note, created_by)
+		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''))
+		RETURNING id, api_key_id, amount_usd, used_usd, COALESCE(note, ''), COALESCE(created_by, ''), started_at, created_at, updated_at`,
+		[]any{id, amount, strings.TrimSpace(note), strings.TrimSpace(createdBy)},
+		&pkg.ID, &pkg.APIKeyID, &pkg.AmountUSD, &pkg.UsedUSD, &pkg.Note, &pkg.CreatedBy, &pkg.StartedAt, &pkg.CreatedAt, &pkg.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return pkg, nil
+}
+
+func (r *apiKeyRepository) ListTokenPackages(ctx context.Context, id int64, limit int) ([]service.APIKeyTokenPackage, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id, api_key_id, amount_usd, used_usd, COALESCE(note, ''), COALESCE(created_by, ''), started_at, created_at, updated_at
+		FROM api_key_token_packages
+		WHERE api_key_id = $1
+		ORDER BY started_at DESC, id DESC
+		LIMIT $2`,
+		id, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	packages := make([]service.APIKeyTokenPackage, 0)
+	for rows.Next() {
+		var pkg service.APIKeyTokenPackage
+		if err := rows.Scan(&pkg.ID, &pkg.APIKeyID, &pkg.AmountUSD, &pkg.UsedUSD, &pkg.Note, &pkg.CreatedBy, &pkg.StartedAt, &pkg.CreatedAt, &pkg.UpdatedAt); err != nil {
+			return nil, err
+		}
+		packages = append(packages, pkg)
+	}
+	return packages, rows.Err()
+}
+
+func (r *apiKeyRepository) ListTokenPackageUsage(ctx context.Context, id int64, limit int) ([]service.APIKeyTokenPackageUsage, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id, package_id, api_key_id, COALESCE(request_id, ''), COALESCE(request_fingerprint, ''),
+		       COALESCE(model, ''), cost_usd, requested_at, created_at
+		FROM api_key_token_package_usage
+		WHERE api_key_id = $1
+		ORDER BY requested_at DESC, id DESC
+		LIMIT $2`,
+		id, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	usages := make([]service.APIKeyTokenPackageUsage, 0)
+	for rows.Next() {
+		var usage service.APIKeyTokenPackageUsage
+		if err := rows.Scan(&usage.ID, &usage.PackageID, &usage.APIKeyID, &usage.RequestID, &usage.RequestFingerprint, &usage.Model, &usage.CostUSD, &usage.RequestedAt, &usage.CreatedAt); err != nil {
+			return nil, err
+		}
+		usages = append(usages, usage)
+	}
+	return usages, rows.Err()
+}
+
 func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	if m == nil {
 		return nil

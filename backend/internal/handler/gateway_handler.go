@@ -1058,6 +1058,7 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	// Best-effort: 获取用量统计（按当前 API Key 过滤），失败不影响基础响应
 	usageData := h.buildUsageData(ctx, apiKey.ID)
 	dailyUsage := h.buildAPIKeyDailyUsage(c, subject.UserID, apiKey.ID, days)
+	tokenPackages := h.buildAPIKeyTokenPackages(ctx, apiKey.ID)
 
 	// Best-effort: 获取模型统计
 	var modelStats any
@@ -1068,14 +1069,14 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	}
 
 	// 判断模式: key 有总额度或速率限制 → quota_limited，否则 → unrestricted
-	isQuotaLimited := apiKey.Quota > 0 || apiKey.HasRateLimits()
+	isQuotaLimited := apiKey.Quota > 0 || apiKey.HasRateLimits() || tokenPackages != nil
 
 	if isQuotaLimited {
-		h.usageQuotaLimited(c, ctx, apiKey, usageData, dailyUsage, modelStats)
+		h.usageQuotaLimited(c, ctx, apiKey, usageData, dailyUsage, modelStats, tokenPackages)
 		return
 	}
 
-	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, dailyUsage, modelStats)
+	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, dailyUsage, modelStats, tokenPackages)
 }
 
 // parseUsageDateRange 解析 start_date / end_date query params，默认返回近 30 天范围
@@ -1145,8 +1146,52 @@ func (h *GatewayHandler) buildAPIKeyDailyUsage(c *gin.Context, userID, apiKeyID 
 	return stats
 }
 
+func (h *GatewayHandler) buildAPIKeyTokenPackages(ctx context.Context, apiKeyID int64) any {
+	if h.apiKeyService == nil {
+		return nil
+	}
+	packages, err := h.apiKeyService.ListTokenPackages(ctx, apiKeyID, 20)
+	if err != nil || len(packages) == 0 {
+		return nil
+	}
+	usages, _ := h.apiKeyService.ListTokenPackageUsage(ctx, apiKeyID, 30)
+	total := 0.0
+	used := 0.0
+	items := make([]gin.H, 0, len(packages))
+	for i := range packages {
+		pkg := packages[i]
+		total += pkg.AmountUSD
+		used += pkg.UsedUSD
+		items = append(items, gin.H{
+			"id":            pkg.ID,
+			"amount_usd":    pkg.AmountUSD,
+			"used_usd":      pkg.UsedUSD,
+			"remaining_usd": pkg.RemainingUSD(),
+			"started_at":    pkg.StartedAt,
+			"created_at":    pkg.CreatedAt,
+		})
+	}
+	usageItems := make([]gin.H, 0, len(usages))
+	for i := range usages {
+		usage := usages[i]
+		usageItems = append(usageItems, gin.H{
+			"package_id":   usage.PackageID,
+			"cost_usd":     usage.CostUSD,
+			"requested_at": usage.RequestedAt,
+			"created_at":   usage.CreatedAt,
+		})
+	}
+	return gin.H{
+		"total_usd":     total,
+		"used_usd":      used,
+		"remaining_usd": max(0, total-used),
+		"packages":      items,
+		"usage":         usageItems,
+	}
+}
+
 // usageQuotaLimited 处理 quota_limited 模式的响应
-func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any) {
+func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any, tokenPackages any) {
 	resp := gin.H{
 		"mode":    "quota_limited",
 		"isValid": apiKey.Status == service.StatusAPIKeyActive || apiKey.Status == service.StatusAPIKeyQuotaExhausted || apiKey.Status == service.StatusAPIKeyExpired,
@@ -1237,12 +1282,15 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 	if modelStats != nil {
 		resp["model_stats"] = modelStats
 	}
+	if tokenPackages != nil {
+		resp["token_packages"] = tokenPackages
+	}
 
 	c.JSON(http.StatusOK, resp)
 }
 
 // usageUnrestricted 处理 unrestricted 模式的响应（向后兼容）
-func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any) {
+func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any, tokenPackages any) {
 	// 订阅模式
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
 		resp := gin.H{
@@ -1277,6 +1325,9 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		if modelStats != nil {
 			resp["model_stats"] = modelStats
 		}
+		if tokenPackages != nil {
+			resp["token_packages"] = tokenPackages
+		}
 		c.JSON(http.StatusOK, resp)
 		return
 	}
@@ -1304,6 +1355,9 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 	}
 	if modelStats != nil {
 		resp["model_stats"] = modelStats
+	}
+	if tokenPackages != nil {
+		resp["token_packages"] = tokenPackages
 	}
 	c.JSON(http.StatusOK, resp)
 }

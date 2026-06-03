@@ -149,6 +149,22 @@ func (s *apiKeyRepoStub) GetRateLimitData(ctx context.Context, id int64) (*APIKe
 	panic("unexpected GetRateLimitData call")
 }
 
+func (s *apiKeyRepoStub) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
+	panic("unexpected GetTokenPackageRemaining call")
+}
+
+func (s *apiKeyRepoStub) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error) {
+	panic("unexpected AddTokenPackage call")
+}
+
+func (s *apiKeyRepoStub) ListTokenPackages(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackage, error) {
+	panic("unexpected ListTokenPackages call")
+}
+
+func (s *apiKeyRepoStub) ListTokenPackageUsage(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackageUsage, error) {
+	panic("unexpected ListTokenPackageUsage call")
+}
+
 // apiKeyCacheStub 是 APIKeyCache 接口的测试桩实现。
 // 用于验证删除操作时缓存清理逻辑是否被正确调用。
 //

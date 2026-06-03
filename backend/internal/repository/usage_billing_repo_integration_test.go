@@ -128,6 +128,65 @@ func TestUsageBillingRepositoryApply_DeduplicatesSubscriptionBilling(t *testing.
 	require.InDelta(t, 2.5, dailyUsage, 0.000001)
 }
 
+func TestUsageBillingRepositoryApply_ConsumesTokenPackageOnlyAfterInheritedDailyLimit(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	apiKeyRepo := NewAPIKeyRepository(client, integrationDB)
+
+	user := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("usage-billing-token-package-user-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+	})
+	dailyLimit := 10.0
+	weeklyLimit := 100.0
+	group := mustCreateGroup(t, client, &service.Group{
+		Name:             "usage-billing-token-package-group-" + uuid.NewString(),
+		Platform:         service.PlatformAnthropic,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		DailyLimitUSD:    &dailyLimit,
+		WeeklyLimitUSD:   &weeklyLimit,
+	})
+	now := time.Now().UTC().Add(-1 * time.Hour)
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID:        user.ID,
+		GroupID:       &group.ID,
+		Key:           "sk-usage-billing-token-package-" + uuid.NewString(),
+		Name:          "billing-token-package",
+		Usage1d:       8,
+		Usage7d:       20,
+		Window1dStart: &now,
+		Window7dStart: &now,
+	})
+	pkg, err := apiKeyRepo.AddTokenPackage(ctx, apiKey.ID, 10, "integration top-up", "test")
+	require.NoError(t, err)
+	require.Equal(t, apiKey.ID, pkg.APIKeyID)
+
+	requestID := uuid.NewString()
+	result, err := repo.Apply(ctx, &service.UsageBillingCommand{
+		RequestID:           requestID,
+		APIKeyID:            apiKey.ID,
+		UserID:              user.ID,
+		APIKeyRateLimitCost: 5,
+		Model:               "claude-opus-4-8",
+	})
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+
+	var usage1d, usage7d float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT usage_1d, usage_7d FROM api_keys WHERE id = $1", apiKey.ID).Scan(&usage1d, &usage7d))
+	require.InDelta(t, 10, usage1d, 0.000001, "daily window should only consume the remaining base quota")
+	require.InDelta(t, 22, usage7d, 0.000001, "weekly window should only consume the same base-covered amount")
+
+	var packageUsed float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT used_usd FROM api_key_token_packages WHERE id = $1", pkg.ID).Scan(&packageUsed))
+	require.InDelta(t, 3, packageUsed, 0.000001)
+
+	var usageCost float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT cost_usd FROM api_key_token_package_usage WHERE package_id = $1 AND request_id = $2", pkg.ID, requestID).Scan(&usageCost))
+	require.InDelta(t, 3, usageCost, 0.000001)
+}
+
 func TestUsageBillingRepositoryApply_RequestFingerprintConflict(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)

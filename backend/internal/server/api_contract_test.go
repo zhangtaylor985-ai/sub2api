@@ -229,7 +229,11 @@ func TestAPIContracts(t *testing.T) {
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
 					"group_id": null,
+					"concurrency": 0,
 					"status": "active",
+					"allow_claude_family": true,
+					"allow_gpt_family": true,
+					"messages_dispatch_model_config": {},
 					"ip_whitelist": null,
 					"ip_blacklist": null,
 					"last_used_at": null,
@@ -278,7 +282,11 @@ func TestAPIContracts(t *testing.T) {
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
 							"group_id": null,
+							"concurrency": 0,
 							"status": "active",
+							"allow_claude_family": true,
+							"allow_gpt_family": true,
+							"messages_dispatch_model_config": {},
 							"ip_whitelist": null,
 							"ip_blacklist": null,
 							"last_used_at": null,
@@ -360,6 +368,7 @@ func TestAPIContracts(t *testing.T) {
 						"allow_messages_dispatch": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
+						"concurrency": 0,
 						"require_oauth_only": false,
 						"require_privacy_set": false,
 						"rpm_limit": 0,
@@ -2234,6 +2243,47 @@ func (r *stubApiKeyRepo) ResetRateLimitWindows(ctx context.Context, id int64) er
 }
 func (r *stubApiKeyRepo) GetRateLimitData(ctx context.Context, id int64) (*service.APIKeyRateLimitData, error) {
 	return nil, nil
+}
+
+func (r *stubApiKeyRepo) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
+	if _, ok := r.byID[id]; !ok {
+		return 0, service.ErrAPIKeyNotFound
+	}
+	return 0, nil
+}
+
+func (r *stubApiKeyRepo) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*service.APIKeyTokenPackage, error) {
+	if _, ok := r.byID[id]; !ok {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	now := r.now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return &service.APIKeyTokenPackage{
+		ID:        1,
+		APIKeyID:  id,
+		AmountUSD: amount,
+		Note:      note,
+		CreatedBy: createdBy,
+		StartedAt: now,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
+}
+
+func (r *stubApiKeyRepo) ListTokenPackages(ctx context.Context, id int64, limit int) ([]service.APIKeyTokenPackage, error) {
+	if _, ok := r.byID[id]; !ok {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	return []service.APIKeyTokenPackage{}, nil
+}
+
+func (r *stubApiKeyRepo) ListTokenPackageUsage(ctx context.Context, id int64, limit int) ([]service.APIKeyTokenPackageUsage, error) {
+	if _, ok := r.byID[id]; !ok {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	return []service.APIKeyTokenPackageUsage{}, nil
 }
 
 type stubUsageLogRepo struct {

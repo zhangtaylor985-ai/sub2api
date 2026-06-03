@@ -118,6 +118,18 @@ func (s *authRepoStub) ResetRateLimitWindows(ctx context.Context, id int64) erro
 func (s *authRepoStub) GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error) {
 	panic("unexpected GetRateLimitData call")
 }
+func (s *authRepoStub) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
+	panic("unexpected GetTokenPackageRemaining call")
+}
+func (s *authRepoStub) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error) {
+	panic("unexpected AddTokenPackage call")
+}
+func (s *authRepoStub) ListTokenPackages(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackage, error) {
+	panic("unexpected ListTokenPackages call")
+}
+func (s *authRepoStub) ListTokenPackageUsage(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackageUsage, error) {
+	panic("unexpected ListTokenPackageUsage call")
+}
 
 type authCacheStub struct {
 	getAuthCache   func(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error)

@@ -120,6 +120,8 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		apiKeys.GET("", h.Admin.APIKey.List)
 		apiKeys.POST("", h.Admin.APIKey.Create)
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
+		apiKeys.GET("/:id/token-packages", h.Admin.APIKey.ListTokenPackages)
+		apiKeys.POST("/:id/token-packages", h.Admin.APIKey.AddTokenPackage)
 	}
 }
 

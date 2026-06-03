@@ -71,6 +71,41 @@ type APIKey struct {
 	Window7dStart *time.Time // Start of current 7d window
 }
 
+type APIKeyTokenPackage struct {
+	ID        int64
+	APIKeyID  int64
+	AmountUSD float64
+	UsedUSD   float64
+	Note      string
+	CreatedBy string
+	StartedAt time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (p *APIKeyTokenPackage) RemainingUSD() float64 {
+	if p == nil {
+		return 0
+	}
+	remaining := p.AmountUSD - p.UsedUSD
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+type APIKeyTokenPackageUsage struct {
+	ID                 int64
+	PackageID          int64
+	APIKeyID           int64
+	RequestID          string
+	RequestFingerprint string
+	Model              string
+	CostUSD            float64
+	RequestedAt        time.Time
+	CreatedAt          time.Time
+}
+
 func (k *APIKey) IsActive() bool {
 	return k.Status == StatusActive
 }

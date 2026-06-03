@@ -128,6 +128,11 @@ export default {
     used: '已使用',
     detailInfo: '详细信息',
     tokenStats: 'Token 统计',
+    tokenPackages: '流量包',
+    packageTotal: '流量包总额',
+    packageUsed: '流量包已用',
+    packageRemaining: '流量包剩余',
+    time: '时间',
     dailyDetail: '按日明细',
     modelStats: '模型用量统计',
     // Table headers
@@ -1381,6 +1386,8 @@ export default {
       searchPlaceholder: '搜索 Key、名称、用户邮箱或用户名...',
       create: '新建 API Key',
       editPolicy: '编辑策略',
+      addTokenPackage: '增加流量包',
+      viewTokenPackages: '查看流量包',
       allStatus: '全部状态',
       allGroups: '全部分组',
       ungrouped: '未绑定分组',
@@ -1390,6 +1397,11 @@ export default {
       neverExpires: '永久有效',
       generated: '自动生成',
       weeklyPeriod: '周周期',
+      tokenPackageTotal: '流量包总额',
+      tokenPackageUsed: '流量包已用',
+      tokenPackageRemaining: '流量包剩余',
+      tokenPackageHistory: '流量包记录',
+      tokenPackageUsageHistory: '流量包消耗记录',
       columns: {
         key: 'API Key',
         owner: '归属用户',
@@ -1433,13 +1445,20 @@ export default {
         zeroInheritConcurrency: '0 表示继承分组 / 用户并发',
         resetQuota: '重置总额度用量',
         resetRateUsage: '重置限速窗口用量',
-        clearExpires: '清空过期时间'
+        clearExpires: '清空过期时间',
+        tokenPackageAmount: '追加额度 USD',
+        tokenPackageAmountHint: '日/周限额用满后才会消耗该流量包；不会重置现有用量',
+        tokenPackageNote: '备注',
+        tokenPackageNotePlaceholder: '例如：补 6 月流量包'
       },
       errors: {
         nameRequired: '请输入 API Key 名称',
         loadFailed: '加载 API Key 失败',
         createFailed: '创建 API Key 失败',
         updateFailed: '更新 API Key 失败',
+        loadTokenPackagesFailed: '加载流量包记录失败',
+        addTokenPackageFailed: '增加流量包失败',
+        tokenPackageAmountRequired: '请输入大于 0 的追加额度',
         invalidExpiresAt: '过期时间格式无效',
         invalidWeeklyWindowStart: '周限额周期起点格式无效',
         invalidWeeklyWindowRange: '周限额周期起点必须在过去 7 天内，且不能晚于当前时间'
@@ -1450,7 +1469,8 @@ export default {
       dispatchOverrideShort: 'Claude->GPT {model}',
       dispatchOverrideMixed: 'Claude->GPT 自定义',
       created: 'API Key 已创建',
-      updated: 'API Key 策略已更新'
+      updated: 'API Key 策略已更新',
+      tokenPackageAdded: '流量包已增加'
     },
 
     // Dashboard

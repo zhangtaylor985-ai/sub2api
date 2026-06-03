@@ -148,13 +148,29 @@
           </template>
 
           <template #cell-actions="{ row }">
-            <button
-              class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
-              :title="t('admin.apiKeys.editPolicy')"
-              @click="openEditDialog(row)"
-            >
-              <Icon name="edit" size="sm" />
-            </button>
+            <div class="flex items-center gap-1">
+              <button
+                class="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                :title="t('admin.apiKeys.addTokenPackage')"
+                @click="openTokenPackageDialog(row)"
+              >
+                <Icon name="plus" size="sm" />
+              </button>
+              <button
+                class="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                :title="t('admin.apiKeys.viewTokenPackages')"
+                @click="openTokenPackageHistory(row)"
+              >
+                <Icon name="clipboard" size="sm" />
+              </button>
+              <button
+                class="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                :title="t('admin.apiKeys.editPolicy')"
+                @click="openEditDialog(row)"
+              >
+                <Icon name="edit" size="sm" />
+              </button>
+            </div>
           </template>
         </DataTable>
       </template>
@@ -417,6 +433,101 @@
         </div>
       </template>
     </BaseDialog>
+
+    <BaseDialog
+      :show="showTokenPackageDialog"
+      :title="t('admin.apiKeys.addTokenPackage')"
+      width="wide"
+      @close="closeTokenPackageDialog"
+    >
+      <div v-if="tokenPackageKey" class="space-y-5">
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/40">
+          <div class="font-medium text-gray-900 dark:text-white">{{ tokenPackageKey.name }}</div>
+          <code class="mt-1 block truncate font-mono text-xs text-gray-500 dark:text-dark-300">
+            {{ maskKey(tokenPackageKey.key) }}
+          </code>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900">
+            <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.apiKeys.tokenPackageTotal') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">${{ formatMoney(tokenPackageTotal) }}</div>
+          </div>
+          <div class="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900">
+            <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.apiKeys.tokenPackageUsed') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">${{ formatMoney(tokenPackageUsed) }}</div>
+          </div>
+          <div class="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-900">
+            <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.apiKeys.tokenPackageRemaining') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">${{ formatMoney(tokenPackageRemaining) }}</div>
+          </div>
+        </div>
+
+        <form id="token-package-form" class="grid gap-4 md:grid-cols-2" @submit.prevent="handleAddTokenPackage">
+          <label class="space-y-1">
+            <span class="input-label">{{ t('admin.apiKeys.form.tokenPackageAmount') }}</span>
+            <input v-model.number="tokenPackageForm.amount_usd" type="number" min="0.0001" step="0.0001" class="input" required />
+            <span class="input-hint">{{ t('admin.apiKeys.form.tokenPackageAmountHint') }}</span>
+          </label>
+          <label class="space-y-1">
+            <span class="input-label">{{ t('admin.apiKeys.form.tokenPackageNote') }}</span>
+            <input v-model.trim="tokenPackageForm.note" type="text" class="input" :placeholder="t('admin.apiKeys.form.tokenPackageNotePlaceholder')" />
+          </label>
+        </form>
+
+        <div v-if="tokenPackages.length > 0" class="rounded-lg border border-gray-200 dark:border-dark-700">
+          <div class="border-b border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 dark:border-dark-700 dark:text-dark-200">
+            {{ t('admin.apiKeys.tokenPackageHistory') }}
+          </div>
+          <div class="max-h-64 overflow-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-dark-900 dark:text-dark-400">
+                <tr>
+                  <th class="px-4 py-2 text-left">{{ t('admin.apiKeys.columns.createdAt') }}</th>
+                  <th class="px-4 py-2 text-right">{{ t('admin.apiKeys.tokenPackageTotal') }}</th>
+                  <th class="px-4 py-2 text-right">{{ t('admin.apiKeys.tokenPackageUsed') }}</th>
+                  <th class="px-4 py-2 text-right">{{ t('admin.apiKeys.tokenPackageRemaining') }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-dark-800">
+                <tr v-for="pkg in tokenPackages" :key="pkg.id">
+                  <td class="px-4 py-2 text-gray-600 dark:text-dark-300">{{ formatDateTime(pkg.created_at) }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">${{ formatMoney(pkg.amount_usd) }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">${{ formatMoney(pkg.used_usd) }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">${{ formatMoney(pkg.remaining_usd) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div v-if="tokenPackageUsages.length > 0" class="rounded-lg border border-gray-200 dark:border-dark-700">
+          <div class="border-b border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 dark:border-dark-700 dark:text-dark-200">
+            {{ t('admin.apiKeys.tokenPackageUsageHistory') }}
+          </div>
+          <div class="max-h-56 overflow-auto">
+            <table class="w-full text-sm">
+              <tbody class="divide-y divide-gray-100 dark:divide-dark-800">
+                <tr v-for="usage in tokenPackageUsages" :key="usage.id">
+                  <td class="px-4 py-2 text-gray-600 dark:text-dark-300">{{ formatDateTime(usage.requested_at) }}</td>
+                  <td class="px-4 py-2 text-right font-medium tabular-nums text-gray-900 dark:text-white">${{ formatMoney(usage.cost_usd) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeTokenPackageDialog">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="submit" form="token-package-form" class="btn btn-primary" :disabled="submitting">
+            {{ submitting ? t('common.saving') : t('admin.apiKeys.addTokenPackage') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -429,6 +540,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import type { AdminGroup, ApiKey, OpenAIMessagesDispatchModelConfig } from '@/types'
+import type { ApiKeyTokenPackage, ApiKeyTokenPackageUsage } from '@/api/admin/apiKeys'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -450,7 +562,11 @@ const submitting = ref(false)
 const searchQuery = ref('')
 const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
+const showTokenPackageDialog = ref(false)
 const editingKey = ref<ApiKey | null>(null)
+const tokenPackageKey = ref<ApiKey | null>(null)
+const tokenPackages = ref<ApiKeyTokenPackage[]>([])
+const tokenPackageUsages = ref<ApiKeyTokenPackageUsage[]>([])
 
 const filters = reactive({
   status: '',
@@ -511,6 +627,15 @@ const editForm = reactive({
   reset_rate_limit_usage: false
 })
 
+const tokenPackageForm = reactive({
+  amount_usd: 0,
+  note: ''
+})
+
+const tokenPackageTotal = computed(() => tokenPackages.value.reduce((sum, pkg) => sum + Number(pkg.amount_usd || 0), 0))
+const tokenPackageUsed = computed(() => tokenPackages.value.reduce((sum, pkg) => sum + Number(pkg.used_usd || 0), 0))
+const tokenPackageRemaining = computed(() => tokenPackages.value.reduce((sum, pkg) => sum + Number(pkg.remaining_usd || 0), 0))
+
 const statusFilterOptions = computed(() => [
   { value: '', label: t('admin.apiKeys.allStatus') },
   { value: 'active', label: 'active' },
@@ -553,6 +678,11 @@ let abortController: AbortController | null = null
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
 const numericValue = (value: unknown): number => {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+const positiveNumericValue = (value: unknown): number => {
   const n = Number(value)
   return Number.isFinite(n) && n > 0 ? n : 0
 }
@@ -829,6 +959,63 @@ const openEditDialog = (key: ApiKey) => {
 const closeEditDialog = () => {
   showEditDialog.value = false
   editingKey.value = null
+}
+
+const loadTokenPackages = async (keyID: number) => {
+  const summary = await adminAPI.apiKeys.listTokenPackages(keyID)
+  tokenPackages.value = summary.packages || []
+  tokenPackageUsages.value = summary.usages || []
+}
+
+const openTokenPackageDialog = async (key: ApiKey) => {
+  tokenPackageKey.value = key
+  tokenPackageForm.amount_usd = 0
+  tokenPackageForm.note = ''
+  tokenPackages.value = []
+  tokenPackageUsages.value = []
+  showTokenPackageDialog.value = true
+  try {
+    await loadTokenPackages(key.id)
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.apiKeys.errors.loadTokenPackagesFailed'))
+  }
+}
+
+const openTokenPackageHistory = (key: ApiKey) => {
+  openTokenPackageDialog(key)
+}
+
+const closeTokenPackageDialog = () => {
+  showTokenPackageDialog.value = false
+  tokenPackageKey.value = null
+  tokenPackages.value = []
+  tokenPackageUsages.value = []
+  tokenPackageForm.amount_usd = 0
+  tokenPackageForm.note = ''
+}
+
+const handleAddTokenPackage = async () => {
+  if (!tokenPackageKey.value) return
+  const amount = positiveNumericValue(tokenPackageForm.amount_usd)
+  if (amount <= 0) {
+    appStore.showError(t('admin.apiKeys.errors.tokenPackageAmountRequired'))
+    return
+  }
+  submitting.value = true
+  try {
+    await adminAPI.apiKeys.addTokenPackage(tokenPackageKey.value.id, {
+      amount_usd: amount,
+      note: tokenPackageForm.note.trim() || undefined
+    })
+    tokenPackageForm.amount_usd = 0
+    tokenPackageForm.note = ''
+    await loadTokenPackages(tokenPackageKey.value.id)
+    appStore.showSuccess(t('admin.apiKeys.tokenPackageAdded'))
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.apiKeys.errors.addTokenPackageFailed'))
+  } finally {
+    submitting.value = false
+  }
 }
 
 const handleCreate = async () => {

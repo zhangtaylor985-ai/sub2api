@@ -75,6 +75,10 @@ type APIKeyRepository interface {
 	IncrementRateLimitUsage(ctx context.Context, id int64, cost float64) error
 	ResetRateLimitWindows(ctx context.Context, id int64) error
 	GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error)
+	GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error)
+	AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error)
+	ListTokenPackages(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackage, error)
+	ListTokenPackageUsage(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackageUsage, error)
 }
 
 // APIKeyRateLimitData holds rate limit usage and window state for an API key.
@@ -879,6 +883,18 @@ func (s *APIKeyService) UpdateQuotaUsed(ctx context.Context, apiKeyID int64, cos
 // GetRateLimitData returns rate limit usage and window state for an API key.
 func (s *APIKeyService) GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error) {
 	return s.apiKeyRepo.GetRateLimitData(ctx, id)
+}
+
+func (s *APIKeyService) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
+	return s.apiKeyRepo.GetTokenPackageRemaining(ctx, id)
+}
+
+func (s *APIKeyService) ListTokenPackages(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackage, error) {
+	return s.apiKeyRepo.ListTokenPackages(ctx, id, limit)
+}
+
+func (s *APIKeyService) ListTokenPackageUsage(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackageUsage, error) {
+	return s.apiKeyRepo.ListTokenPackageUsage(ctx, id, limit)
 }
 
 // UpdateRateLimitUsage atomically increments rate limit usage counters in the DB.

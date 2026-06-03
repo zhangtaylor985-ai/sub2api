@@ -68,6 +68,8 @@ type AdminService interface {
 	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
 	AdminUpdateAPIKeyPolicy(ctx context.Context, keyID int64, input AdminUpdateAPIKeyPolicyInput) (*APIKey, error)
 	AdminResetAPIKeyRateLimitUsage(ctx context.Context, keyID int64) (*APIKey, error)
+	AdminAddAPIKeyTokenPackage(ctx context.Context, keyID int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error)
+	AdminListAPIKeyTokenPackages(ctx context.Context, keyID int64) (*APIKeyTokenPackageSummary, error)
 
 	// ReplaceUserGroup 替换用户的专属分组：授予新分组权限、迁移 Key、移除旧分组权限
 	ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error)
@@ -399,6 +401,12 @@ type AdminUpdateAPIKeyPolicyInput struct {
 
 	ResetQuota          bool
 	ResetRateLimitUsage bool
+}
+
+type APIKeyTokenPackageSummary struct {
+	Packages  []APIKeyTokenPackage
+	Usages    []APIKeyTokenPackageUsage
+	Remaining float64
 }
 
 // ReplaceUserGroupResult 分组替换操作的结果
@@ -2634,6 +2642,39 @@ func (s *adminServiceImpl) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 		_ = s.billingCacheService.InvalidateAPIKeyRateLimit(ctx, apiKey.ID)
 	}
 	return apiKey, nil
+}
+
+func (s *adminServiceImpl) AdminAddAPIKeyTokenPackage(ctx context.Context, keyID int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error) {
+	if amount <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_TOKEN_PACKAGE_AMOUNT", "amount must be greater than zero")
+	}
+	pkg, err := s.apiKeyRepo.AddTokenPackage(ctx, keyID, amount, note, createdBy)
+	if err != nil {
+		return nil, err
+	}
+	if apiKey, getErr := s.apiKeyRepo.GetByID(ctx, keyID); getErr == nil && apiKey != nil && s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	}
+	return pkg, nil
+}
+
+func (s *adminServiceImpl) AdminListAPIKeyTokenPackages(ctx context.Context, keyID int64) (*APIKeyTokenPackageSummary, error) {
+	if _, err := s.apiKeyRepo.GetByID(ctx, keyID); err != nil {
+		return nil, err
+	}
+	packages, err := s.apiKeyRepo.ListTokenPackages(ctx, keyID, 100)
+	if err != nil {
+		return nil, err
+	}
+	usages, err := s.apiKeyRepo.ListTokenPackageUsage(ctx, keyID, 100)
+	if err != nil {
+		return nil, err
+	}
+	remaining, err := s.apiKeyRepo.GetTokenPackageRemaining(ctx, keyID)
+	if err != nil {
+		return nil, err
+	}
+	return &APIKeyTokenPackageSummary{Packages: packages, Usages: usages, Remaining: remaining}, nil
 }
 
 // ReplaceUserGroup 替换用户的专属分组

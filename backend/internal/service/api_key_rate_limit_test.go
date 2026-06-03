@@ -336,6 +336,95 @@ func TestBillingCacheService_EvaluateRateLimits_UsesGroupLimits(t *testing.T) {
 	}
 }
 
+type tokenPackageRateLimitLoaderStub struct {
+	remaining float64
+}
+
+func (s *tokenPackageRateLimitLoaderStub) GetRateLimitData(context.Context, int64) (*APIKeyRateLimitData, error) {
+	return nil, nil
+}
+
+func (s *tokenPackageRateLimitLoaderStub) GetTokenPackageRemaining(context.Context, int64) (float64, error) {
+	return s.remaining, nil
+}
+
+func TestBillingCacheService_EvaluateRateLimits_AllowsDailyWeeklyOverageWithTokenPackage(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name    string
+		key     APIKey
+		usage5h float64
+		usage1d float64
+		usage7d float64
+		wantErr error
+	}{
+		{
+			name: "daily group limit can use token package",
+			key: APIKey{
+				ID: 1,
+				Group: &Group{
+					DailyLimitUSD:  rateLimitFloatPtr(100),
+					WeeklyLimitUSD: rateLimitFloatPtr(330),
+				},
+			},
+			usage1d: 100,
+		},
+		{
+			name: "weekly group limit can use token package",
+			key: APIKey{
+				ID: 2,
+				Group: &Group{
+					DailyLimitUSD:  rateLimitFloatPtr(100),
+					WeeklyLimitUSD: rateLimitFloatPtr(330),
+				},
+			},
+			usage1d: 99,
+			usage7d: 330,
+		},
+		{
+			name: "five hour limit still blocks",
+			key: APIKey{
+				ID:          3,
+				RateLimit5h: 10,
+				Group: &Group{
+					DailyLimitUSD:  rateLimitFloatPtr(100),
+					WeeklyLimitUSD: rateLimitFloatPtr(330),
+				},
+			},
+			usage5h: 10,
+			wantErr: ErrAPIKeyRateLimit5hExceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &BillingCacheService{
+				apiKeyRateLimitLoader: &tokenPackageRateLimitLoaderStub{remaining: 20},
+			}
+			err := svc.evaluateRateLimits(
+				context.Background(),
+				&tt.key,
+				tt.usage5h,
+				tt.usage1d,
+				tt.usage7d,
+				rateLimitTimePtr(now.Add(-1*time.Hour)),
+				rateLimitTimePtr(now.Add(-1*time.Hour)),
+				rateLimitTimePtr(now.Add(-1*time.Hour)),
+			)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("evaluateRateLimits() error = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("evaluateRateLimits() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestAPIKeyRateLimitData_EffectiveUsage(t *testing.T) {
 	now := time.Now()
 

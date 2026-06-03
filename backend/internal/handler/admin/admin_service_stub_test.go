@@ -682,6 +682,38 @@ func (s *stubAdminService) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 	return nil, service.ErrAPIKeyNotFound
 }
 
+func (s *stubAdminService) AdminAddAPIKeyTokenPackage(ctx context.Context, keyID int64, amount float64, note, createdBy string) (*service.APIKeyTokenPackage, error) {
+	for _, key := range s.apiKeys {
+		if key.ID == keyID {
+			now := time.Now().UTC()
+			return &service.APIKeyTokenPackage{
+				ID:        1,
+				APIKeyID:  keyID,
+				AmountUSD: amount,
+				Note:      note,
+				CreatedBy: createdBy,
+				StartedAt: now,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}, nil
+		}
+	}
+	return nil, service.ErrAPIKeyNotFound
+}
+
+func (s *stubAdminService) AdminListAPIKeyTokenPackages(ctx context.Context, keyID int64) (*service.APIKeyTokenPackageSummary, error) {
+	for _, key := range s.apiKeys {
+		if key.ID == keyID {
+			return &service.APIKeyTokenPackageSummary{
+				Packages:  []service.APIKeyTokenPackage{},
+				Usages:    []service.APIKeyTokenPackageUsage{},
+				Remaining: 0,
+			}, nil
+		}
+	}
+	return nil, service.ErrAPIKeyNotFound
+}
+
 func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) error {
 	return nil
 }

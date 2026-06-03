@@ -56,6 +56,37 @@ export interface AdminCreateAPIKeyPayload {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 }
 
+export interface ApiKeyTokenPackage {
+  id: number
+  api_key_id: number
+  amount_usd: number
+  used_usd: number
+  remaining_usd: number
+  note?: string
+  created_by?: string
+  started_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ApiKeyTokenPackageUsage {
+  id: number
+  package_id: number
+  api_key_id: number
+  request_id?: string
+  request_fingerprint?: string
+  model?: string
+  cost_usd: number
+  requested_at: string
+  created_at: string
+}
+
+export interface ApiKeyTokenPackageSummary {
+  packages: ApiKeyTokenPackage[]
+  usages: ApiKeyTokenPackageUsage[]
+  remaining_usd: number
+}
+
 export async function listApiKeys(
   page: number = 1,
   pageSize: number = 20,
@@ -105,11 +136,23 @@ export async function updateApiKeyPolicy(id: number, payload: AdminUpdateApiKeyP
   return data
 }
 
+export async function addTokenPackage(id: number, payload: { amount_usd: number; note?: string }): Promise<ApiKeyTokenPackage> {
+  const { data } = await apiClient.post<ApiKeyTokenPackage>(`/admin/api-keys/${id}/token-packages`, payload)
+  return data
+}
+
+export async function listTokenPackages(id: number): Promise<ApiKeyTokenPackageSummary> {
+  const { data } = await apiClient.get<ApiKeyTokenPackageSummary>(`/admin/api-keys/${id}/token-packages`)
+  return data
+}
+
 export const apiKeysAPI = {
   list: listApiKeys,
   create: createApiKey,
   updateApiKeyGroup,
-  updateApiKeyPolicy
+  updateApiKeyPolicy,
+  addTokenPackage,
+  listTokenPackages
 }
 
 export default apiKeysAPI

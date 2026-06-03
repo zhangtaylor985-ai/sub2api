@@ -149,6 +149,18 @@ func (s *quotaBaseAPIKeyRepoStub) ResetRateLimitWindows(context.Context, int64) 
 func (s *quotaBaseAPIKeyRepoStub) GetRateLimitData(context.Context, int64) (*APIKeyRateLimitData, error) {
 	panic("unexpected GetRateLimitData call")
 }
+func (s *quotaBaseAPIKeyRepoStub) GetTokenPackageRemaining(context.Context, int64) (float64, error) {
+	panic("unexpected GetTokenPackageRemaining call")
+}
+func (s *quotaBaseAPIKeyRepoStub) AddTokenPackage(context.Context, int64, float64, string, string) (*APIKeyTokenPackage, error) {
+	panic("unexpected AddTokenPackage call")
+}
+func (s *quotaBaseAPIKeyRepoStub) ListTokenPackages(context.Context, int64, int) ([]APIKeyTokenPackage, error) {
+	panic("unexpected ListTokenPackages call")
+}
+func (s *quotaBaseAPIKeyRepoStub) ListTokenPackageUsage(context.Context, int64, int) ([]APIKeyTokenPackageUsage, error) {
+	panic("unexpected ListTokenPackageUsage call")
+}
 
 func TestAPIKeyService_UpdateQuotaUsed_UsesAtomicStatePath(t *testing.T) {
 	repo := &quotaStateRepoStub{

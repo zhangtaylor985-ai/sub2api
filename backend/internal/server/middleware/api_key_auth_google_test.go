@@ -107,6 +107,18 @@ func (f fakeAPIKeyRepo) GetRateLimitData(ctx context.Context, id int64) (*servic
 func (f fakeAPIKeyRepo) UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
 	return 0, errors.New("not implemented")
 }
+func (f fakeAPIKeyRepo) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
+	return 0, nil
+}
+func (f fakeAPIKeyRepo) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*service.APIKeyTokenPackage, error) {
+	return nil, errors.New("not implemented")
+}
+func (f fakeAPIKeyRepo) ListTokenPackages(ctx context.Context, id int64, limit int) ([]service.APIKeyTokenPackage, error) {
+	return nil, errors.New("not implemented")
+}
+func (f fakeAPIKeyRepo) ListTokenPackageUsage(ctx context.Context, id int64, limit int) ([]service.APIKeyTokenPackageUsage, error) {
+	return nil, errors.New("not implemented")
+}
 
 func (f fakeGoogleSubscriptionRepo) Create(ctx context.Context, sub *service.UserSubscription) error {
 	return errors.New("not implemented")

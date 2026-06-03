@@ -825,6 +825,18 @@ func (r *stubApiKeyRepo) ResetRateLimitWindows(ctx context.Context, id int64) er
 func (r *stubApiKeyRepo) GetRateLimitData(ctx context.Context, id int64) (*service.APIKeyRateLimitData, error) {
 	return nil, nil
 }
+func (r *stubApiKeyRepo) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
+	return 0, nil
+}
+func (r *stubApiKeyRepo) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*service.APIKeyTokenPackage, error) {
+	return nil, errors.New("not implemented")
+}
+func (r *stubApiKeyRepo) ListTokenPackages(ctx context.Context, id int64, limit int) ([]service.APIKeyTokenPackage, error) {
+	return nil, errors.New("not implemented")
+}
+func (r *stubApiKeyRepo) ListTokenPackageUsage(ctx context.Context, id int64, limit int) ([]service.APIKeyTokenPackageUsage, error) {
+	return nil, errors.New("not implemented")
+}
 
 type stubUserSubscriptionRepo struct {
 	getActive      func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error)

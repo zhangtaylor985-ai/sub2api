@@ -59,6 +59,11 @@ type AdminCreateAPIKeyRequest struct {
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 }
 
+type AdminAddAPIKeyTokenPackageRequest struct {
+	AmountUSD float64 `json:"amount_usd" binding:"required"`
+	Note      string  `json:"note"`
+}
+
 // List handles listing API keys across all users.
 // GET /api/v1/admin/api-keys
 func (h *AdminAPIKeyHandler) List(c *gin.Context) {
@@ -197,6 +202,90 @@ func adminAPIKeyResultResponse(result *service.AdminUpdateAPIKeyGroupIDResult) a
 		AutoGrantedGroupAccess: result.AutoGrantedGroupAccess,
 		GrantedGroupID:         result.GrantedGroupID,
 		GrantedGroupName:       result.GrantedGroupName,
+	}
+}
+
+// AddTokenPackage handles API key token package top-ups.
+// POST /api/v1/admin/api-keys/:id/token-packages
+func (h *AdminAPIKeyHandler) AddTokenPackage(c *gin.Context) {
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+	var req AdminAddAPIKeyTokenPackageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	pkg, err := h.adminService.AdminAddAPIKeyTokenPackage(c.Request.Context(), keyID, req.AmountUSD, req.Note, "admin")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, apiKeyTokenPackageResponse(pkg))
+}
+
+// ListTokenPackages returns token package top-ups and usage ledger.
+// GET /api/v1/admin/api-keys/:id/token-packages
+func (h *AdminAPIKeyHandler) ListTokenPackages(c *gin.Context) {
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+	summary, err := h.adminService.AdminListAPIKeyTokenPackages(c.Request.Context(), keyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	packages := make([]any, 0, len(summary.Packages))
+	for i := range summary.Packages {
+		packages = append(packages, apiKeyTokenPackageResponse(&summary.Packages[i]))
+	}
+	usages := make([]any, 0, len(summary.Usages))
+	for i := range summary.Usages {
+		usages = append(usages, apiKeyTokenPackageUsageResponse(&summary.Usages[i]))
+	}
+	response.Success(c, gin.H{
+		"packages":      packages,
+		"usages":        usages,
+		"remaining_usd": summary.Remaining,
+	})
+}
+
+func apiKeyTokenPackageResponse(pkg *service.APIKeyTokenPackage) any {
+	if pkg == nil {
+		return nil
+	}
+	return gin.H{
+		"id":            pkg.ID,
+		"api_key_id":    pkg.APIKeyID,
+		"amount_usd":    pkg.AmountUSD,
+		"used_usd":      pkg.UsedUSD,
+		"remaining_usd": pkg.RemainingUSD(),
+		"note":          pkg.Note,
+		"created_by":    pkg.CreatedBy,
+		"started_at":    pkg.StartedAt,
+		"created_at":    pkg.CreatedAt,
+		"updated_at":    pkg.UpdatedAt,
+	}
+}
+
+func apiKeyTokenPackageUsageResponse(usage *service.APIKeyTokenPackageUsage) any {
+	if usage == nil {
+		return nil
+	}
+	return gin.H{
+		"id":                  usage.ID,
+		"package_id":          usage.PackageID,
+		"api_key_id":          usage.APIKeyID,
+		"request_id":          usage.RequestID,
+		"request_fingerprint": usage.RequestFingerprint,
+		"model":               usage.Model,
+		"cost_usd":            usage.CostUSD,
+		"requested_at":        usage.RequestedAt,
+		"created_at":          usage.CreatedAt,
 	}
 }
 

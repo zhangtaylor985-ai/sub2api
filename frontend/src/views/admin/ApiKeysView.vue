@@ -158,13 +158,6 @@
               </button>
               <button
                 class="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
-                :title="t('admin.apiKeys.viewTokenPackages')"
-                @click="openTokenPackageHistory(row)"
-              >
-                <Icon name="clipboard" size="sm" />
-              </button>
-              <button
-                class="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
                 :title="t('admin.apiKeys.editPolicy')"
                 @click="openEditDialog(row)"
               >
@@ -979,10 +972,6 @@ const openTokenPackageDialog = async (key: ApiKey) => {
   } catch (error: any) {
     appStore.showError(error?.message || t('admin.apiKeys.errors.loadTokenPackagesFailed'))
   }
-}
-
-const openTokenPackageHistory = (key: ApiKey) => {
-  openTokenPackageDialog(key)
 }
 
 const closeTokenPackageDialog = () => {

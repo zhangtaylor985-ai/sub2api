@@ -1387,7 +1387,6 @@ export default {
       create: '新建 API Key',
       editPolicy: '编辑策略',
       addTokenPackage: '增加流量包',
-      viewTokenPackages: '查看流量包',
       allStatus: '全部状态',
       allGroups: '全部分组',
       ungrouped: '未绑定分组',

@@ -1383,7 +1383,6 @@ export default {
       create: 'Create API Key',
       editPolicy: 'Edit Policy',
       addTokenPackage: 'Add Package',
-      viewTokenPackages: 'View Packages',
       allStatus: 'All Status',
       allGroups: 'All Groups',
       ungrouped: 'No Group',

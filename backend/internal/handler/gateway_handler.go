@@ -1175,10 +1175,15 @@ func (h *GatewayHandler) buildAPIKeyTokenPackages(ctx context.Context, apiKeyID 
 	for i := range usages {
 		usage := usages[i]
 		usageItems = append(usageItems, gin.H{
-			"package_id":   usage.PackageID,
-			"cost_usd":     usage.CostUSD,
-			"requested_at": usage.RequestedAt,
-			"created_at":   usage.CreatedAt,
+			"package_id":            usage.PackageID,
+			"cost_usd":              usage.CostUSD,
+			"input_tokens":          usage.InputTokens,
+			"output_tokens":         usage.OutputTokens,
+			"cache_creation_tokens": usage.CacheCreationTokens,
+			"cache_read_tokens":     usage.CacheReadTokens,
+			"total_tokens":          usage.TotalTokens,
+			"requested_at":          usage.RequestedAt,
+			"created_at":            usage.CreatedAt,
 		})
 	}
 	return gin.H{

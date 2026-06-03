@@ -760,7 +760,9 @@ func (r *apiKeyRepository) ListTokenPackageUsage(ctx context.Context, id int64, 
 	}
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT id, package_id, api_key_id, COALESCE(request_id, ''), COALESCE(request_fingerprint, ''),
-		       COALESCE(model, ''), cost_usd, requested_at, created_at
+		       COALESCE(model, ''), cost_usd,
+		       input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens,
+		       requested_at, created_at
 		FROM api_key_token_package_usage
 		WHERE api_key_id = $1
 		ORDER BY requested_at DESC, id DESC
@@ -775,7 +777,22 @@ func (r *apiKeyRepository) ListTokenPackageUsage(ctx context.Context, id int64, 
 	usages := make([]service.APIKeyTokenPackageUsage, 0)
 	for rows.Next() {
 		var usage service.APIKeyTokenPackageUsage
-		if err := rows.Scan(&usage.ID, &usage.PackageID, &usage.APIKeyID, &usage.RequestID, &usage.RequestFingerprint, &usage.Model, &usage.CostUSD, &usage.RequestedAt, &usage.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&usage.ID,
+			&usage.PackageID,
+			&usage.APIKeyID,
+			&usage.RequestID,
+			&usage.RequestFingerprint,
+			&usage.Model,
+			&usage.CostUSD,
+			&usage.InputTokens,
+			&usage.OutputTokens,
+			&usage.CacheCreationTokens,
+			&usage.CacheReadTokens,
+			&usage.TotalTokens,
+			&usage.RequestedAt,
+			&usage.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		usages = append(usages, usage)

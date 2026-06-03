@@ -277,15 +277,20 @@ func apiKeyTokenPackageUsageResponse(usage *service.APIKeyTokenPackageUsage) any
 		return nil
 	}
 	return gin.H{
-		"id":                  usage.ID,
-		"package_id":          usage.PackageID,
-		"api_key_id":          usage.APIKeyID,
-		"request_id":          usage.RequestID,
-		"request_fingerprint": usage.RequestFingerprint,
-		"model":               usage.Model,
-		"cost_usd":            usage.CostUSD,
-		"requested_at":        usage.RequestedAt,
-		"created_at":          usage.CreatedAt,
+		"id":                    usage.ID,
+		"package_id":            usage.PackageID,
+		"api_key_id":            usage.APIKeyID,
+		"request_id":            usage.RequestID,
+		"request_fingerprint":   usage.RequestFingerprint,
+		"model":                 usage.Model,
+		"cost_usd":              usage.CostUSD,
+		"input_tokens":          usage.InputTokens,
+		"output_tokens":         usage.OutputTokens,
+		"cache_creation_tokens": usage.CacheCreationTokens,
+		"cache_read_tokens":     usage.CacheReadTokens,
+		"total_tokens":          usage.TotalTokens,
+		"requested_at":          usage.RequestedAt,
+		"created_at":            usage.CreatedAt,
 	}
 }
 

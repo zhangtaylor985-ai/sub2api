@@ -261,7 +261,7 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, cmd *
 		return err
 	}
 	if packageCost > 0 {
-		return allocateAPIKeyTokenPackages(ctx, tx, apiKeyID, packageCost, cmd.RequestID, cmd.RequestFingerprint, cmd.Model)
+		return allocateAPIKeyTokenPackages(ctx, tx, apiKeyID, packageCost, cmd)
 	}
 	return nil
 }
@@ -379,7 +379,7 @@ func updateAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64,
 	return nil
 }
 
-func allocateAPIKeyTokenPackages(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64, requestID, requestFingerprint, model string) error {
+func allocateAPIKeyTokenPackages(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64, cmd *service.UsageBillingCommand) error {
 	remaining := amount
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, amount_usd, used_usd
@@ -433,15 +433,33 @@ func allocateAPIKeyTokenPackages(ctx context.Context, tx *sql.Tx, apiKeyID int64
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO api_key_token_package_usage
-				(package_id, api_key_id, request_id, request_fingerprint, model, cost_usd)
-			VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6)`,
-			p.id, apiKeyID, strings.TrimSpace(requestID), strings.TrimSpace(requestFingerprint), strings.TrimSpace(model), covered,
+				(package_id, api_key_id, request_id, request_fingerprint, model, cost_usd,
+				 input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens)
+			VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6, $7, $8, $9, $10, $11)`,
+			p.id,
+			apiKeyID,
+			strings.TrimSpace(cmd.RequestID),
+			strings.TrimSpace(cmd.RequestFingerprint),
+			strings.TrimSpace(cmd.Model),
+			covered,
+			allocateTokenCount(cmd.InputTokens, covered, cmd.APIKeyRateLimitCost),
+			allocateTokenCount(cmd.OutputTokens, covered, cmd.APIKeyRateLimitCost),
+			allocateTokenCount(cmd.CacheCreationTokens, covered, cmd.APIKeyRateLimitCost),
+			allocateTokenCount(cmd.CacheReadTokens, covered, cmd.APIKeyRateLimitCost),
+			allocateTokenCount(cmd.InputTokens+cmd.OutputTokens+cmd.CacheCreationTokens+cmd.CacheReadTokens, covered, cmd.APIKeyRateLimitCost),
 		); err != nil {
 			return err
 		}
 		remaining -= covered
 	}
 	return nil
+}
+
+func allocateTokenCount(tokens int, coveredCost, totalCost float64) int64 {
+	if tokens <= 0 || coveredCost <= 0 || totalCost <= 0 {
+		return 0
+	}
+	return int64(math.Round(float64(tokens) * coveredCost / totalCost))
 }
 
 func positiveRemaining(limit, used float64) float64 {

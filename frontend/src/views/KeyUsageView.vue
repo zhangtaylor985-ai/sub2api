@@ -303,10 +303,16 @@
             v-if="tokenPackageSummary"
             class="fade-up fade-up-delay-3 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
           >
-            <div class="px-8 py-5 border-b border-gray-200 dark:border-dark-700">
-              <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.tokenPackages') }}</h3>
+            <div class="flex flex-col gap-2 px-8 py-5 border-b border-gray-200 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.tokenPackages') }}</h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('keyUsage.packageHint') }}</p>
+              </div>
+              <div class="text-xs tabular-nums text-gray-500 dark:text-dark-400">
+                {{ t('keyUsage.packageRecentCount', { count: tokenPackageUsageRows.length }) }}
+              </div>
             </div>
-            <div class="grid grid-cols-1 gap-px bg-gray-100 dark:bg-dark-800 sm:grid-cols-3">
+            <div class="grid grid-cols-2 gap-px bg-gray-100 dark:bg-dark-800 lg:grid-cols-4">
               <div class="bg-white px-6 py-4 dark:bg-dark-900">
                 <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.packageTotal') }}</div>
                 <div class="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ usd(tokenPackageSummary.total_usd) }}</div>
@@ -319,26 +325,63 @@
                 <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.packageRemaining') }}</div>
                 <div class="text-lg font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{{ usd(tokenPackageSummary.remaining_usd) }}</div>
               </div>
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.packageRangeUsed') }}</div>
+                <div class="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ usd(tokenPackageRangeCost) }}</div>
+              </div>
             </div>
-            <div v-if="tokenPackageUsageRows.length > 0" class="overflow-x-auto">
-              <table class="w-full">
-                <thead>
-                  <tr class="border-t border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950">
-                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.time') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.packageUsed') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="(row, i) in tokenPackageUsageRows"
-                    :key="i"
-                    class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
-                  >
-                    <td class="px-4 py-3 text-sm whitespace-nowrap text-gray-700 dark:text-dark-200">{{ formatDateTimeShort(row.requested_at || row.created_at) }}</td>
-                    <td class="px-4 py-3 text-sm tabular-nums text-right font-medium text-gray-900 dark:text-white">{{ usd(row.cost_usd) }}</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div class="px-8 py-5">
+              <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-800">
+                <div
+                  class="h-full rounded-full bg-emerald-500 transition-all"
+                  :style="{ width: `${tokenPackageUsedPct}%` }"
+                ></div>
+              </div>
+              <div class="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-dark-400">
+                <span>{{ t('keyUsage.packageUsedPct', { pct: tokenPackageUsedPct }) }}</span>
+                <span>{{ t('keyUsage.packageRemaining') }} {{ usd(tokenPackageSummary.remaining_usd) }}</span>
+              </div>
+            </div>
+            <div v-if="tokenPackageUsageRows.length > 0" class="border-t border-gray-200 dark:border-dark-700">
+              <div class="flex items-center justify-between px-8 py-4">
+                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.packageRecentUsage') }}</h4>
+                <button
+                  v-if="tokenPackageUsageRows.length > visibleTokenPackageUsageRows.length || showAllTokenPackageUsage"
+                  type="button"
+                  class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                  @click="showAllTokenPackageUsage = !showAllTokenPackageUsage"
+                >
+                  {{ showAllTokenPackageUsage ? t('keyUsage.showLess') : t('keyUsage.showAll') }}
+                </button>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead>
+                    <tr class="border-y border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950">
+                      <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.time') }}</th>
+                      <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.totalTokens') }}</th>
+                      <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') }}</th>
+                      <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') }}</th>
+                      <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheTokens') }}</th>
+                      <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.packagePaid') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="(row, i) in visibleTokenPackageUsageRows"
+                      :key="i"
+                      class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
+                    >
+                      <td class="px-4 py-3 text-sm whitespace-nowrap text-gray-700 dark:text-dark-200">{{ formatDateTimeShort(row.requested_at || row.created_at) }}</td>
+                      <td class="px-4 py-3 text-sm tabular-nums text-right font-medium text-gray-900 dark:text-white">{{ fmtNum(row.total_tokens) }}</td>
+                      <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.input_tokens) }}</td>
+                      <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.output_tokens) }}</td>
+                      <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(packageCacheTokens(row)) }}</td>
+                      <td class="px-4 py-3 text-sm tabular-nums text-right font-semibold text-gray-900 dark:text-white">{{ usd(row.cost_usd) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -510,6 +553,7 @@ const showDatePicker = ref(false)
 const resultData = ref<any>(null)
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null
+const showAllTokenPackageUsage = ref(false)
 
 // ==================== Date Range State ====================
 
@@ -879,6 +923,11 @@ interface DailyUsageRow {
 
 interface TokenPackageUsageRow {
   cost_usd: number
+  input_tokens?: number
+  output_tokens?: number
+  cache_creation_tokens?: number
+  cache_read_tokens?: number
+  total_tokens?: number
   requested_at?: string
   created_at?: string
 }
@@ -907,6 +956,19 @@ const tokenPackageUsageRows = computed<TokenPackageUsageRow[]>(() => {
   return Array.isArray(rows) ? rows : []
 })
 
+const visibleTokenPackageUsageRows = computed<TokenPackageUsageRow[]>(() => {
+  if (showAllTokenPackageUsage.value) return tokenPackageUsageRows.value
+  return tokenPackageUsageRows.value.slice(0, 6)
+})
+
+const tokenPackageRangeCost = computed(() => tokenPackageUsageRows.value.reduce((sum, row) => sum + Number(row.cost_usd || 0), 0))
+
+const tokenPackageUsedPct = computed(() => {
+  const summary = tokenPackageSummary.value
+  if (!summary || Number(summary.total_usd || 0) <= 0) return 0
+  return Math.min(Math.round((Number(summary.used_usd || 0) / Number(summary.total_usd || 0)) * 100), 100)
+})
+
 // ==================== Utility Functions ====================
 
 function usd(value: number | null | undefined): string {
@@ -917,6 +979,10 @@ function usd(value: number | null | undefined): string {
 function fmtNum(val: number | null | undefined): string {
   if (val == null) return '-'
   return val.toLocaleString()
+}
+
+function packageCacheTokens(row: TokenPackageUsageRow): number {
+  return Number(row.cache_creation_tokens || 0) + Number(row.cache_read_tokens || 0)
 }
 
 function formatDate(iso: string | null | undefined): string {
@@ -988,6 +1054,7 @@ async function queryKey() {
   try {
     const data = await fetchUsage(key)
     resultData.value = data
+    showAllTokenPackageUsage.value = false
     showLoading.value = false
     showDatePicker.value = true
 

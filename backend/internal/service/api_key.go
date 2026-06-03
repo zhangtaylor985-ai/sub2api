@@ -95,15 +95,20 @@ func (p *APIKeyTokenPackage) RemainingUSD() float64 {
 }
 
 type APIKeyTokenPackageUsage struct {
-	ID                 int64
-	PackageID          int64
-	APIKeyID           int64
-	RequestID          string
-	RequestFingerprint string
-	Model              string
-	CostUSD            float64
-	RequestedAt        time.Time
-	CreatedAt          time.Time
+	ID                  int64
+	PackageID           int64
+	APIKeyID            int64
+	RequestID           string
+	RequestFingerprint  string
+	Model               string
+	CostUSD             float64
+	InputTokens         int64
+	OutputTokens        int64
+	CacheCreationTokens int64
+	CacheReadTokens     int64
+	TotalTokens         int64
+	RequestedAt         time.Time
+	CreatedAt           time.Time
 }
 
 func (k *APIKey) IsActive() bool {

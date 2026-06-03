@@ -169,6 +169,10 @@ func TestUsageBillingRepositoryApply_ConsumesTokenPackageOnlyAfterInheritedDaily
 		UserID:              user.ID,
 		APIKeyRateLimitCost: 5,
 		Model:               "claude-opus-4-8",
+		InputTokens:         100,
+		OutputTokens:        20,
+		CacheCreationTokens: 10,
+		CacheReadTokens:     5,
 	})
 	require.NoError(t, err)
 	require.True(t, result.Applied)
@@ -182,9 +186,26 @@ func TestUsageBillingRepositoryApply_ConsumesTokenPackageOnlyAfterInheritedDaily
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT used_usd FROM api_key_token_packages WHERE id = $1", pkg.ID).Scan(&packageUsed))
 	require.InDelta(t, 3, packageUsed, 0.000001)
 
-	var usageCost float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT cost_usd FROM api_key_token_package_usage WHERE package_id = $1 AND request_id = $2", pkg.ID, requestID).Scan(&usageCost))
+	var (
+		usageCost           float64
+		inputTokens         int64
+		outputTokens        int64
+		cacheCreationTokens int64
+		cacheReadTokens     int64
+		totalTokens         int64
+	)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT cost_usd, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens
+		FROM api_key_token_package_usage
+		WHERE package_id = $1 AND request_id = $2`,
+		pkg.ID, requestID,
+	).Scan(&usageCost, &inputTokens, &outputTokens, &cacheCreationTokens, &cacheReadTokens, &totalTokens))
 	require.InDelta(t, 3, usageCost, 0.000001)
+	require.Equal(t, int64(60), inputTokens)
+	require.Equal(t, int64(12), outputTokens)
+	require.Equal(t, int64(6), cacheCreationTokens)
+	require.Equal(t, int64(3), cacheReadTokens)
+	require.Equal(t, int64(81), totalTokens)
 }
 
 func TestUsageBillingRepositoryApply_RequestFingerprintConflict(t *testing.T) {

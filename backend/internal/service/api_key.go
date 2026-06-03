@@ -94,6 +94,12 @@ func (p *APIKeyTokenPackage) RemainingUSD() float64 {
 	return remaining
 }
 
+type APIKeyTokenPackageState struct {
+	TotalUSD     float64
+	UsedUSD      float64
+	RemainingUSD float64
+}
+
 type APIKeyTokenPackageUsage struct {
 	ID                  int64
 	PackageID           int64

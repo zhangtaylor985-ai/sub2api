@@ -20,15 +20,16 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound       = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed      = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists         = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
-	ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "API key has expired")
-	ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
+	ErrAPIKeyNotFound              = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed             = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrAPIKeyExists                = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyTooShort              = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrAPIKeyInvalidChars          = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyRateLimited           = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrInvalidIPPattern            = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrAPIKeyExpired               = infraerrors.Forbidden("API_KEY_EXPIRED", "API key has expired")
+	ErrAPIKeyQuotaExhausted        = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
+	ErrAPIKeyTokenPackageExhausted = infraerrors.TooManyRequests("API_KEY_TOKEN_PACKAGE_EXHAUSTED", "API key token package has been exhausted")
 
 	// Rate limit errors
 	ErrAPIKeyRateLimit5hExceeded = infraerrors.TooManyRequests("API_KEY_RATE_5H_EXCEEDED", "API key 5-hour quota has been exhausted")
@@ -75,6 +76,7 @@ type APIKeyRepository interface {
 	IncrementRateLimitUsage(ctx context.Context, id int64, cost float64) error
 	ResetRateLimitWindows(ctx context.Context, id int64) error
 	GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error)
+	GetTokenPackageState(ctx context.Context, id int64) (*APIKeyTokenPackageState, error)
 	GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error)
 	AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error)
 	ListTokenPackages(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackage, error)
@@ -887,6 +889,10 @@ func (s *APIKeyService) GetRateLimitData(ctx context.Context, id int64) (*APIKey
 
 func (s *APIKeyService) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
 	return s.apiKeyRepo.GetTokenPackageRemaining(ctx, id)
+}
+
+func (s *APIKeyService) GetTokenPackageState(ctx context.Context, id int64) (*APIKeyTokenPackageState, error) {
+	return s.apiKeyRepo.GetTokenPackageState(ctx, id)
 }
 
 func (s *APIKeyService) ListTokenPackages(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackage, error) {

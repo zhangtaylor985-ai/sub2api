@@ -202,6 +202,12 @@ func (s *apiKeyRepoStubForGroupUpdate) GetTokenPackageRemaining(context.Context,
 	}
 	return s.tokenRemaining, nil
 }
+func (s *apiKeyRepoStubForGroupUpdate) GetTokenPackageState(context.Context, int64) (*APIKeyTokenPackageState, error) {
+	if s.tokenRemainingErr != nil {
+		return nil, s.tokenRemainingErr
+	}
+	return &APIKeyTokenPackageState{TotalUSD: s.tokenRemaining, RemainingUSD: s.tokenRemaining}, nil
+}
 func (s *apiKeyRepoStubForGroupUpdate) AddTokenPackage(_ context.Context, id int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error) {
 	if s.getErr != nil {
 		return nil, s.getErr

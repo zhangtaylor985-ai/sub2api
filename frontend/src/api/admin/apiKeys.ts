@@ -77,6 +77,11 @@ export interface ApiKeyTokenPackageUsage {
   request_fingerprint?: string
   model?: string
   cost_usd: number
+  input_tokens: number
+  output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  total_tokens: number
   requested_at: string
   created_at: string
 }

@@ -2251,6 +2251,12 @@ func (r *stubApiKeyRepo) GetTokenPackageRemaining(ctx context.Context, id int64)
 	}
 	return 0, nil
 }
+func (r *stubApiKeyRepo) GetTokenPackageState(ctx context.Context, id int64) (*service.APIKeyTokenPackageState, error) {
+	if _, ok := r.byID[id]; !ok {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	return &service.APIKeyTokenPackageState{}, nil
+}
 
 func (r *stubApiKeyRepo) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*service.APIKeyTokenPackage, error) {
 	if _, ok := r.byID[id]; !ok {

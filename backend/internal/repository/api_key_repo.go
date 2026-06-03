@@ -685,19 +685,33 @@ func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (resu
 	return data, rows.Err()
 }
 
-// GetTokenPackageRemaining returns the active remaining token package allowance for an API key.
-func (r *apiKeyRepository) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
-	var remaining float64
+// GetTokenPackageState returns active token package allowance totals for an API key.
+func (r *apiKeyRepository) GetTokenPackageState(ctx context.Context, id int64) (*service.APIKeyTokenPackageState, error) {
+	state := &service.APIKeyTokenPackageState{}
 	err := scanSingleRow(ctx, r.sql, `
-		SELECT COALESCE(SUM(GREATEST(amount_usd - used_usd, 0)), 0)
+		SELECT
+			COALESCE(SUM(amount_usd), 0),
+			COALESCE(SUM(used_usd), 0),
+			COALESCE(SUM(GREATEST(amount_usd - used_usd, 0)), 0)
 		FROM api_key_token_packages
 		WHERE api_key_id = $1 AND started_at <= NOW()`,
 		[]any{id},
-		&remaining)
+		&state.TotalUSD,
+		&state.UsedUSD,
+		&state.RemainingUSD)
+	if err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+// GetTokenPackageRemaining returns the active remaining token package allowance for an API key.
+func (r *apiKeyRepository) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
+	state, err := r.GetTokenPackageState(ctx, id)
 	if err != nil {
 		return 0, err
 	}
-	return remaining, nil
+	return state.RemainingUSD, nil
 }
 
 // AddTokenPackage creates a new token package top-up for an API key.

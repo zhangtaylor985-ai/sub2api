@@ -110,6 +110,9 @@ func (f fakeAPIKeyRepo) UpdateGroupIDByUserAndGroup(ctx context.Context, userID,
 func (f fakeAPIKeyRepo) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
 	return 0, nil
 }
+func (f fakeAPIKeyRepo) GetTokenPackageState(ctx context.Context, id int64) (*service.APIKeyTokenPackageState, error) {
+	return &service.APIKeyTokenPackageState{}, nil
+}
 func (f fakeAPIKeyRepo) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*service.APIKeyTokenPackage, error) {
 	return nil, errors.New("not implemented")
 }

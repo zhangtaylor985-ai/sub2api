@@ -152,6 +152,9 @@ func (s *apiKeyRepoStub) GetRateLimitData(ctx context.Context, id int64) (*APIKe
 func (s *apiKeyRepoStub) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
 	panic("unexpected GetTokenPackageRemaining call")
 }
+func (s *apiKeyRepoStub) GetTokenPackageState(ctx context.Context, id int64) (*APIKeyTokenPackageState, error) {
+	panic("unexpected GetTokenPackageState call")
+}
 
 func (s *apiKeyRepoStub) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error) {
 	panic("unexpected AddTokenPackage call")

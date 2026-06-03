@@ -828,6 +828,9 @@ func (r *stubApiKeyRepo) GetRateLimitData(ctx context.Context, id int64) (*servi
 func (r *stubApiKeyRepo) GetTokenPackageRemaining(ctx context.Context, id int64) (float64, error) {
 	return 0, nil
 }
+func (r *stubApiKeyRepo) GetTokenPackageState(ctx context.Context, id int64) (*service.APIKeyTokenPackageState, error) {
+	return &service.APIKeyTokenPackageState{}, nil
+}
 func (r *stubApiKeyRepo) AddTokenPackage(ctx context.Context, id int64, amount float64, note, createdBy string) (*service.APIKeyTokenPackage, error) {
 	return nil, errors.New("not implemented")
 }

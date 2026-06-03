@@ -152,6 +152,9 @@ func (s *quotaBaseAPIKeyRepoStub) GetRateLimitData(context.Context, int64) (*API
 func (s *quotaBaseAPIKeyRepoStub) GetTokenPackageRemaining(context.Context, int64) (float64, error) {
 	panic("unexpected GetTokenPackageRemaining call")
 }
+func (s *quotaBaseAPIKeyRepoStub) GetTokenPackageState(context.Context, int64) (*APIKeyTokenPackageState, error) {
+	panic("unexpected GetTokenPackageState call")
+}
 func (s *quotaBaseAPIKeyRepoStub) AddTokenPackage(context.Context, int64, float64, string, string) (*APIKeyTokenPackage, error) {
 	panic("unexpected AddTokenPackage call")
 }

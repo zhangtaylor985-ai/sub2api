@@ -208,6 +208,52 @@ func TestUsageBillingRepositoryApply_ConsumesTokenPackageOnlyAfterInheritedDaily
 	require.Equal(t, int64(81), totalTokens)
 }
 
+func TestUsageBillingRepositoryApply_ConsumesTokenPackageWithoutBaseLimits(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	apiKeyRepo := NewAPIKeyRepository(client, integrationDB)
+
+	user := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("usage-billing-token-only-user-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-usage-billing-token-only-" + uuid.NewString(),
+		Name:   "billing-token-only",
+	})
+	pkg, err := apiKeyRepo.AddTokenPackage(ctx, apiKey.ID, 10, "token only", "test")
+	require.NoError(t, err)
+
+	requestID := uuid.NewString()
+	result, err := repo.Apply(ctx, &service.UsageBillingCommand{
+		RequestID:           requestID,
+		APIKeyID:            apiKey.ID,
+		UserID:              user.ID,
+		APIKeyRateLimitCost: 2.5,
+		Model:               "claude-opus-4-8",
+		InputTokens:         1000,
+		OutputTokens:        200,
+	})
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+
+	var usage1d, usage7d, packageUsed, usageCost float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT usage_1d, usage_7d FROM api_keys WHERE id = $1", apiKey.ID).Scan(&usage1d, &usage7d))
+	require.InDelta(t, 2.5, usage1d, 0.000001)
+	require.InDelta(t, 2.5, usage7d, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT used_usd FROM api_key_token_packages WHERE id = $1", pkg.ID).Scan(&packageUsed))
+	require.InDelta(t, 2.5, packageUsed, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT cost_usd
+		FROM api_key_token_package_usage
+		WHERE package_id = $1 AND request_id = $2`,
+		pkg.ID, requestID,
+	).Scan(&usageCost))
+	require.InDelta(t, 2.5, usageCost, 0.000001)
+}
+
 func TestUsageBillingRepositoryApply_RequestFingerprintConflict(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)

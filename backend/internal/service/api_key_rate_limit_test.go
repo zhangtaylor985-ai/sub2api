@@ -337,6 +337,7 @@ func TestBillingCacheService_EvaluateRateLimits_UsesGroupLimits(t *testing.T) {
 }
 
 type tokenPackageRateLimitLoaderStub struct {
+	total     float64
 	remaining float64
 }
 
@@ -346,6 +347,14 @@ func (s *tokenPackageRateLimitLoaderStub) GetRateLimitData(context.Context, int6
 
 func (s *tokenPackageRateLimitLoaderStub) GetTokenPackageRemaining(context.Context, int64) (float64, error) {
 	return s.remaining, nil
+}
+
+func (s *tokenPackageRateLimitLoaderStub) GetTokenPackageState(context.Context, int64) (*APIKeyTokenPackageState, error) {
+	total := s.total
+	if total <= 0 && s.remaining > 0 {
+		total = s.remaining
+	}
+	return &APIKeyTokenPackageState{TotalUSD: total, RemainingUSD: s.remaining}, nil
 }
 
 func TestBillingCacheService_EvaluateRateLimits_AllowsDailyWeeklyOverageWithTokenPackage(t *testing.T) {
@@ -408,6 +417,48 @@ func TestBillingCacheService_EvaluateRateLimits_AllowsDailyWeeklyOverageWithToke
 				tt.usage5h,
 				tt.usage1d,
 				tt.usage7d,
+				rateLimitTimePtr(now.Add(-1*time.Hour)),
+				rateLimitTimePtr(now.Add(-1*time.Hour)),
+				rateLimitTimePtr(now.Add(-1*time.Hour)),
+			)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("evaluateRateLimits() error = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("evaluateRateLimits() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestBillingCacheService_EvaluateRateLimits_TokenPackageOnly(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name      string
+		total     float64
+		remaining float64
+		wantErr   error
+	}{
+		{name: "token package only can use remaining package", total: 10, remaining: 3},
+		{name: "token package only blocks after package exhausted", total: 10, remaining: 0, wantErr: ErrAPIKeyTokenPackageExhausted},
+		{name: "no package and no limits remains unrestricted", total: 0, remaining: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &BillingCacheService{
+				apiKeyRateLimitLoader: &tokenPackageRateLimitLoaderStub{total: tt.total, remaining: tt.remaining},
+			}
+			err := svc.evaluateRateLimits(
+				context.Background(),
+				&APIKey{ID: 9},
+				0,
+				0,
+				0,
 				rateLimitTimePtr(now.Add(-1*time.Hour)),
 				rateLimitTimePtr(now.Add(-1*time.Hour)),
 				rateLimitTimePtr(now.Add(-1*time.Hour)),

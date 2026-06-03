@@ -239,6 +239,15 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, cmd *
 	if state.limit7d > 0 {
 		baseCovered = math.Min(baseCovered, positiveRemaining(state.limit7d, state.usage7d))
 	}
+	if state.limit1d <= 0 && state.limit7d <= 0 {
+		hasTokenPackageLimit, err := hasAPIKeyTokenPackageLimit(ctx, tx, apiKeyID)
+		if err != nil {
+			return err
+		}
+		if hasTokenPackageLimit {
+			baseCovered = 0
+		}
+	}
 	if baseCovered < 0 {
 		baseCovered = 0
 	}
@@ -377,6 +386,19 @@ func updateAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64,
 		return service.ErrAPIKeyNotFound
 	}
 	return nil
+}
+
+func hasAPIKeyTokenPackageLimit(ctx context.Context, tx *sql.Tx, apiKeyID int64) (bool, error) {
+	var total float64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(amount_usd), 0)
+		FROM api_key_token_packages
+		WHERE api_key_id = $1 AND started_at <= NOW()`,
+		apiKeyID,
+	).Scan(&total); err != nil {
+		return false, err
+	}
+	return total > 0, nil
 }
 
 func allocateAPIKeyTokenPackages(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64, cmd *service.UsageBillingCommand) error {

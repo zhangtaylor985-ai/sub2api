@@ -100,6 +100,10 @@ type apiKeyTokenPackageRemainingLoader interface {
 	GetTokenPackageRemaining(ctx context.Context, keyID int64) (float64, error)
 }
 
+type apiKeyTokenPackageStateLoader interface {
+	GetTokenPackageState(ctx context.Context, keyID int64) (*APIKeyTokenPackageState, error)
+}
+
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
@@ -670,10 +674,27 @@ func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *AP
 		}
 		return ErrAPIKeyRateLimit7dExceeded
 	}
+	if limit5h <= 0 && limit1d <= 0 && limit7d <= 0 {
+		state, ok := s.getAPIKeyTokenPackageState(ctx, apiKey.ID)
+		if ok && state.TotalUSD > 0 {
+			if state.RemainingUSD > 0 {
+				return nil
+			}
+			return ErrAPIKeyTokenPackageExhausted
+		}
+	}
 	return nil
 }
 
+func (s *BillingCacheService) hasAPIKeyTokenPackageLimit(ctx context.Context, keyID int64) bool {
+	state, ok := s.getAPIKeyTokenPackageState(ctx, keyID)
+	return ok && state.TotalUSD > 0
+}
+
 func (s *BillingCacheService) hasAPIKeyTokenPackageRemaining(ctx context.Context, keyID int64) bool {
+	if state, ok := s.getAPIKeyTokenPackageState(ctx, keyID); ok {
+		return state.RemainingUSD > 0
+	}
 	loader, ok := s.apiKeyRateLimitLoader.(apiKeyTokenPackageRemainingLoader)
 	if !ok || loader == nil {
 		return false
@@ -684,6 +705,19 @@ func (s *BillingCacheService) hasAPIKeyTokenPackageRemaining(ctx context.Context
 		return false
 	}
 	return remaining > 0
+}
+
+func (s *BillingCacheService) getAPIKeyTokenPackageState(ctx context.Context, keyID int64) (*APIKeyTokenPackageState, bool) {
+	loader, ok := s.apiKeyRateLimitLoader.(apiKeyTokenPackageStateLoader)
+	if !ok || loader == nil {
+		return nil, false
+	}
+	state, err := loader.GetTokenPackageState(ctx, keyID)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: token package state lookup failed for api key %d: %v", keyID, err)
+		return nil, false
+	}
+	return state, state != nil
 }
 
 // QueueUpdateAPIKeyRateLimitUsage asynchronously updates rate limit usage in the cache.
@@ -760,7 +794,7 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	}
 
 	// Check API Key rate limits (applies to both billing modes)
-	if apiKey != nil && apiKey.HasRateLimits() {
+	if apiKey != nil && (apiKey.HasRateLimits() || s.hasAPIKeyTokenPackageLimit(ctx, apiKey.ID)) {
 		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
 			return err
 		}

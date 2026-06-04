@@ -364,3 +364,11 @@
   - 根因确认：`GatewayHandler.Models` 直接展示 `GetAvailableModels` 从账号 `model_mapping` 聚合出的内部 GPT key，没有按 API Key 模型族策略过滤。
   - 本地已修复：模型列表按 API Key family policy 过滤；Claude-only + OpenAI dispatch 分组 fallback 到 Claude 默认模型列表。
   - 定向测试已通过：`go test ./internal/handler -run 'TestGatewayModels|TestAPIKeyModelFamilyPolicy'`、`go test ./internal/handler -run 'Gateway'`、`go test ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestAPIKeyModelFamilyPolicy|TestOpenAI|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel'`、`git diff --check`。
+  - 发布前完整后端测试通过：`go test ./...`。
+  - 提交并推送 `d271fbbf fix(models): hide internal gpt models for claude-only keys` 到 `origin/main`。
+  - 生产 `/root/cliapp/sub2api-src` fast-forward 到 `d271fbbf`，构建镜像 `zhangtaylor985/sub2api:main-d271fbbf` 成功。
+  - canary `sub2api-canary-d271fbbf` 绑定 `127.0.0.1:18080`，health 通过；同一 Claude-only key 调用 canary `/v1/models` 只返回 6 个 Claude 模型，`contains_gpt=false`。
+  - 正式 Compose 备份：`/root/cliapp/sub2api/docker-compose.yml.bak.20260604T081010Z`；正式 `sub2api` app 容器已切到 `zhangtaylor985/sub2api:main-d271fbbf`，Postgres/Redis 未重启。
+  - 正式公开验证通过：`https://cc.claudepool.com/health` 返回 ok；同一 Claude-only key 调用公开 `/v1/models` 只返回 Claude 模型，`contains_gpt=false`。
+  - canary 已清理；正式容器 Docker health healthy，最近启动日志未见 panic/fatal/migration/database failed 类硬错误。
+  - 小错误记录：首次 canary `/v1/models` 验证脚本用 `python3 - <<PY` 读取 JSON，stdin 被脚本 heredoc 占用导致 `JSONDecodeError`；未影响服务和数据，已改用 `python3 -c` 重跑通过。期间一次 SSH 会话被远端断开，重试后成功。

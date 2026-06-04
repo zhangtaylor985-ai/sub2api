@@ -97,7 +97,7 @@
 | 26. API Key 级 Claude -> GPT 目标模型覆盖 | complete | 已上线 key 级覆盖并把生产 `api_keys.id=125` 配为 `gpt-5.4`；canary 与正式生产 smoke 均确认 `→gpt-5.4` |
 | 27. 生产错误可观测性与 Request ID 排查 | complete | 已确认截图为 Claude Code 本地输出上限口径；Sub2API 日志落点/级别已梳理；错误体 request_id 已实现、测试、上线到 `main-191cbfcd` |
 | 28. 生产全 API Key Claude -> GPT 映射收敛 | complete | 已全量写入 82 个有效 API Key 的 key 级 Opus/Sonnet 映射；Opus `→gpt-5.4` 黑盒通过，Sonnet `→gpt-5.3-codex` 映射生效但当前生产 ChatGPT/Codex 账号不支持该目标模型 |
-| 29. `/v1/models` GPT 黑盒展示修复 | in_progress | 已定位 `/v1/models` 未按 API Key 模型族策略过滤内部 OpenAI mapping；本地修复和定向回归通过，正在生产 canary/发布 |
+| 29. `/v1/models` GPT 黑盒展示修复 | complete | 已上线 `zhangtaylor985/sub2api:main-d271fbbf`；同一 Claude-only key 公开 `/v1/models` 只返回 Claude 模型，`contains_gpt=false` |
 
 ## 决策记录
 

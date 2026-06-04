@@ -964,6 +964,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	availableModels = filterModelIDsByAPIKeyFamilyPolicy(availableModels, apiKey)
 
 	if len(availableModels) > 0 {
 		// Build model list from whitelist
@@ -985,9 +986,16 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Fallback to default models
 	if platform == service.PlatformOpenAI {
+		if shouldExposeClaudeModelsForOpenAIDispatch(apiKey) {
+			c.JSON(http.StatusOK, gin.H{
+				"object": "list",
+				"data":   filterClaudeModelsByAPIKeyFamilyPolicy(claude.DefaultModels, apiKey),
+			})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
-			"data":   openai.DefaultModels,
+			"data":   filterOpenAIModelsByAPIKeyFamilyPolicy(openai.DefaultModels, apiKey),
 		})
 		return
 	}
@@ -1002,8 +1010,60 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   claude.DefaultModels,
+		"data":   filterClaudeModelsByAPIKeyFamilyPolicy(claude.DefaultModels, apiKey),
 	})
+}
+
+func shouldExposeClaudeModelsForOpenAIDispatch(apiKey *service.APIKey) bool {
+	if apiKey == nil || apiKey.Group == nil {
+		return false
+	}
+	if apiKey.Group.Platform != service.PlatformOpenAI || !apiKey.Group.AllowMessagesDispatch {
+		return false
+	}
+	return apiKey.AllowsClaudeFamily() && !apiKey.AllowsGPTFamily()
+}
+
+func filterModelIDsByAPIKeyFamilyPolicy(modelIDs []string, apiKey *service.APIKey) []string {
+	if apiKey == nil || len(modelIDs) == 0 {
+		return modelIDs
+	}
+	out := make([]string, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if apiKey.IsModelFamilyDenied(modelID) {
+			continue
+		}
+		out = append(out, modelID)
+	}
+	return out
+}
+
+func filterClaudeModelsByAPIKeyFamilyPolicy(models []claude.Model, apiKey *service.APIKey) []claude.Model {
+	if apiKey == nil || len(models) == 0 {
+		return models
+	}
+	out := make([]claude.Model, 0, len(models))
+	for _, model := range models {
+		if apiKey.IsModelFamilyDenied(model.ID) {
+			continue
+		}
+		out = append(out, model)
+	}
+	return out
+}
+
+func filterOpenAIModelsByAPIKeyFamilyPolicy(models []openai.Model, apiKey *service.APIKey) []openai.Model {
+	if apiKey == nil || len(models) == 0 {
+		return models
+	}
+	out := make([]openai.Model, 0, len(models))
+	for _, model := range models {
+		if apiKey.IsModelFamilyDenied(model.ID) {
+			continue
+		}
+		out = append(out, model)
+	}
+	return out
 }
 
 // AntigravityModels 返回 Antigravity 支持的全部模型

@@ -293,3 +293,11 @@
 - 账号级 `credentials.model_mapping` 当前未设置相关白名单/改写，不会把 `gpt-5.3-codex` 或 `gpt-5.4` 再改成其他模型。
 - Opus 黑盒按 5 个 OpenAI 分组代表 key 验证均通过；`usage_logs` 确认 `claude-opus-4-7→gpt-5.4`。
 - Sonnet 黑盒按 5 个 OpenAI 分组代表 key 验证均失败，HTTP 502，客户端错误保持黑盒并带 request_id；服务端日志真实根因为：`The 'gpt-5.3-codex' model is not supported when using Codex with a ChatGPT account.` 当前生产 OpenAI OAuth 账号形态不支持 `gpt-5.3-codex`，不是 Sub2API 映射未生效。
+
+## 2026-06-04 `/v1/models` GPT 黑盒展示
+
+- 用户反馈 Claude-only API Key 调用 `GET /v1/models` 仍返回 `gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`；管理端截图显示该 key 只允许 Claude，不允许 GPT/OpenAI。
+- 生产只读确认：近期 Claude-only key 均为 `allow_claude_family=true`、`allow_gpt_family=false`，绑定 `platform=openai` 且 `allow_messages_dispatch=true` 的 OpenAI dispatch 分组；配置本身符合“Claude -> GPT 内部黑盒”的预期。
+- 根因在 `GatewayHandler.Models`：该路径从 `GatewayService.GetAvailableModels` 聚合分组内可调度账号的 `credentials.model_mapping` key，并直接作为用户可见模型返回；请求路径已有模型族策略拦截，但列表路径没有套同一层策略。
+- 修复口径：`/v1/models` 返回前必须按 API Key 模型族策略过滤所有来源的模型列表。Claude-only + OpenAI dispatch 分组如果过滤掉内部 GPT mapping 后无可见模型，应 fallback 到 Claude 默认模型列表，而不是 OpenAI 默认模型列表。
+- 本地回归已覆盖：Claude-only OpenAI dispatch 不暴露 GPT mapping，且 GPT-only OpenAI key 仍能看到 OpenAI 模型。

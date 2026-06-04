@@ -358,3 +358,9 @@
   - Opus 黑盒：按 5 个 OpenAI 分组各取代表 key 请求 `claude-opus-4-7`，均 HTTP 200；usage log 确认 `claude-opus-4-7→gpt-5.4`。
   - Sonnet 黑盒：同样 5 个代表 key 请求 `claude-sonnet-4-6`，均返回客户端黑盒 `502 api_error "Upstream request failed"` 并带 `request_id`；服务端日志显示真实根因为当前生产 ChatGPT/Codex 账号不支持 `gpt-5.3-codex`。
   - 健康检查：正式 `sub2api` 仍运行 `zhangtaylor985/sub2api:main-191cbfcd`，Docker health healthy，宿主机与公开 `/health` 均 ok；最近 10 分钟未见 panic/fatal/migration/database failed 类硬错误。
+- 2026-06-04：开始 `/v1/models` GPT 黑盒展示修复与生产发布：
+  - 用户反馈 Claude-only key 调用 `/v1/models` 返回 `gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`。
+  - 生产只读确认近期 Claude-only key 为 `allow_claude_family=true`、`allow_gpt_family=false`，且绑定 OpenAI dispatch 分组；问题不是 UI 勾选或 DB 策略错误。
+  - 根因确认：`GatewayHandler.Models` 直接展示 `GetAvailableModels` 从账号 `model_mapping` 聚合出的内部 GPT key，没有按 API Key 模型族策略过滤。
+  - 本地已修复：模型列表按 API Key family policy 过滤；Claude-only + OpenAI dispatch 分组 fallback 到 Claude 默认模型列表。
+  - 定向测试已通过：`go test ./internal/handler -run 'TestGatewayModels|TestAPIKeyModelFamilyPolicy'`、`go test ./internal/handler -run 'Gateway'`、`go test ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestAPIKeyModelFamilyPolicy|TestOpenAI|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel'`、`git diff --check`。

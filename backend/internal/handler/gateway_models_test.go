@@ -127,6 +127,95 @@ func TestGatewayModels_GeminiGroupFiltersMappedModelsByPlatform(t *testing.T) {
 	require.Equal(t, []string{"gemini-2.5-flash"}, modelIDsForTest(got.Data))
 }
 
+func TestGatewayModels_ClaudeOnlyOpenAIDispatchDoesNotExposeGPTMappings(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(22)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformOpenAI,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"gpt-5.5":      "gpt-5.5",
+								"gpt-5.4":      "gpt-5.4",
+								"gpt-5.4-mini": "gpt-5.4-mini",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		AllowClaudeFamily:    true,
+		AllowGPTFamily:       false,
+		ModelFamilyPolicySet: true,
+		Group: &service.Group{
+			ID:                    groupID,
+			Platform:              service.PlatformOpenAI,
+			AllowMessagesDispatch: true,
+		},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "claude-opus-4-6")
+	require.NotContains(t, ids, "gpt-5.5")
+	require.NotContains(t, ids, "gpt-5.4")
+	require.NotContains(t, ids, "gpt-5.4-mini")
+}
+
+func TestGatewayModels_GPTOnlyOpenAIGroupKeepsOpenAIModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(23)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{ID: 1, Platform: service.PlatformOpenAI},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		AllowClaudeFamily:    false,
+		AllowGPTFamily:       true,
+		ModelFamilyPolicySet: true,
+		Group: &service.Group{
+			ID:       groupID,
+			Platform: service.PlatformOpenAI,
+		},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "gpt-5.4")
+	require.NotContains(t, ids, "claude-opus-4-6")
+}
+
 func modelIDsForTest(models []gatewayModelItemForTest) []string {
 	ids := make([]string, 0, len(models))
 	for _, model := range models {

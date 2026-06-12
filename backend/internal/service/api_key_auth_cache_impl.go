@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 13 // v13: include API key messages dispatch model override
+const apiKeyAuthSnapshotVersion = 14 // v14: include API key billing multiplier
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -213,6 +213,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		Name:                        apiKey.Name,
 		Status:                      apiKey.Status,
 		Concurrency:                 apiKey.Concurrency,
+		RateMultiplier:              apiKey.BillingRateMultiplier(),
 		AllowClaudeFamily:           apiKey.AllowsClaudeFamily(),
 		AllowGPTFamily:              apiKey.AllowsGPTFamily(),
 		MessagesDispatchModelConfig: normalizeOpenAIMessagesDispatchModelConfig(apiKey.MessagesDispatchModelConfig),
@@ -295,6 +296,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		Name:                        snapshot.Name,
 		Status:                      snapshot.Status,
 		Concurrency:                 snapshot.Concurrency,
+		RateMultiplier:              snapshot.RateMultiplier,
 		AllowClaudeFamily:           snapshot.AllowClaudeFamily,
 		AllowGPTFamily:              snapshot.AllowGPTFamily,
 		ModelFamilyPolicySet:        true,

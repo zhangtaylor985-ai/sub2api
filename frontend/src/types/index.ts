@@ -567,6 +567,7 @@ export interface ApiKey {
   quota: number // Quota limit in USD (0 = unlimited)
   quota_used: number // Used quota amount in USD
   concurrency: number // API key concurrency override (0 = inherit group/user)
+  rate_multiplier?: number // Admin-only API key billing multiplier
   allow_claude_family: boolean
   allow_gpt_family: boolean
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig

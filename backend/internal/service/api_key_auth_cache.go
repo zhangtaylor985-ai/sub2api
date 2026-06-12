@@ -11,6 +11,7 @@ type APIKeyAuthSnapshot struct {
 	Name                        string                            `json:"name"`
 	Status                      string                            `json:"status"`
 	Concurrency                 int                               `json:"concurrency"`
+	RateMultiplier              float64                           `json:"rate_multiplier"`
 	AllowClaudeFamily           bool                              `json:"allow_claude_family"`
 	AllowGPTFamily              bool                              `json:"allow_gpt_family"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`

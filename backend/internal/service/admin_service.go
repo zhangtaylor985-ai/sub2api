@@ -371,6 +371,7 @@ type AdminCreateAPIKeyInput struct {
 	GroupID                     *int64
 	Status                      *string
 	Quota                       float64
+	RateMultiplier              float64
 	ExpiresAt                   *time.Time
 	RateLimit5h                 float64
 	RateLimit1d                 float64
@@ -386,6 +387,7 @@ type AdminCreateAPIKeyInput struct {
 type AdminUpdateAPIKeyPolicyInput struct {
 	Status                      *string
 	Quota                       *float64
+	RateMultiplier              *float64
 	ExpiresAt                   *time.Time
 	ClearExpires                bool
 	Concurrency                 *int
@@ -2245,6 +2247,13 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCre
 	if input.Quota < 0 || input.RateLimit5h < 0 || input.RateLimit1d < 0 || input.RateLimit7d < 0 {
 		return nil, infraerrors.BadRequest("INVALID_API_KEY_LIMIT", "quota and rate limits must be non-negative")
 	}
+	rateMultiplier := input.RateMultiplier
+	if rateMultiplier == 0 {
+		rateMultiplier = 1
+	}
+	if rateMultiplier <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_API_KEY_RATE_MULTIPLIER", "rate_multiplier must be greater than 0")
+	}
 	if input.Concurrency < 0 {
 		return nil, infraerrors.BadRequest("INVALID_API_KEY_CONCURRENCY", "concurrency must be non-negative")
 	}
@@ -2282,6 +2291,7 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCre
 		Name:                 strings.TrimSpace(input.Name),
 		Status:               status,
 		Quota:                input.Quota,
+		RateMultiplier:       rateMultiplier,
 		QuotaUsed:            0,
 		ExpiresAt:            input.ExpiresAt,
 		RateLimit5h:          input.RateLimit5h,
@@ -2524,6 +2534,12 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 		if apiKey.Status == StatusAPIKeyQuotaExhausted && *input.Quota > apiKey.QuotaUsed {
 			apiKey.Status = StatusActive
 		}
+	}
+	if input.RateMultiplier != nil {
+		if *input.RateMultiplier <= 0 {
+			return nil, infraerrors.BadRequest("INVALID_API_KEY_RATE_MULTIPLIER", "rate_multiplier must be greater than 0")
+		}
+		apiKey.RateMultiplier = *input.RateMultiplier
 	}
 	if input.ResetQuota {
 		apiKey.QuotaUsed = 0

@@ -128,6 +128,20 @@ func (_c *APIKeyCreate) SetNillableConcurrency(v *int) *APIKeyCreate {
 	return _c
 }
 
+// SetRateMultiplier sets the "rate_multiplier" field.
+func (_c *APIKeyCreate) SetRateMultiplier(v float64) *APIKeyCreate {
+	_c.mutation.SetRateMultiplier(v)
+	return _c
+}
+
+// SetNillableRateMultiplier sets the "rate_multiplier" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableRateMultiplier(v *float64) *APIKeyCreate {
+	if v != nil {
+		_c.SetRateMultiplier(*v)
+	}
+	return _c
+}
+
 // SetAllowClaudeFamily sets the "allow_claude_family" field.
 func (_c *APIKeyCreate) SetAllowClaudeFamily(v bool) *APIKeyCreate {
 	_c.mutation.SetAllowClaudeFamily(v)
@@ -448,6 +462,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
 	}
+	if _, ok := _c.mutation.RateMultiplier(); !ok {
+		v := apikey.DefaultRateMultiplier
+		_c.mutation.SetRateMultiplier(v)
+	}
 	if _, ok := _c.mutation.AllowClaudeFamily(); !ok {
 		v := apikey.DefaultAllowClaudeFamily
 		_c.mutation.SetAllowClaudeFamily(v)
@@ -532,6 +550,9 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "APIKey.concurrency"`)}
+	}
+	if _, ok := _c.mutation.RateMultiplier(); !ok {
+		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "APIKey.rate_multiplier"`)}
 	}
 	if _, ok := _c.mutation.AllowClaudeFamily(); !ok {
 		return &ValidationError{Name: "allow_claude_family", err: errors.New(`ent: missing required field "APIKey.allow_claude_family"`)}
@@ -623,6 +644,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(apikey.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
+	}
+	if value, ok := _c.mutation.RateMultiplier(); ok {
+		_spec.SetField(apikey.FieldRateMultiplier, field.TypeFloat64, value)
+		_node.RateMultiplier = value
 	}
 	if value, ok := _c.mutation.AllowClaudeFamily(); ok {
 		_spec.SetField(apikey.FieldAllowClaudeFamily, field.TypeBool, value)
@@ -909,6 +934,24 @@ func (u *APIKeyUpsert) UpdateConcurrency() *APIKeyUpsert {
 // AddConcurrency adds v to the "concurrency" field.
 func (u *APIKeyUpsert) AddConcurrency(v int) *APIKeyUpsert {
 	u.Add(apikey.FieldConcurrency, v)
+	return u
+}
+
+// SetRateMultiplier sets the "rate_multiplier" field.
+func (u *APIKeyUpsert) SetRateMultiplier(v float64) *APIKeyUpsert {
+	u.Set(apikey.FieldRateMultiplier, v)
+	return u
+}
+
+// UpdateRateMultiplier sets the "rate_multiplier" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateRateMultiplier() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldRateMultiplier)
+	return u
+}
+
+// AddRateMultiplier adds v to the "rate_multiplier" field.
+func (u *APIKeyUpsert) AddRateMultiplier(v float64) *APIKeyUpsert {
+	u.Add(apikey.FieldRateMultiplier, v)
 	return u
 }
 
@@ -1393,6 +1436,27 @@ func (u *APIKeyUpsertOne) AddConcurrency(v int) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateConcurrency() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetRateMultiplier sets the "rate_multiplier" field.
+func (u *APIKeyUpsertOne) SetRateMultiplier(v float64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetRateMultiplier(v)
+	})
+}
+
+// AddRateMultiplier adds v to the "rate_multiplier" field.
+func (u *APIKeyUpsertOne) AddRateMultiplier(v float64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddRateMultiplier(v)
+	})
+}
+
+// UpdateRateMultiplier sets the "rate_multiplier" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateRateMultiplier() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateRateMultiplier()
 	})
 }
 
@@ -2094,6 +2158,27 @@ func (u *APIKeyUpsertBulk) AddConcurrency(v int) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateConcurrency() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetRateMultiplier sets the "rate_multiplier" field.
+func (u *APIKeyUpsertBulk) SetRateMultiplier(v float64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetRateMultiplier(v)
+	})
+}
+
+// AddRateMultiplier adds v to the "rate_multiplier" field.
+func (u *APIKeyUpsertBulk) AddRateMultiplier(v float64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddRateMultiplier(v)
+	})
+}
+
+// UpdateRateMultiplier sets the "rate_multiplier" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateRateMultiplier() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateRateMultiplier()
 	})
 }
 

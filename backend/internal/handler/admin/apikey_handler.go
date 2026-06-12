@@ -30,6 +30,7 @@ type AdminUpdateAPIKeyGroupRequest struct {
 	ResetRateLimitUsage         *bool                                      `json:"reset_rate_limit_usage"`         // true=重置 5h/1d/7d 限速用量
 	Status                      *string                                    `json:"status"`                         // nil=不修改, active/inactive
 	Quota                       *float64                                   `json:"quota"`                          // nil=不修改, 0=不限制
+	RateMultiplier              *float64                                   `json:"rate_multiplier"`                // nil=不修改, >0=计费倍率
 	ExpiresAt                   *string                                    `json:"expires_at"`                     // nil=不修改, ""=清空, RFC3339=设置
 	ResetQuota                  *bool                                      `json:"reset_quota"`                    // true=重置总额度已用量
 	Concurrency                 *int                                       `json:"concurrency"`                    // nil=不修改, 0=继承分组/用户, >0=单 key 并发
@@ -49,6 +50,7 @@ type AdminCreateAPIKeyRequest struct {
 	GroupID                     *int64                                     `json:"group_id"`
 	Status                      *string                                    `json:"status"`
 	Quota                       float64                                    `json:"quota"`
+	RateMultiplier              *float64                                   `json:"rate_multiplier"`
 	ExpiresAt                   *string                                    `json:"expires_at"`
 	RateLimit5h                 float64                                    `json:"rate_limit_5h"`
 	RateLimit1d                 float64                                    `json:"rate_limit_1d"`
@@ -94,9 +96,9 @@ func (h *AdminAPIKeyHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	out := make([]dto.APIKey, 0, len(keys))
+	out := make([]dto.AdminAPIKey, 0, len(keys))
 	for i := range keys {
-		out = append(out, *dto.APIKeyFromService(&keys[i]))
+		out = append(out, *dto.APIKeyFromServiceAdmin(&keys[i]))
 	}
 	response.Paginated(c, out, total, page, pageSize)
 }
@@ -113,9 +115,17 @@ func (h *AdminAPIKeyHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "quota and rate limits must be non-negative")
 		return
 	}
+	if req.RateMultiplier != nil && *req.RateMultiplier <= 0 {
+		response.BadRequest(c, "rate_multiplier must be greater than 0")
+		return
+	}
 	if req.Concurrency < 0 {
 		response.BadRequest(c, "concurrency must be non-negative")
 		return
+	}
+	rateMultiplier := 0.0
+	if req.RateMultiplier != nil {
+		rateMultiplier = *req.RateMultiplier
 	}
 	var expiresAt *time.Time
 	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
@@ -133,6 +143,7 @@ func (h *AdminAPIKeyHandler) Create(c *gin.Context) {
 		GroupID:                     req.GroupID,
 		Status:                      req.Status,
 		Quota:                       req.Quota,
+		RateMultiplier:              rateMultiplier,
 		ExpiresAt:                   expiresAt,
 		RateLimit5h:                 req.RateLimit5h,
 		RateLimit1d:                 req.RateLimit1d,
@@ -193,12 +204,12 @@ func adminAPIKeyResultResponse(result *service.AdminUpdateAPIKeyGroupIDResult) a
 		return gin.H{"api_key": nil}
 	}
 	return struct {
-		APIKey                 *dto.APIKey `json:"api_key"`
-		AutoGrantedGroupAccess bool        `json:"auto_granted_group_access"`
-		GrantedGroupID         *int64      `json:"granted_group_id,omitempty"`
-		GrantedGroupName       string      `json:"granted_group_name,omitempty"`
+		APIKey                 *dto.AdminAPIKey `json:"api_key"`
+		AutoGrantedGroupAccess bool             `json:"auto_granted_group_access"`
+		GrantedGroupID         *int64           `json:"granted_group_id,omitempty"`
+		GrantedGroupName       string           `json:"granted_group_name,omitempty"`
 	}{
-		APIKey:                 dto.APIKeyFromService(result.APIKey),
+		APIKey:                 dto.APIKeyFromServiceAdmin(result.APIKey),
 		AutoGrantedGroupAccess: result.AutoGrantedGroupAccess,
 		GrantedGroupID:         result.GrantedGroupID,
 		GrantedGroupName:       result.GrantedGroupName,
@@ -303,14 +314,18 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 		}
 	}
 	for name, value := range map[string]*float64{
-		"quota":         req.Quota,
-		"rate_limit_5h": req.RateLimit5h,
-		"rate_limit_1d": req.RateLimit1d,
-		"rate_limit_7d": req.RateLimit7d,
+		"quota":           req.Quota,
+		"rate_limit_5h":   req.RateLimit5h,
+		"rate_limit_1d":   req.RateLimit1d,
+		"rate_limit_7d":   req.RateLimit7d,
+		"rate_multiplier": req.RateMultiplier,
 	} {
 		if value != nil && *value < 0 {
 			return service.AdminUpdateAPIKeyPolicyInput{}, false, fmt.Errorf("%s must be non-negative", name)
 		}
+	}
+	if req.RateMultiplier != nil && *req.RateMultiplier <= 0 {
+		return service.AdminUpdateAPIKeyPolicyInput{}, false, fmt.Errorf("rate_multiplier must be greater than 0")
 	}
 	if req.Concurrency != nil && *req.Concurrency < 0 {
 		return service.AdminUpdateAPIKeyPolicyInput{}, false, fmt.Errorf("concurrency must be non-negative")
@@ -319,6 +334,7 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 	input := service.AdminUpdateAPIKeyPolicyInput{
 		Status:                      req.Status,
 		Quota:                       req.Quota,
+		RateMultiplier:              req.RateMultiplier,
 		Concurrency:                 req.Concurrency,
 		AllowClaudeFamily:           req.AllowClaudeFamily,
 		AllowGPTFamily:              req.AllowGPTFamily,
@@ -355,6 +371,7 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 
 	set := req.Status != nil ||
 		req.Quota != nil ||
+		req.RateMultiplier != nil ||
 		req.ExpiresAt != nil ||
 		req.ResetQuota != nil ||
 		req.Concurrency != nil ||

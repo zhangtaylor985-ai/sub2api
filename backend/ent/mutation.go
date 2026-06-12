@@ -111,6 +111,8 @@ type APIKeyMutation struct {
 	status                         *string
 	concurrency                    *int
 	addconcurrency                 *int
+	rate_multiplier                *float64
+	addrate_multiplier             *float64
 	allow_claude_family            *bool
 	allow_gpt_family               *bool
 	messages_dispatch_model_config *domain.OpenAIMessagesDispatchModelConfig
@@ -618,6 +620,62 @@ func (m *APIKeyMutation) AddedConcurrency() (r int, exists bool) {
 func (m *APIKeyMutation) ResetConcurrency() {
 	m.concurrency = nil
 	m.addconcurrency = nil
+}
+
+// SetRateMultiplier sets the "rate_multiplier" field.
+func (m *APIKeyMutation) SetRateMultiplier(f float64) {
+	m.rate_multiplier = &f
+	m.addrate_multiplier = nil
+}
+
+// RateMultiplier returns the value of the "rate_multiplier" field in the mutation.
+func (m *APIKeyMutation) RateMultiplier() (r float64, exists bool) {
+	v := m.rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRateMultiplier returns the old "rate_multiplier" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRateMultiplier: %w", err)
+	}
+	return oldValue.RateMultiplier, nil
+}
+
+// AddRateMultiplier adds f to the "rate_multiplier" field.
+func (m *APIKeyMutation) AddRateMultiplier(f float64) {
+	if m.addrate_multiplier != nil {
+		*m.addrate_multiplier += f
+	} else {
+		m.addrate_multiplier = &f
+	}
+}
+
+// AddedRateMultiplier returns the value that was added to the "rate_multiplier" field in this mutation.
+func (m *APIKeyMutation) AddedRateMultiplier() (r float64, exists bool) {
+	v := m.addrate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRateMultiplier resets all changes to the "rate_multiplier" field.
+func (m *APIKeyMutation) ResetRateMultiplier() {
+	m.rate_multiplier = nil
+	m.addrate_multiplier = nil
 }
 
 // SetAllowClaudeFamily sets the "allow_claude_family" field.
@@ -1693,7 +1751,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 27)
+	fields := make([]string, 0, 28)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1720,6 +1778,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.concurrency != nil {
 		fields = append(fields, apikey.FieldConcurrency)
+	}
+	if m.rate_multiplier != nil {
+		fields = append(fields, apikey.FieldRateMultiplier)
 	}
 	if m.allow_claude_family != nil {
 		fields = append(fields, apikey.FieldAllowClaudeFamily)
@@ -1801,6 +1862,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case apikey.FieldConcurrency:
 		return m.Concurrency()
+	case apikey.FieldRateMultiplier:
+		return m.RateMultiplier()
 	case apikey.FieldAllowClaudeFamily:
 		return m.AllowClaudeFamily()
 	case apikey.FieldAllowGptFamily:
@@ -1864,6 +1927,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldStatus(ctx)
 	case apikey.FieldConcurrency:
 		return m.OldConcurrency(ctx)
+	case apikey.FieldRateMultiplier:
+		return m.OldRateMultiplier(ctx)
 	case apikey.FieldAllowClaudeFamily:
 		return m.OldAllowClaudeFamily(ctx)
 	case apikey.FieldAllowGptFamily:
@@ -1971,6 +2036,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetConcurrency(v)
+		return nil
+	case apikey.FieldRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRateMultiplier(v)
 		return nil
 	case apikey.FieldAllowClaudeFamily:
 		v, ok := value.(bool)
@@ -2109,6 +2181,9 @@ func (m *APIKeyMutation) AddedFields() []string {
 	if m.addconcurrency != nil {
 		fields = append(fields, apikey.FieldConcurrency)
 	}
+	if m.addrate_multiplier != nil {
+		fields = append(fields, apikey.FieldRateMultiplier)
+	}
 	if m.addquota != nil {
 		fields = append(fields, apikey.FieldQuota)
 	}
@@ -2143,6 +2218,8 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case apikey.FieldConcurrency:
 		return m.AddedConcurrency()
+	case apikey.FieldRateMultiplier:
+		return m.AddedRateMultiplier()
 	case apikey.FieldQuota:
 		return m.AddedQuota()
 	case apikey.FieldQuotaUsed:
@@ -2174,6 +2251,13 @@ func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddConcurrency(v)
+		return nil
+	case apikey.FieldRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRateMultiplier(v)
 		return nil
 	case apikey.FieldQuota:
 		v, ok := value.(float64)
@@ -2341,6 +2425,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldConcurrency:
 		m.ResetConcurrency()
+		return nil
+	case apikey.FieldRateMultiplier:
+		m.ResetRateMultiplier()
 		return nil
 	case apikey.FieldAllowClaudeFamily:
 		m.ResetAllowClaudeFamily()

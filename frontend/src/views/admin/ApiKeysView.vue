@@ -108,6 +108,12 @@
             </div>
           </template>
 
+          <template #cell-rate_multiplier="{ row }">
+            <span class="text-sm tabular-nums text-gray-700 dark:text-gray-300">
+              {{ formatMultiplier(row.rate_multiplier) }}
+            </span>
+          </template>
+
           <template #cell-usage="{ row }">
             <div class="space-y-0.5 text-xs text-gray-600 dark:text-dark-300">
               <div>Total: ${{ formatMoney(row.quota_used) }}</div>
@@ -231,6 +237,11 @@
             <span class="input-hint">{{ t('admin.apiKeys.form.zeroUnlimited') }}</span>
           </label>
           <label class="space-y-1">
+            <span class="input-label">{{ t('admin.apiKeys.form.rateMultiplier') }}</span>
+            <input v-model.number="createForm.rate_multiplier" type="number" min="0.0001" step="0.0001" class="input" />
+            <span class="input-hint">{{ t('admin.apiKeys.form.rateMultiplierHint') }}</span>
+          </label>
+          <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.dailyLimit') }}</span>
             <input v-model.number="createForm.rate_limit_1d" type="number" min="0" step="0.0001" class="input" />
             <span class="input-hint">{{ t('admin.apiKeys.form.zeroInheritGroupLimit') }}</span>
@@ -326,6 +337,11 @@
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.totalQuota') }}</span>
             <input v-model.number="editForm.quota" type="number" min="0" step="0.0001" class="input" />
+          </label>
+          <label class="space-y-1">
+            <span class="input-label">{{ t('admin.apiKeys.form.rateMultiplier') }}</span>
+            <input v-model.number="editForm.rate_multiplier" type="number" min="0.0001" step="0.0001" class="input" />
+            <span class="input-hint">{{ t('admin.apiKeys.form.rateMultiplierHint') }}</span>
           </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.dailyLimit') }}</span>
@@ -584,6 +600,7 @@ const defaultCreateForm = () => ({
   group_id: '' as string | number,
   status: 'active' as 'active' | 'inactive',
   quota: 0,
+  rate_multiplier: 1,
   rate_limit_5h: 0,
   rate_limit_1d: 0,
   rate_limit_7d: 0,
@@ -603,6 +620,7 @@ const editForm = reactive({
   group_id: '' as string | number,
   status: 'active' as 'active' | 'inactive',
   quota: 0,
+  rate_multiplier: 1,
   rate_limit_5h: 0,
   rate_limit_1d: 0,
   rate_limit_7d: 0,
@@ -658,6 +676,7 @@ const columns = computed<Column[]>(() => [
   { key: 'owner', label: t('admin.apiKeys.columns.owner') },
   { key: 'group', label: t('admin.apiKeys.columns.group') },
   { key: 'limits', label: t('admin.apiKeys.columns.limits') },
+  { key: 'rate_multiplier', label: t('admin.apiKeys.columns.rateMultiplier') },
   { key: 'usage', label: t('admin.apiKeys.columns.usage') },
   { key: 'concurrency', label: t('admin.apiKeys.columns.concurrency'), sortable: true },
   { key: 'model_access', label: t('admin.apiKeys.columns.modelAccess') },
@@ -753,6 +772,8 @@ const maskKey = (key: string) => {
 }
 
 const formatMoney = (value: number) => Number(value || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
+
+const formatMultiplier = (value?: number | null) => `${formatMoney(Number(value || 1))}x`
 
 const formatLimit = (value: number) => {
   const n = Number(value || 0)
@@ -934,6 +955,7 @@ const openEditDialog = (key: ApiKey) => {
   editForm.group_id = key.group_id ?? ''
   editForm.status = key.status === 'inactive' ? 'inactive' : 'active'
   editForm.quota = key.quota || 0
+  editForm.rate_multiplier = key.rate_multiplier && key.rate_multiplier > 0 ? key.rate_multiplier : 1
   editForm.rate_limit_5h = key.rate_limit_5h || 0
   editForm.rate_limit_1d = key.rate_limit_1d || 0
   editForm.rate_limit_7d = key.rate_limit_7d || 0
@@ -1012,6 +1034,11 @@ const handleCreate = async () => {
     appStore.showError(t('admin.apiKeys.errors.nameRequired'))
     return
   }
+  const rateMultiplier = positiveNumericValue(createForm.rate_multiplier)
+  if (rateMultiplier <= 0) {
+    appStore.showError(t('admin.apiKeys.errors.invalidRateMultiplier'))
+    return
+  }
   submitting.value = true
   try {
     const expiresAt = toISOStringOrEmpty(createForm.expires_at_local)
@@ -1022,6 +1049,7 @@ const handleCreate = async () => {
       group_id: selectedGroupID(createForm.group_id),
       status: createForm.status,
       quota: numericValue(createForm.quota),
+      rate_multiplier: rateMultiplier,
       rate_limit_5h: numericValue(createForm.rate_limit_5h),
       rate_limit_1d: numericValue(createForm.rate_limit_1d),
       rate_limit_7d: numericValue(createForm.rate_limit_7d),
@@ -1045,6 +1073,11 @@ const handleCreate = async () => {
 
 const handleUpdate = async () => {
   if (!editingKey.value) return
+  const rateMultiplier = positiveNumericValue(editForm.rate_multiplier)
+  if (rateMultiplier <= 0) {
+    appStore.showError(t('admin.apiKeys.errors.invalidRateMultiplier'))
+    return
+  }
   submitting.value = true
   try {
     const expiresAt = editForm.clear_expires_at ? '' : toISOStringOrEmpty(editForm.expires_at_local)
@@ -1057,6 +1090,7 @@ const handleUpdate = async () => {
       group_id: selectedPolicyGroupID(editForm.group_id),
       status: editForm.status,
       quota: numericValue(editForm.quota),
+      rate_multiplier: rateMultiplier,
       rate_limit_5h: numericValue(editForm.rate_limit_5h),
       rate_limit_1d: numericValue(editForm.rate_limit_1d),
       rate_limit_7d: numericValue(editForm.rate_limit_7d),

@@ -85,6 +85,13 @@ type APIKey struct {
 	Group *Group `json:"group,omitempty"`
 }
 
+type AdminAPIKey struct {
+	APIKey
+
+	// Admin-only billing multiplier; regular user API key endpoints must not expose it.
+	RateMultiplier float64 `json:"rate_multiplier"`
+}
+
 type Group struct {
 	ID             int64   `json:"id"`
 	Name           string  `json:"name"`

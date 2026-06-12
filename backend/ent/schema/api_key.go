@@ -50,6 +50,10 @@ func (APIKey) Fields() []ent.Field {
 		field.Int("concurrency").
 			Default(0).
 			Comment("API key concurrency limit (0 = inherit from group/user)"),
+		field.Float("rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1).
+			Comment("API key billing multiplier (1 = normal)"),
 		field.Bool("allow_claude_family").
 			Default(true).
 			Comment("Whether this API key may request Claude-family models from user-facing endpoints"),

@@ -123,6 +123,17 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	return out
 }
 
+func APIKeyFromServiceAdmin(k *service.APIKey) *AdminAPIKey {
+	base := APIKeyFromService(k)
+	if base == nil {
+		return nil
+	}
+	return &AdminAPIKey{
+		APIKey:         *base,
+		RateMultiplier: k.BillingRateMultiplier(),
+	}
+}
+
 func GroupFromServiceShallow(g *service.Group) *Group {
 	if g == nil {
 		return nil

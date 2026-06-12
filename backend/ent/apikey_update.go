@@ -156,6 +156,27 @@ func (_u *APIKeyUpdate) AddConcurrency(v int) *APIKeyUpdate {
 	return _u
 }
 
+// SetRateMultiplier sets the "rate_multiplier" field.
+func (_u *APIKeyUpdate) SetRateMultiplier(v float64) *APIKeyUpdate {
+	_u.mutation.ResetRateMultiplier()
+	_u.mutation.SetRateMultiplier(v)
+	return _u
+}
+
+// SetNillableRateMultiplier sets the "rate_multiplier" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableRateMultiplier(v *float64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddRateMultiplier adds value to the "rate_multiplier" field.
+func (_u *APIKeyUpdate) AddRateMultiplier(v float64) *APIKeyUpdate {
+	_u.mutation.AddRateMultiplier(v)
+	return _u
+}
+
 // SetAllowClaudeFamily sets the "allow_claude_family" field.
 func (_u *APIKeyUpdate) SetAllowClaudeFamily(v bool) *APIKeyUpdate {
 	_u.mutation.SetAllowClaudeFamily(v)
@@ -666,6 +687,12 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(apikey.FieldConcurrency, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.RateMultiplier(); ok {
+		_spec.SetField(apikey.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
+		_spec.AddField(apikey.FieldRateMultiplier, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.AllowClaudeFamily(); ok {
 		_spec.SetField(apikey.FieldAllowClaudeFamily, field.TypeBool, value)
 	}
@@ -1018,6 +1045,27 @@ func (_u *APIKeyUpdateOne) SetNillableConcurrency(v *int) *APIKeyUpdateOne {
 // AddConcurrency adds value to the "concurrency" field.
 func (_u *APIKeyUpdateOne) AddConcurrency(v int) *APIKeyUpdateOne {
 	_u.mutation.AddConcurrency(v)
+	return _u
+}
+
+// SetRateMultiplier sets the "rate_multiplier" field.
+func (_u *APIKeyUpdateOne) SetRateMultiplier(v float64) *APIKeyUpdateOne {
+	_u.mutation.ResetRateMultiplier()
+	_u.mutation.SetRateMultiplier(v)
+	return _u
+}
+
+// SetNillableRateMultiplier sets the "rate_multiplier" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableRateMultiplier(v *float64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddRateMultiplier adds value to the "rate_multiplier" field.
+func (_u *APIKeyUpdateOne) AddRateMultiplier(v float64) *APIKeyUpdateOne {
+	_u.mutation.AddRateMultiplier(v)
 	return _u
 }
 
@@ -1560,6 +1608,12 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(apikey.FieldConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.RateMultiplier(); ok {
+		_spec.SetField(apikey.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
+		_spec.AddField(apikey.FieldRateMultiplier, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.AllowClaudeFamily(); ok {
 		_spec.SetField(apikey.FieldAllowClaudeFamily, field.TypeBool, value)

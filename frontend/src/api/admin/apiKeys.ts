@@ -17,6 +17,7 @@ export interface AdminUpdateApiKeyPolicyPayload {
   group_id?: number | null
   status?: 'active' | 'inactive'
   quota?: number
+  rate_multiplier?: number
   concurrency?: number
   expires_at?: string
   reset_quota?: boolean
@@ -46,6 +47,7 @@ export interface AdminCreateAPIKeyPayload {
   group_id?: number | null
   status?: 'active' | 'inactive'
   quota?: number
+  rate_multiplier?: number
   expires_at?: string
   rate_limit_5h?: number
   rate_limit_1d?: number

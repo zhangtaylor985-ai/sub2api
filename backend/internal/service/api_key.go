@@ -35,6 +35,8 @@ type APIKey struct {
 	GroupID     *int64
 	Status      string
 	Concurrency int
+	// Admin-only billing multiplier. User-facing API key responses should not expose it.
+	RateMultiplier float64
 	// Model family policy is evaluated against the user-requested endpoint/model,
 	// not the internal upstream routing target.
 	AllowClaudeFamily    bool
@@ -124,6 +126,13 @@ func (k *APIKey) IsActive() bool {
 // HasRateLimits returns true if any rate limit window is configured
 func (k *APIKey) HasRateLimits() bool {
 	return k.EffectiveRateLimit5h() > 0 || k.EffectiveRateLimit1d() > 0 || k.EffectiveRateLimit7d() > 0
+}
+
+func (k *APIKey) BillingRateMultiplier() float64 {
+	if k == nil || k.RateMultiplier <= 0 {
+		return 1
+	}
+	return k.RateMultiplier
 }
 
 // EffectiveRateLimit5h resolves the 5h API key rate limit.

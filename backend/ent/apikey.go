@@ -39,6 +39,8 @@ type APIKey struct {
 	Status string `json:"status,omitempty"`
 	// API key concurrency limit (0 = inherit from group/user)
 	Concurrency int `json:"concurrency,omitempty"`
+	// API key billing multiplier (1 = normal)
+	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
 	// Whether this API key may request Claude-family models from user-facing endpoints
 	AllowClaudeFamily bool `json:"allow_claude_family,omitempty"`
 	// Whether this API key may request GPT/OpenAI-family models from user-facing endpoints
@@ -134,7 +136,7 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case apikey.FieldAllowClaudeFamily, apikey.FieldAllowGptFamily:
 			values[i] = new(sql.NullBool)
-		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
+		case apikey.FieldRateMultiplier, apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
 		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID, apikey.FieldConcurrency:
 			values[i] = new(sql.NullInt64)
@@ -218,6 +220,12 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field concurrency", values[i])
 			} else if value.Valid {
 				_m.Concurrency = int(value.Int64)
+			}
+		case apikey.FieldRateMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field rate_multiplier", values[i])
+			} else if value.Valid {
+				_m.RateMultiplier = value.Float64
 			}
 		case apikey.FieldAllowClaudeFamily:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -419,6 +427,9 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("concurrency=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Concurrency))
+	builder.WriteString(", ")
+	builder.WriteString("rate_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RateMultiplier))
 	builder.WriteString(", ")
 	builder.WriteString("allow_claude_family=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowClaudeFamily))

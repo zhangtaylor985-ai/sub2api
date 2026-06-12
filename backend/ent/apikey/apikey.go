@@ -34,6 +34,8 @@ const (
 	FieldStatus = "status"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
+	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
+	FieldRateMultiplier = "rate_multiplier"
 	// FieldAllowClaudeFamily holds the string denoting the allow_claude_family field in the database.
 	FieldAllowClaudeFamily = "allow_claude_family"
 	// FieldAllowGptFamily holds the string denoting the allow_gpt_family field in the database.
@@ -113,6 +115,7 @@ var Columns = []string{
 	FieldGroupID,
 	FieldStatus,
 	FieldConcurrency,
+	FieldRateMultiplier,
 	FieldAllowClaudeFamily,
 	FieldAllowGptFamily,
 	FieldMessagesDispatchModelConfig,
@@ -167,6 +170,8 @@ var (
 	StatusValidator func(string) error
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
+	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
+	DefaultRateMultiplier float64
 	// DefaultAllowClaudeFamily holds the default value on creation for the "allow_claude_family" field.
 	DefaultAllowClaudeFamily bool
 	// DefaultAllowGptFamily holds the default value on creation for the "allow_gpt_family" field.
@@ -242,6 +247,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByConcurrency orders the results by the concurrency field.
 func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldConcurrency, opts...).ToFunc()
+}
+
+// ByRateMultiplier orders the results by the rate_multiplier field.
+func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
 }
 
 // ByAllowClaudeFamily orders the results by the allow_claude_family field.

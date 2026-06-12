@@ -256,6 +256,16 @@ func TestAccountGetMappedModel(t *testing.T) {
 			requestedModel: "claude-sonnet-4-5",
 			expected:       "target-model",
 		},
+		{
+			name: "claude fable passthrough",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"claude-fable-5": "claude-fable-5",
+				},
+			},
+			requestedModel: "claude-fable-5",
+			expected:       "claude-fable-5",
+		},
 
 		// 通配符匹配（最长优先）
 		{

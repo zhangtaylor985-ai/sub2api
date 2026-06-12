@@ -398,6 +398,8 @@ func publicClaudeOnlyModelName(model string) string {
 	normalized = strings.TrimPrefix(normalized, "openai/")
 	normalized = strings.TrimPrefix(normalized, "chatgpt/")
 	switch {
+	case strings.HasPrefix(normalized, "claude-fable-5"):
+		return "claude-fable-5"
 	case strings.HasPrefix(normalized, "gpt-5.5"):
 		return "claude-opus-4-8"
 	case strings.HasPrefix(normalized, "gpt-5.4-mini"), strings.HasPrefix(normalized, "gpt-5.4-nano"):

@@ -115,6 +115,7 @@ type APIKeyMutation struct {
 	addrate_multiplier             *float64
 	allow_claude_family            *bool
 	allow_gpt_family               *bool
+	allow_image_generation         *bool
 	messages_dispatch_model_config *domain.OpenAIMessagesDispatchModelConfig
 	last_used_at                   *time.Time
 	ip_whitelist                   *[]string
@@ -748,6 +749,42 @@ func (m *APIKeyMutation) OldAllowGptFamily(ctx context.Context) (v bool, err err
 // ResetAllowGptFamily resets all changes to the "allow_gpt_family" field.
 func (m *APIKeyMutation) ResetAllowGptFamily() {
 	m.allow_gpt_family = nil
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (m *APIKeyMutation) SetAllowImageGeneration(b bool) {
+	m.allow_image_generation = &b
+}
+
+// AllowImageGeneration returns the value of the "allow_image_generation" field in the mutation.
+func (m *APIKeyMutation) AllowImageGeneration() (r bool, exists bool) {
+	v := m.allow_image_generation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowImageGeneration returns the old "allow_image_generation" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldAllowImageGeneration(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowImageGeneration is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowImageGeneration requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowImageGeneration: %w", err)
+	}
+	return oldValue.AllowImageGeneration, nil
+}
+
+// ResetAllowImageGeneration resets all changes to the "allow_image_generation" field.
+func (m *APIKeyMutation) ResetAllowImageGeneration() {
+	m.allow_image_generation = nil
 }
 
 // SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
@@ -1751,7 +1788,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 29)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1787,6 +1824,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.allow_gpt_family != nil {
 		fields = append(fields, apikey.FieldAllowGptFamily)
+	}
+	if m.allow_image_generation != nil {
+		fields = append(fields, apikey.FieldAllowImageGeneration)
 	}
 	if m.messages_dispatch_model_config != nil {
 		fields = append(fields, apikey.FieldMessagesDispatchModelConfig)
@@ -1868,6 +1908,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowClaudeFamily()
 	case apikey.FieldAllowGptFamily:
 		return m.AllowGptFamily()
+	case apikey.FieldAllowImageGeneration:
+		return m.AllowImageGeneration()
 	case apikey.FieldMessagesDispatchModelConfig:
 		return m.MessagesDispatchModelConfig()
 	case apikey.FieldLastUsedAt:
@@ -1933,6 +1975,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldAllowClaudeFamily(ctx)
 	case apikey.FieldAllowGptFamily:
 		return m.OldAllowGptFamily(ctx)
+	case apikey.FieldAllowImageGeneration:
+		return m.OldAllowImageGeneration(ctx)
 	case apikey.FieldMessagesDispatchModelConfig:
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case apikey.FieldLastUsedAt:
@@ -2057,6 +2101,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowGptFamily(v)
+		return nil
+	case apikey.FieldAllowImageGeneration:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowImageGeneration(v)
 		return nil
 	case apikey.FieldMessagesDispatchModelConfig:
 		v, ok := value.(domain.OpenAIMessagesDispatchModelConfig)
@@ -2434,6 +2485,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldAllowGptFamily:
 		m.ResetAllowGptFamily()
+		return nil
+	case apikey.FieldAllowImageGeneration:
+		m.ResetAllowImageGeneration()
 		return nil
 	case apikey.FieldMessagesDispatchModelConfig:
 		m.ResetMessagesDispatchModelConfig()
@@ -15199,6 +15253,7 @@ type GroupMutation struct {
 	rate_multiplier                         *float64
 	addrate_multiplier                      *float64
 	is_exclusive                            *bool
+	dedicated_unlimited                     *bool
 	status                                  *string
 	platform                                *string
 	subscription_type                       *string
@@ -15659,6 +15714,42 @@ func (m *GroupMutation) OldIsExclusive(ctx context.Context) (v bool, err error) 
 // ResetIsExclusive resets all changes to the "is_exclusive" field.
 func (m *GroupMutation) ResetIsExclusive() {
 	m.is_exclusive = nil
+}
+
+// SetDedicatedUnlimited sets the "dedicated_unlimited" field.
+func (m *GroupMutation) SetDedicatedUnlimited(b bool) {
+	m.dedicated_unlimited = &b
+}
+
+// DedicatedUnlimited returns the value of the "dedicated_unlimited" field in the mutation.
+func (m *GroupMutation) DedicatedUnlimited() (r bool, exists bool) {
+	v := m.dedicated_unlimited
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDedicatedUnlimited returns the old "dedicated_unlimited" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDedicatedUnlimited(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDedicatedUnlimited is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDedicatedUnlimited requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDedicatedUnlimited: %w", err)
+	}
+	return oldValue.DedicatedUnlimited, nil
+}
+
+// ResetDedicatedUnlimited resets all changes to the "dedicated_unlimited" field.
+func (m *GroupMutation) ResetDedicatedUnlimited() {
+	m.dedicated_unlimited = nil
 }
 
 // SetStatus sets the "status" field.
@@ -17427,7 +17518,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 36)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17448,6 +17539,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.is_exclusive != nil {
 		fields = append(fields, group.FieldIsExclusive)
+	}
+	if m.dedicated_unlimited != nil {
+		fields = append(fields, group.FieldDedicatedUnlimited)
 	}
 	if m.status != nil {
 		fields = append(fields, group.FieldStatus)
@@ -17555,6 +17649,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.RateMultiplier()
 	case group.FieldIsExclusive:
 		return m.IsExclusive()
+	case group.FieldDedicatedUnlimited:
+		return m.DedicatedUnlimited()
 	case group.FieldStatus:
 		return m.Status()
 	case group.FieldPlatform:
@@ -17634,6 +17730,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldRateMultiplier(ctx)
 	case group.FieldIsExclusive:
 		return m.OldIsExclusive(ctx)
+	case group.FieldDedicatedUnlimited:
+		return m.OldDedicatedUnlimited(ctx)
 	case group.FieldStatus:
 		return m.OldStatus(ctx)
 	case group.FieldPlatform:
@@ -17747,6 +17845,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIsExclusive(v)
+		return nil
+	case group.FieldDedicatedUnlimited:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDedicatedUnlimited(v)
 		return nil
 	case group.FieldStatus:
 		v, ok := value.(string)
@@ -18253,6 +18358,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldIsExclusive:
 		m.ResetIsExclusive()
+		return nil
+	case group.FieldDedicatedUnlimited:
+		m.ResetDedicatedUnlimited()
 		return nil
 	case group.FieldStatus:
 		m.ResetStatus()

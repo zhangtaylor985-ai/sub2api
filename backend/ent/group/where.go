@@ -90,6 +90,11 @@ func IsExclusive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldIsExclusive, v))
 }
 
+// DedicatedUnlimited applies equality check predicate on the "dedicated_unlimited" field. It's identical to DedicatedUnlimitedEQ.
+func DedicatedUnlimited(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDedicatedUnlimited, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStatus, v))
@@ -533,6 +538,16 @@ func IsExclusiveEQ(v bool) predicate.Group {
 // IsExclusiveNEQ applies the NEQ predicate on the "is_exclusive" field.
 func IsExclusiveNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldIsExclusive, v))
+}
+
+// DedicatedUnlimitedEQ applies the EQ predicate on the "dedicated_unlimited" field.
+func DedicatedUnlimitedEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDedicatedUnlimited, v))
+}
+
+// DedicatedUnlimitedNEQ applies the NEQ predicate on the "dedicated_unlimited" field.
+func DedicatedUnlimitedNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDedicatedUnlimited, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

@@ -21,6 +21,7 @@ func RequestedModelFamily(model string) APIKeyModelFamily {
 		return APIKeyModelFamilyClaude
 	case strings.HasPrefix(normalized, "gpt-"),
 		strings.HasPrefix(normalized, "chatgpt-"),
+		strings.HasPrefix(normalized, "codex-"),
 		strings.HasPrefix(normalized, "o1"),
 		strings.HasPrefix(normalized, "o3"),
 		strings.HasPrefix(normalized, "o4"),
@@ -45,6 +46,13 @@ func (k *APIKey) AllowsGPTFamily() bool {
 		return true
 	}
 	return k.AllowGPTFamily
+}
+
+func (k *APIKey) AllowsImageGeneration() bool {
+	if k == nil || !k.ImageGenerationPolicySet {
+		return true
+	}
+	return k.AllowImageGeneration
 }
 
 func (k *APIKey) IsModelFamilyDenied(model string) bool {
@@ -76,5 +84,9 @@ func NormalizeAPIKeyModelFamilyPolicy(k *APIKey) {
 		k.AllowClaudeFamily = true
 		k.AllowGPTFamily = true
 		k.ModelFamilyPolicySet = true
+	}
+	if !k.ImageGenerationPolicySet {
+		k.AllowImageGeneration = true
+		k.ImageGenerationPolicySet = true
 	}
 }

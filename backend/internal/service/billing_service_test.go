@@ -78,6 +78,7 @@ func TestGetModelPricing_FallbackMatchesByFamily(t *testing.T) {
 		model         string
 		expectedInput float64
 	}{
+		{"claude-fable-5", 10e-6},
 		{"claude-opus-4.5-20250101", 5e-6},
 		{"claude-3-opus-20240229", 15e-6},
 		{"claude-sonnet-4-20250514", 3e-6},
@@ -207,6 +208,7 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		expectNilPricing bool
 	}{
 		{name: "empty model", model: "   ", expectNilPricing: true},
+		{name: "claude fable 5", model: "claude-fable-5", expectedInput: 10e-6},
 		{name: "claude opus 4.6", model: "claude-opus-4.6-20260201", expectedInput: 5e-6},
 		{name: "claude opus 4.5 alt separator", model: "claude-opus-4-5-20260101", expectedInput: 5e-6},
 		{name: "claude generic model fallback sonnet", model: "claude-foo-bar", expectedInput: 3e-6},
@@ -234,6 +236,43 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			require.InDelta(t, tt.expectedInput, pricing.InputPricePerToken, 1e-12)
 		})
 	}
+}
+
+func TestGetModelPricing_ClaudeFableFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing, err := svc.GetModelPricing("claude-fable-5")
+	require.NoError(t, err)
+	require.InDelta(t, 10e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 50e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 12.5e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 1e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.InDelta(t, 12.5e-6, pricing.CacheCreation5mPrice, 1e-12)
+	require.InDelta(t, 20e-6, pricing.CacheCreation1hPrice, 1e-12)
+	require.True(t, pricing.SupportsCacheBreakdown)
+}
+
+func TestGetModelPricing_ClaudeFableDynamicPrice(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"claude-fable-5": {
+				InputCostPerToken:                   10e-6,
+				OutputCostPerToken:                  50e-6,
+				CacheCreationInputTokenCost:         12.5e-6,
+				CacheCreationInputTokenCostAbove1hr: 20e-6,
+				CacheReadInputTokenCost:             1e-6,
+			},
+		},
+	})
+
+	pricing, err := svc.GetModelPricing("claude-fable-5")
+	require.NoError(t, err)
+	require.InDelta(t, 10e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 50e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 12.5e-6, pricing.CacheCreation5mPrice, 1e-12)
+	require.InDelta(t, 20e-6, pricing.CacheCreation1hPrice, 1e-12)
+	require.InDelta(t, 1e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.True(t, pricing.SupportsCacheBreakdown)
 }
 func TestCalculateCostWithLongContext_BelowThreshold(t *testing.T) {
 	svc := newTestBillingService()

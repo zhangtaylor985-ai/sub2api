@@ -15,7 +15,10 @@ func TestRequestedModelFamily(t *testing.T) {
 	}{
 		{model: "claude-opus-4-7", want: APIKeyModelFamilyClaude},
 		{model: "gpt-5.5", want: APIKeyModelFamilyGPT},
+		{model: "gpt-5.3-codex", want: APIKeyModelFamilyGPT},
 		{model: "chatgpt-5", want: APIKeyModelFamilyGPT},
+		{model: "codex-auto-review", want: APIKeyModelFamilyGPT},
+		{model: "codex-mini-latest", want: APIKeyModelFamilyGPT},
 		{model: "o3", want: APIKeyModelFamilyGPT},
 		{model: "o4-mini", want: APIKeyModelFamilyGPT},
 		{model: "gpt-image-2", want: APIKeyModelFamilyGPT},
@@ -48,4 +51,10 @@ func TestAPIKeyModelFamilyPolicy(t *testing.T) {
 	require.False(t, both.IsOpenAIEndpointDenied("claude-opus-4-7"))
 	require.False(t, legacyUnset.IsOpenAIEndpointDenied("gpt-5.5"))
 	require.False(t, legacyUnset.IsModelFamilyDenied("claude-opus-4-7"))
+
+	imageDenied := &APIKey{AllowImageGeneration: false, ImageGenerationPolicySet: true}
+	imageAllowed := &APIKey{AllowImageGeneration: true, ImageGenerationPolicySet: true}
+	require.False(t, imageDenied.AllowsImageGeneration())
+	require.True(t, imageAllowed.AllowsImageGeneration())
+	require.True(t, legacyUnset.AllowsImageGeneration())
 }

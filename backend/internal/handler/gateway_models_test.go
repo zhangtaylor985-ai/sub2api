@@ -140,9 +140,10 @@ func TestGatewayModels_ClaudeOnlyOpenAIDispatchDoesNotExposeGPTMappings(t *testi
 						Platform: service.PlatformOpenAI,
 						Credentials: map[string]any{
 							"model_mapping": map[string]any{
-								"gpt-5.5":      "gpt-5.5",
-								"gpt-5.4":      "gpt-5.4",
-								"gpt-5.4-mini": "gpt-5.4-mini",
+								"codex-auto-review": "codex-auto-review",
+								"gpt-5.5":           "gpt-5.5",
+								"gpt-5.4":           "gpt-5.4",
+								"gpt-5.4-mini":      "gpt-5.4-mini",
 							},
 						},
 					},
@@ -172,10 +173,17 @@ func TestGatewayModels_ClaudeOnlyOpenAIDispatchDoesNotExposeGPTMappings(t *testi
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "claude-fable-5")
+	require.Contains(t, ids, "claude-opus-4-8")
+	require.Contains(t, ids, "claude-opus-4-7")
 	require.Contains(t, ids, "claude-opus-4-6")
+	require.Contains(t, ids, "claude-sonnet-5")
+	require.Contains(t, ids, "claude-sonnet-4-8")
+	require.Contains(t, ids, "claude-sonnet-4-7")
 	require.NotContains(t, ids, "gpt-5.5")
 	require.NotContains(t, ids, "gpt-5.4")
 	require.NotContains(t, ids, "gpt-5.4-mini")
+	require.NotContains(t, ids, "codex-auto-review")
 }
 
 func TestGatewayModels_GPTOnlyOpenAIGroupKeepsOpenAIModels(t *testing.T) {

@@ -962,6 +962,14 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		platform = forcedPlatform
 	}
 
+	if shouldExposeClaudeModelsForOpenAIDispatch(apiKey) {
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   filterClaudeModelsByAPIKeyFamilyPolicy(claude.DefaultModels, apiKey),
+		})
+		return
+	}
+
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 	availableModels = filterModelIDsByAPIKeyFamilyPolicy(availableModels, apiKey)
@@ -986,13 +994,6 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Fallback to default models
 	if platform == service.PlatformOpenAI {
-		if shouldExposeClaudeModelsForOpenAIDispatch(apiKey) {
-			c.JSON(http.StatusOK, gin.H{
-				"object": "list",
-				"data":   filterClaudeModelsByAPIKeyFamilyPolicy(claude.DefaultModels, apiKey),
-			})
-			return
-		}
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
 			"data":   filterOpenAIModelsByAPIKeyFamilyPolicy(openai.DefaultModels, apiKey),
@@ -1091,6 +1092,7 @@ func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service
 //
 // Two modes:
 //   - quota_limited: API Key has quota or rate limits configured. Returns key-level limits/usage.
+//   - dedicated_unlimited: Dedicated group. Returns usage stats without internal limits.
 //   - unrestricted:  No key-level limits. Returns subscription or wallet balance info.
 func (h *GatewayHandler) Usage(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
@@ -1126,6 +1128,11 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 		if stats, err := h.usageService.GetPublicAPIKeyModelStats(ctx, apiKey.ID, startTime, endTime); err == nil && len(stats) > 0 {
 			modelStats = stats
 		}
+	}
+
+	if apiKey.Group != nil && apiKey.Group.IsDedicatedUnlimited() {
+		h.usageDedicatedUnlimited(c, apiKey, usageData, dailyUsage, modelStats, tokenPackages)
+		return
 	}
 
 	// 判断模式: key 有总额度或速率限制 → quota_limited，否则 → unrestricted
@@ -1351,6 +1358,37 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 		resp["token_packages"] = tokenPackages
 	}
 
+	c.JSON(http.StatusOK, resp)
+}
+
+// usageDedicatedUnlimited 处理专享不限额模式的响应。
+func (h *GatewayHandler) usageDedicatedUnlimited(c *gin.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any, tokenPackages any) {
+	resp := gin.H{
+		"mode":                "dedicated_unlimited",
+		"isValid":             apiKey.Status == service.StatusAPIKeyActive || apiKey.Status == service.StatusAPIKeyQuotaExhausted || apiKey.Status == service.StatusAPIKeyExpired,
+		"status":              apiKey.Status,
+		"planName":            apiKey.Group.Name,
+		"unit":                "USD",
+		"dedicated_unlimited": true,
+		"limit_policy":        "unlimited_usage_concurrency_only",
+		"concurrency":         apiKey.EffectiveConcurrency(),
+	}
+	if apiKey.ExpiresAt != nil {
+		resp["expires_at"] = apiKey.ExpiresAt
+		resp["days_until_expiry"] = apiKey.GetDaysUntilExpiry()
+	}
+	if usageData != nil {
+		resp["usage"] = usageData
+	}
+	if dailyUsage != nil {
+		resp["daily_usage"] = dailyUsage
+	}
+	if modelStats != nil {
+		resp["model_stats"] = modelStats
+	}
+	if tokenPackages != nil {
+		resp["token_packages"] = tokenPackages
+	}
 	c.JSON(http.StatusOK, resp)
 }
 

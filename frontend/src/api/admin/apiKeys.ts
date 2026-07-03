@@ -28,6 +28,7 @@ export interface AdminUpdateApiKeyPolicyPayload {
   reset_rate_limit_usage?: boolean
   allow_claude_family?: boolean
   allow_gpt_family?: boolean
+  allow_image_generation?: boolean
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 }
 
@@ -55,6 +56,7 @@ export interface AdminCreateAPIKeyPayload {
   concurrency?: number
   allow_claude_family?: boolean
   allow_gpt_family?: boolean
+  allow_image_generation?: boolean
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 }
 

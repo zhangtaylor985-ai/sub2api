@@ -84,6 +84,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		zap.String("capability", string(parsed.RequiredCapability)),
 	)
 
+	if !service.APIKeyAllowsImageGeneration(apiKey) {
+		h.errorResponse(c, http.StatusForbidden, "permission_error", service.APIKeyImageGenerationPermissionMessage())
+		return
+	}
 	if !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return

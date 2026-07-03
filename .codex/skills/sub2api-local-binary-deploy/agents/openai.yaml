@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sub2API Local Binary Deploy"
+  short_description: "Build and ship temporary Sub2API Linux binaries without GitHub."
+  default_prompt: "Use this skill to build a local Sub2API Linux binary and deploy it to production via upload or zstd patch."

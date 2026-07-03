@@ -14,6 +14,7 @@ type APIKeyAuthSnapshot struct {
 	RateMultiplier              float64                           `json:"rate_multiplier"`
 	AllowClaudeFamily           bool                              `json:"allow_claude_family"`
 	AllowGPTFamily              bool                              `json:"allow_gpt_family"`
+	AllowImageGeneration        bool                              `json:"allow_image_generation"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	IPWhitelist                 []string                          `json:"ip_whitelist,omitempty"`
 	IPBlacklist                 []string                          `json:"ip_blacklist,omitempty"`
@@ -66,6 +67,7 @@ type APIKeyAuthGroupSnapshot struct {
 	Status                          string   `json:"status"`
 	SubscriptionType                string   `json:"subscription_type"`
 	RateMultiplier                  float64  `json:"rate_multiplier"`
+	DedicatedUnlimited              bool     `json:"dedicated_unlimited"`
 	DailyLimitUSD                   *float64 `json:"daily_limit_usd,omitempty"`
 	WeeklyLimitUSD                  *float64 `json:"weekly_limit_usd,omitempty"`
 	MonthlyLimitUSD                 *float64 `json:"monthly_limit_usd,omitempty"`

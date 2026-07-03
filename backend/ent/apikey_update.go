@@ -205,6 +205,20 @@ func (_u *APIKeyUpdate) SetNillableAllowGptFamily(v *bool) *APIKeyUpdate {
 	return _u
 }
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_u *APIKeyUpdate) SetAllowImageGeneration(v bool) *APIKeyUpdate {
+	_u.mutation.SetAllowImageGeneration(v)
+	return _u
+}
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableAllowImageGeneration(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetAllowImageGeneration(*v)
+	}
+	return _u
+}
+
 // SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
 func (_u *APIKeyUpdate) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *APIKeyUpdate {
 	_u.mutation.SetMessagesDispatchModelConfig(v)
@@ -699,6 +713,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AllowGptFamily(); ok {
 		_spec.SetField(apikey.FieldAllowGptFamily, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(apikey.FieldAllowImageGeneration, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(apikey.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
 	}
@@ -1093,6 +1110,20 @@ func (_u *APIKeyUpdateOne) SetAllowGptFamily(v bool) *APIKeyUpdateOne {
 func (_u *APIKeyUpdateOne) SetNillableAllowGptFamily(v *bool) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetAllowGptFamily(*v)
+	}
+	return _u
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_u *APIKeyUpdateOne) SetAllowImageGeneration(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetAllowImageGeneration(v)
+	return _u
+}
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableAllowImageGeneration(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetAllowImageGeneration(*v)
 	}
 	return _u
 }
@@ -1620,6 +1651,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.AllowGptFamily(); ok {
 		_spec.SetField(apikey.FieldAllowGptFamily, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(apikey.FieldAllowImageGeneration, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(apikey.FieldMessagesDispatchModelConfig, field.TypeJSON, value)

@@ -1626,17 +1626,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				modelScopeSkippedIDs = append(modelScopeSkippedIDs, account.ID)
 				continue
 			}
-			// 配额检查
-			if !s.isAccountSchedulableForQuota(account) {
-				continue
-			}
-			// 窗口费用检查（非粘性会话路径）
-			if !s.isAccountSchedulableForWindowCost(ctx, account, false) {
+			if !s.isAccountSchedulableForUsageLimits(ctx, account, false) {
 				filteredWindowCost++
-				continue
-			}
-			// RPM 检查（非粘性会话路径）
-			if !s.isAccountSchedulableForRPM(ctx, account, false) {
 				continue
 			}
 			routingCandidates = append(routingCandidates, account)
@@ -1671,10 +1662,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
-							s.isAccountSchedulableForQuota(stickyAccount) &&
-							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
+							s.isAccountSchedulableForUsageLimits(ctx, stickyAccount, true)
 
-						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
+						rpmPass := gatePass
 
 						if rpmPass { // 粘性会话窗口费用+RPM 检查
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
@@ -1854,9 +1844,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				platformOK := s.isAccountAllowedForPlatform(account, platform, useMixed)
 				modelSupported := requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)
 				modelSchedulable := s.isAccountSchedulableForModelSelection(ctx, account, requestedModel)
-				quotaOK := s.isAccountSchedulableForQuota(account)
-				windowCostOK := s.isAccountSchedulableForWindowCost(ctx, account, true)
-				rpmOK := s.isAccountSchedulableForRPM(ctx, account, true)
+				usageLimitsOK := s.isAccountSchedulableForUsageLimits(ctx, account, true)
 				schedulable := s.isAccountSchedulableForSelection(account)
 
 				slog.Debug("sticky.layer1_5_no_routing_checks",
@@ -1867,12 +1855,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"platform_ok", platformOK,
 					"model_supported", modelSupported,
 					"model_schedulable", modelSchedulable,
-					"quota_ok", quotaOK,
-					"window_cost_ok", windowCostOK,
-					"rpm_ok", rpmOK,
+					"usage_limits_ok", usageLimitsOK,
 				)
 
-				if !clearSticky && platformOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
+				if !clearSticky && platformOK && modelSupported && modelSchedulable && usageLimitsOK && schedulable {
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
@@ -1977,16 +1963,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 			continue
 		}
-		// 配额检查
-		if !s.isAccountSchedulableForQuota(acc) {
-			continue
-		}
-		// 窗口费用检查（非粘性会话路径）
-		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
-			continue
-		}
-		// RPM 检查（非粘性会话路径）
-		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+		if !s.isAccountSchedulableForUsageLimits(ctx, acc, false) {
 			continue
 		}
 		candidates = append(candidates, acc)
@@ -2135,6 +2112,14 @@ func (s *GatewayService) groupFromContext(ctx context.Context, groupID int64) *G
 		return group
 	}
 	return nil
+}
+
+func dedicatedUnlimitedGroupFromContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	group, ok := ctx.Value(ctxkey.Group).(*Group)
+	return ok && IsGroupContextValid(group) && group.IsDedicatedUnlimited()
 }
 
 func (s *GatewayService) resolveGroupByID(ctx context.Context, groupID int64) (*Group, error) {
@@ -2537,6 +2522,15 @@ func (s *GatewayService) isAccountSchedulableForQuota(account *Account) bool {
 		return true
 	}
 	return !account.IsQuotaExceeded()
+}
+
+func (s *GatewayService) isAccountSchedulableForUsageLimits(ctx context.Context, account *Account, isSticky bool) bool {
+	if dedicatedUnlimitedGroupFromContext(ctx) {
+		return true
+	}
+	return s.isAccountSchedulableForQuota(account) &&
+		s.isAccountSchedulableForWindowCost(ctx, account, isSticky) &&
+		s.isAccountSchedulableForRPM(ctx, account, isSticky)
 }
 
 // isAccountSchedulableForWindowCost 检查账号是否可根据窗口费用进行调度
@@ -3049,7 +3043,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForUsageLimits(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -3109,13 +3103,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 				continue
 			}
-			if !s.isAccountSchedulableForQuota(acc) {
-				continue
-			}
-			if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
-				continue
-			}
-			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+			if !s.isAccountSchedulableForUsageLimits(ctx, acc, false) {
 				continue
 			}
 			if selected == nil {
@@ -3168,7 +3156,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForUsageLimits(ctx, account, true) {
 						return account, nil
 					}
 				}
@@ -3223,13 +3211,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 			continue
 		}
-		if !s.isAccountSchedulableForQuota(acc) {
-			continue
-		}
-		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
-			continue
-		}
-		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+		if !s.isAccountSchedulableForUsageLimits(ctx, acc, false) {
 			continue
 		}
 		if selected == nil {
@@ -3307,7 +3289,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForUsageLimits(ctx, account, true) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 								if s.debugModelRoutingEnabled() {
 									logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
@@ -3369,13 +3351,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 				continue
 			}
-			if !s.isAccountSchedulableForQuota(acc) {
-				continue
-			}
-			if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
-				continue
-			}
-			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+			if !s.isAccountSchedulableForUsageLimits(ctx, acc, false) {
 				continue
 			}
 			if selected == nil {
@@ -3428,7 +3404,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForUsageLimits(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 							return account, nil
 						}
@@ -3484,13 +3460,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 			continue
 		}
-		if !s.isAccountSchedulableForQuota(acc) {
-			continue
-		}
-		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
-			continue
-		}
-		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+		if !s.isAccountSchedulableForUsageLimits(ctx, acc, false) {
 			continue
 		}
 		if selected == nil {
@@ -7986,6 +7956,10 @@ type apiKeyAuthCacheInvalidator interface {
 	InvalidateAuthCacheByKey(ctx context.Context, key string)
 }
 
+type apiKeyTokenPackageStateProvider interface {
+	GetTokenPackageState(ctx context.Context, id int64) (*APIKeyTokenPackageState, error)
+}
+
 type usageLogBestEffortWriter interface {
 	CreateBestEffort(ctx context.Context, log *UsageLog) error
 }
@@ -8029,15 +8003,39 @@ func QuotaPlatform(ctx context.Context, apiKey *APIKey) string {
 }
 
 func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
+	if p == nil || p.Cost == nil || p.APIKey == nil || p.isDedicatedUnlimited() {
+		return false
+	}
 	return p.Cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil
 }
 
-func (p *postUsageBillingParams) shouldUpdateRateLimits() bool {
-	return p.Cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil
+func (p *postUsageBillingParams) shouldUpdateRateLimits(ctx context.Context) bool {
+	if p == nil || p.Cost == nil || p.APIKey == nil || p.APIKeyService == nil || p.Cost.ActualCost <= 0 || p.isDedicatedUnlimited() {
+		return false
+	}
+	if p.APIKey.HasRateLimits() {
+		return true
+	}
+	provider, ok := p.APIKeyService.(apiKeyTokenPackageStateProvider)
+	if !ok || provider == nil {
+		return false
+	}
+	state, err := provider.GetTokenPackageState(ctx, p.APIKey.ID)
+	if err != nil || state == nil {
+		return false
+	}
+	return state.TotalUSD > 0
 }
 
 func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
+	if p == nil || p.Cost == nil || p.Account == nil || p.isDedicatedUnlimited() {
+		return false
+	}
 	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
+}
+
+func (p *postUsageBillingParams) isDedicatedUnlimited() bool {
+	return p != nil && p.APIKey != nil && p.APIKey.Group != nil && p.APIKey.Group.IsDedicatedUnlimited()
 }
 
 func costWithAPIKeyRateMultiplier(cost *CostBreakdown, multiplier float64) *CostBreakdown {
@@ -8064,7 +8062,10 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 
 	cost := p.Cost
 
-	if p.IsSubscriptionBill {
+	if p.isDedicatedUnlimited() {
+		// Dedicated unlimited groups still write usage_logs, but do not consume
+		// any internal balance, quota, rate-limit, or account usage windows.
+	} else if p.IsSubscriptionBill {
 		// Subscription usage tracked by ActualCost so group rate multiplier
 		// consumes the quota at the expected speed.
 		if cost.ActualCost > 0 {
@@ -8086,7 +8087,7 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		}
 	}
 
-	if p.shouldUpdateRateLimits() {
+	if p.shouldUpdateRateLimits(billingCtx) {
 		if err := p.APIKeyService.UpdateRateLimitUsage(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key rate limit usage failed", "api_key_id", p.APIKey.ID, "error", err)
 		}
@@ -8107,7 +8108,7 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	//
 	// 历史背景：原 legacy path 完全跳过此累加，导致部署中如果 repo 偶然为 nil
 	// 时用户消费可绕过 platform quota，存在静默资金风险。
-	if !p.IsSubscriptionBill && p.Platform != "" && cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil {
+	if !p.isDedicatedUnlimited() && !p.IsSubscriptionBill && p.Platform != "" && cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil {
 		if err := deps.userPlatformQuotaRepo.IncrementUsageWithReset(billingCtx, p.User.ID, p.Platform, cost.ActualCost, time.Now().UTC()); err != nil {
 			userPlatformQuotaDBIncrLegacyErrorTotal.Add(1)
 			logger.LegacyPrintf("service.gateway", "ALERT: legacy incr user platform quota DB failed user=%d platform=%s cost=%f: %v", p.User.ID, p.Platform, cost.ActualCost, err)
@@ -8150,7 +8151,7 @@ func resolveUsageBillingPayloadFingerprint(ctx context.Context, requestPayloadHa
 	return ""
 }
 
-func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsageBillingParams) *UsageBillingCommand {
+func buildUsageBillingCommand(ctx context.Context, requestID string, usageLog *UsageLog, p *postUsageBillingParams) *UsageBillingCommand {
 	if p == nil || p.Cost == nil || p.APIKey == nil || p.User == nil || p.Account == nil {
 		return nil
 	}
@@ -8186,7 +8187,9 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	// user-specific) rate multiplier consumes subscription quota at the expected
 	// speed. TotalCost remains the raw (pre-multiplier) value; downstream guards
 	// on "> 0" still correctly skip free subscriptions (RateMultiplier == 0).
-	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
+	if p.isDedicatedUnlimited() {
+		// No internal billing mutations for dedicated unlimited groups.
+	} else if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
 		cmd.SubscriptionCost = p.Cost.ActualCost
 	} else if p.Cost.ActualCost > 0 {
@@ -8196,7 +8199,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	if p.shouldDeductAPIKeyQuota() {
 		cmd.APIKeyQuotaCost = p.Cost.ActualCost
 	}
-	if p.shouldUpdateRateLimits() {
+	if p.shouldUpdateRateLimits(ctx) {
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 	}
 	if p.shouldUpdateAccountQuota() {
@@ -8212,7 +8215,7 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		return false, nil
 	}
 
-	cmd := buildUsageBillingCommand(requestID, usageLog, p)
+	cmd := buildUsageBillingCommand(ctx, requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		postUsageBilling(ctx, p, deps)
 		return true, nil
@@ -8246,7 +8249,9 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		return
 	}
 
-	if p.IsSubscriptionBill {
+	if p.isDedicatedUnlimited() {
+		// Dedicated unlimited groups do not update balance/subscription caches.
+	} else if p.IsSubscriptionBill {
 		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
@@ -8254,7 +8259,7 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
 	}
 
-	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
+	if !p.isDedicatedUnlimited() && p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
 	}
 
@@ -8265,7 +8270,7 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	//   - Redis 同步:确保下次 preflight 立即看到最新 usage,把 TOCTOU 超支窗口
 	//     限制在并发 in-flight 请求数量内（旧实现的异步入队会让超支无限累积直到 worker 处理）
 	//   - DB 异步:在独立 goroutine 中走 detached context,失败用 ALERT log 触发 oncall 对账
-	if !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil {
+	if !p.isDedicatedUnlimited() && !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil {
 		deps.billingCacheService.IncrementUserPlatformQuotaUsage(p.User.ID, p.Platform, p.Cost.ActualCost)
 		dbCtx, dbCancel := detachUpstreamContext(ctx)
 		userID, platform, cost := p.User.ID, p.Platform, p.Cost.ActualCost
@@ -8301,9 +8306,10 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 			slog.Error("panic in notifyBalanceLow", "recover", r)
 		}
 	}()
-	if p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || p.User == nil || deps.balanceNotifyService == nil {
+	if p.isDedicatedUnlimited() || p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || p.User == nil || deps.balanceNotifyService == nil {
 		slog.Debug("notifyBalanceLow: skipped",
 			"is_subscription", p.IsSubscriptionBill,
+			"dedicated_unlimited", p.isDedicatedUnlimited(),
 			"actual_cost", p.Cost.ActualCost,
 			"user_nil", p.User == nil,
 			"service_nil", deps.balanceNotifyService == nil,
@@ -8342,9 +8348,10 @@ func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *Us
 			slog.Error("panic in notifyAccountQuota", "recover", r)
 		}
 	}()
-	if p.Cost.TotalCost <= 0 || p.Account == nil || !p.Account.IsAPIKeyOrBedrock() || deps.balanceNotifyService == nil {
+	if p.isDedicatedUnlimited() || p.Cost.TotalCost <= 0 || p.Account == nil || !p.Account.IsAPIKeyOrBedrock() || deps.balanceNotifyService == nil {
 		slog.Debug("notifyAccountQuota: skipped",
 			"total_cost", p.Cost.TotalCost,
+			"dedicated_unlimited", p.isDedicatedUnlimited(),
 			"account_nil", p.Account == nil,
 			"is_apikey_or_bedrock", p.Account != nil && p.Account.IsAPIKeyOrBedrock(),
 			"service_nil", deps.balanceNotifyService == nil,

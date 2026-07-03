@@ -36,6 +36,7 @@ type AdminUpdateAPIKeyGroupRequest struct {
 	Concurrency                 *int                                       `json:"concurrency"`                    // nil=不修改, 0=继承分组/用户, >0=单 key 并发
 	AllowClaudeFamily           *bool                                      `json:"allow_claude_family"`            // nil=不修改
 	AllowGPTFamily              *bool                                      `json:"allow_gpt_family"`               // nil=不修改
+	AllowImageGeneration        *bool                                      `json:"allow_image_generation"`         // nil=不修改
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"` // nil=不修改
 	RateLimit5h                 *float64                                   `json:"rate_limit_5h"`                  // nil=不修改, 0=不限制
 	RateLimit1d                 *float64                                   `json:"rate_limit_1d"`
@@ -58,6 +59,7 @@ type AdminCreateAPIKeyRequest struct {
 	Concurrency                 int                                        `json:"concurrency"`
 	AllowClaudeFamily           *bool                                      `json:"allow_claude_family"`
 	AllowGPTFamily              *bool                                      `json:"allow_gpt_family"`
+	AllowImageGeneration        *bool                                      `json:"allow_image_generation"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 }
 
@@ -151,6 +153,7 @@ func (h *AdminAPIKeyHandler) Create(c *gin.Context) {
 		Concurrency:                 req.Concurrency,
 		AllowClaudeFamily:           req.AllowClaudeFamily,
 		AllowGPTFamily:              req.AllowGPTFamily,
+		AllowImageGeneration:        req.AllowImageGeneration,
 		MessagesDispatchModelConfig: req.MessagesDispatchModelConfig,
 	})
 	if err != nil {
@@ -338,6 +341,7 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 		Concurrency:                 req.Concurrency,
 		AllowClaudeFamily:           req.AllowClaudeFamily,
 		AllowGPTFamily:              req.AllowGPTFamily,
+		AllowImageGeneration:        req.AllowImageGeneration,
 		MessagesDispatchModelConfig: req.MessagesDispatchModelConfig,
 		RateLimit5h:                 req.RateLimit5h,
 		RateLimit1d:                 req.RateLimit1d,
@@ -377,6 +381,7 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 		req.Concurrency != nil ||
 		req.AllowClaudeFamily != nil ||
 		req.AllowGPTFamily != nil ||
+		req.AllowImageGeneration != nil ||
 		req.MessagesDispatchModelConfig != nil ||
 		req.RateLimit5h != nil ||
 		req.RateLimit1d != nil ||

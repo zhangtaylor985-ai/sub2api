@@ -20,16 +20,20 @@ description: Use when inspecting Sub2API local/production addresses, containers,
 - Frontend: `/Users/taylor/sdk/sub2api/frontend`
 - Maintained remote: `origin git@github.com:zhangtaylor985-ai/sub2api.git`
 - Upstream reference: `upstream https://github.com/Wei-Shaw/sub2api.git`
-- Production SSH: `ssh root@204.168.245.138`
-- Production host name: `PG-01`
-- Production app directory: `/root/cliapp/sub2api`
-- Production compose file: `/root/cliapp/sub2api/docker-compose.yml`
+- Production SSH: `ssh -p 41012 root@172.247.109.38`
+- Production host name: `C20260613138680`
+- Production app directory: `/opt/sub2api`
+- Production systemd service: `sub2api.service`
 - Public endpoint: `https://cc.claudepool.com`
 - Local app endpoint on production host: `http://127.0.0.1:8080`
-- Caddy route: `cc.claudepool.com -> 127.0.0.1:8080`
-- Main containers: `sub2api`, `sub2api-postgres`, `sub2api-redis`
-- Docker network: `sub2api_sub2api-network`
-- Data mounts: `/root/cliapp/sub2api/data`, `/root/cliapp/sub2api/postgres_data`, `/root/cliapp/sub2api/redis_data`
+- Caddy route on new host: `cc.claudepool.com -> 127.0.0.1:8080`
+- Cloudflare DNS: `cc.claudepool.com` A record points directly to `172.247.109.38` in DNS-only mode.
+- Old host bridge: old host `204.168.245.138` Caddy still proxies `cc.claudepool.com` to `172.247.109.38:8080`, but DNS no longer points there; keep it only for short rollback observation.
+- Runtime data: `/opt/sub2api/data`
+- Env file: `/etc/sub2api/sub2api.env`
+- Database: host PostgreSQL 18, database `sub2api`
+- Redis: host `redis-server`
+- Old rollback host: `ssh root@204.168.245.138`, hostname `PG-01`, directory `/root/cliapp/sub2api`, Docker Compose app stopped but Postgres/Redis retained.
 
 ## Safety Rules
 
@@ -43,16 +47,16 @@ description: Use when inspecting Sub2API local/production addresses, containers,
 ## Basic Production Checks
 
 ```bash
-ssh root@204.168.245.138 'hostname'
+ssh -p 41012 root@172.247.109.38 'hostname'
 
-ssh root@204.168.245.138 \
-  "docker ps --filter name=sub2api --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'"
+ssh -p 41012 root@172.247.109.38 \
+  "systemctl status sub2api --no-pager --lines=20"
 
-ssh root@204.168.245.138 \
+ssh -p 41012 root@172.247.109.38 \
   "curl -fsS http://127.0.0.1:8080/health"
 
-ssh root@204.168.245.138 \
-  "docker logs sub2api --tail 200"
+ssh -p 41012 root@172.247.109.38 \
+  "journalctl -u sub2api -n 200 --no-pager"
 ```
 
 ## Production Logs And Request ID
@@ -65,8 +69,8 @@ Sub2API returns `X-Request-ID` on HTTP responses. If a user reports a gateway er
 
 Current production log locations:
 
-- Docker stdout/stderr: `docker logs sub2api`.
-- Rotated file logs inside the app container: `/app/data/logs/sub2api.log`.
+- systemd stdout/stderr: `journalctl -u sub2api`.
+- Rotated file logs on the new host: `/opt/sub2api/data/logs/sub2api.log`.
 - Postgres indexes: `ops_error_logs` and `ops_system_logs`.
 
 Find one request by request id:
@@ -74,11 +78,11 @@ Find one request by request id:
 ```bash
 RID='<request-id>'
 
-ssh root@204.168.245.138 \
-  "docker exec sub2api sh -lc 'grep -F \"$RID\" /app/data/logs/sub2api.log | tail -80'"
+ssh -p 41012 root@172.247.109.38 \
+  "grep -F \"$RID\" /opt/sub2api/data/logs/sub2api.log | tail -80"
 
-ssh root@204.168.245.138 \
-  "docker exec -i sub2api-postgres sh -lc 'psql -U \"\${POSTGRES_USER:-sub2api}\" -d \"\${POSTGRES_DB:-sub2api}\" -F \"|\" -At'" <<SQL
+ssh -p 41012 root@172.247.109.38 \
+  "sudo -u postgres psql -d sub2api -F \"|\" -At" <<SQL
 SELECT created_at, request_id, client_request_id, api_key_id, account_id,
        platform, model, status_code, upstream_status_code, error_phase,
        error_type, severity, left(error_message, 200)
@@ -92,8 +96,8 @@ SQL
 Recent error overview:
 
 ```bash
-ssh root@204.168.245.138 \
-  "docker exec -i sub2api-postgres sh -lc 'psql -U \"\${POSTGRES_USER:-sub2api}\" -d \"\${POSTGRES_DB:-sub2api}\" -F \"|\" -At'" <<'SQL'
+ssh -p 41012 root@172.247.109.38 \
+  "sudo -u postgres psql -d sub2api -F \"|\" -At" <<'SQL'
 SELECT created_at, request_id, client_request_id, api_key_id, account_id,
        platform, model, status_code, error_phase, error_type, severity,
        left(error_message, 160)
@@ -117,15 +121,15 @@ Note: `usage_logs.request_id` is for usage/billing idempotency and can differ fr
 Use container-local `psql`; do not read `.env` just to get credentials.
 
 ```bash
-ssh root@204.168.245.138 \
-  "docker exec -i sub2api-postgres sh -lc 'psql -U \"\${POSTGRES_USER:-sub2api}\" -d \"\${POSTGRES_DB:-sub2api}\"'"
+ssh -p 41012 root@172.247.109.38 \
+  "sudo -u postgres psql -d sub2api"
 ```
 
 For one-off read-only SQL, prefer a quoted heredoc:
 
 ```bash
-ssh root@204.168.245.138 \
-  "docker exec -i sub2api-postgres sh -lc 'psql -U \"\${POSTGRES_USER:-sub2api}\" -d \"\${POSTGRES_DB:-sub2api}\" -F \"|\" -At'" <<'SQL'
+ssh -p 41012 root@172.247.109.38 \
+  "sudo -u postgres psql -d sub2api -F \"|\" -At" <<'SQL'
 SELECT id, name, platform, status
 FROM groups
 ORDER BY id;

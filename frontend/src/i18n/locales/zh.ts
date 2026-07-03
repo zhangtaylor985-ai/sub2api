@@ -157,6 +157,8 @@ export default {
     cost: '费用',
     // Status
     quotaMode: 'Key 限额模式',
+    dedicatedUnlimitedMode: '专享不限额',
+    dedicatedUnlimitedStatus: '专享可用',
     walletBalance: '钱包余额',
     // Ring card titles
     totalQuota: '总额度',
@@ -165,6 +167,8 @@ export default {
     limit7d: '7 天限额',
     limitWeekly: '周限额',
     limitMonthly: '月限额',
+    todayUsage: '今日用量',
+    totalUsage: '累计用量',
     // Detail rows
     remainingQuota: '剩余额度',
     expiresAt: '过期时间',
@@ -174,6 +178,8 @@ export default {
     windowPeriod: '周期',
     resetNow: '即将重置',
     subscriptionType: '订阅类型',
+    limitPolicy: '限制策略',
+    concurrencyOnly: '不限制金额和用量，仅保留并发控制',
     subscriptionExpires: '订阅到期',
     // Usage stat cells
     todayRequests: '今日请求',
@@ -1418,7 +1424,7 @@ export default {
         rateMultiplier: '倍速',
         usage: '用量',
         concurrency: '并发',
-        modelAccess: '模型族',
+        modelAccess: '模型与能力',
         status: '状态',
         expiresAt: '过期时间',
         createdAt: '创建时间',
@@ -1442,9 +1448,11 @@ export default {
         weeklyWindowHint: '修改后会重置周限额用量；结束时间固定为起点后 7 天',
         fiveHourLimit: '5 小时限额 USD',
         concurrency: '并发上限',
-        modelAccess: '模型族权限',
+        modelAccess: '模型与能力权限',
         allowClaudeFamily: '允许 Claude',
         allowGPTFamily: '允许 GPT/OpenAI',
+        allowImageGeneration: '允许图片生成',
+        modelAccessHint: '图片生成还需要所绑定分组同时开启生图。',
         dispatchOverride: 'Claude -> GPT 映射覆盖',
         dispatchOverrideHint: '留空表示继承分组配置；仅影响这把 API Key 的 Claude /v1/messages 到 OpenAI/Codex 调度。',
         opusMappedModel: 'Opus 目标模型',
@@ -1477,6 +1485,7 @@ export default {
       },
       modelAccessClaude: 'Claude',
       modelAccessGPT: 'GPT',
+      modelAccessImage: '生图',
       modelAccessNone: '未开放',
       dispatchOverrideShort: 'Claude->GPT {model}',
       dispatchOverrideMixed: 'Claude->GPT 自定义',
@@ -2224,6 +2233,7 @@ export default {
         rpmDefault: '默认',
         exclusive: '独占',
         type: '类型',
+        dedicatedUnlimited: '专享不限额',
         priority: '优先级',
         apiKeys: 'API 密钥数',
         accounts: '账号数',
@@ -2264,6 +2274,9 @@ export default {
         concurrencyHint: '本分组下 API Key 的默认并发上限，0 = 沿用用户并发；单个 API Key 可继续覆盖',
         exclusiveLabel: '专属分组',
         exclusiveHint: '专属分组，可以手动指定给用户',
+        dedicatedUnlimited: '专享不限额',
+        dedicatedUnlimitedHint:
+          '只使用绑定的专享账号；继续记录流量，但不触发内部金额、额度或频率限制，仅保留 API Key 并发控制。不能用于订阅分组。',
         platformLabel: '平台限制',
         platformPlaceholder: '选择平台（留空则不限制）',
         accountsLabel: '指定账号',
@@ -2277,6 +2290,8 @@ export default {
         no: '否'
       },
       exclusive: '专属',
+      dedicatedUnlimited: '专享不限额',
+      standardLimits: '标准限额',
       exclusiveHint: '专属分组，可以手动指定给特定用户',
       exclusiveTooltip: {
         title: '什么是专属分组？',

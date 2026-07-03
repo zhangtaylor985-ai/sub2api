@@ -2159,9 +2159,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 	apiKey := getAPIKeyFromContext(c)
-	imageGenerationAllowed := GroupAllowsImageGeneration(nil)
+	imageGenerationAllowed := true
+	imageGenerationDeniedMessage := ImageGenerationPermissionMessage()
 	if apiKey != nil {
-		imageGenerationAllowed = GroupAllowsImageGeneration(apiKey.Group)
+		switch {
+		case !APIKeyAllowsImageGeneration(apiKey):
+			imageGenerationAllowed = false
+			imageGenerationDeniedMessage = APIKeyImageGenerationPermissionMessage()
+		case !GroupAllowsImageGeneration(apiKey.Group):
+			imageGenerationAllowed = false
+		}
 	}
 	codexImageGenerationBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
 	if IsImageGenerationIntentMap(openAIResponsesEndpoint, reqModel, reqBody) && !imageGenerationAllowed {
@@ -2169,7 +2176,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": gin.H{
 				"type":    "permission_error",
-				"message": ImageGenerationPermissionMessage(),
+				"message": imageGenerationDeniedMessage,
 			},
 		})
 		return nil, errors.New("image generation disabled for group")
@@ -2498,7 +2505,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": gin.H{
 				"type":    "permission_error",
-				"message": ImageGenerationPermissionMessage(),
+				"message": imageGenerationDeniedMessage,
 			},
 		})
 		return nil, errors.New("image generation disabled for group")
@@ -3001,15 +3008,24 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	body = updatedBody
 
 	apiKey := getAPIKeyFromContext(c)
-	if IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body) && !GroupAllowsImageGeneration(apiKeyGroup(apiKey)) {
-		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": gin.H{
-				"type":    "permission_error",
-				"message": ImageGenerationPermissionMessage(),
-			},
-		})
-		return nil, errors.New("image generation disabled for group")
+	if IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body) {
+		imageGenerationDeniedMessage := ""
+		switch {
+		case !APIKeyAllowsImageGeneration(apiKey):
+			imageGenerationDeniedMessage = APIKeyImageGenerationPermissionMessage()
+		case !GroupAllowsImageGeneration(apiKeyGroup(apiKey)):
+			imageGenerationDeniedMessage = ImageGenerationPermissionMessage()
+		}
+		if imageGenerationDeniedMessage != "" {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": gin.H{
+					"type":    "permission_error",
+					"message": imageGenerationDeniedMessage,
+				},
+			})
+			return nil, errors.New("image generation disabled for group")
+		}
 	}
 	imageBillingModel := ""
 	imageSizeTier := ""
@@ -5499,6 +5515,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 	}
+	if shouldBillOpenAIMessagesDispatchFableAsRequested(input, result) {
+		billingModel = input.OriginalModel
+	}
 	billingModels := usageBillingModelCandidates(
 		billingModel,
 		result.BillingModel,
@@ -5659,6 +5678,22 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 
 	return nil
+}
+
+func shouldBillOpenAIMessagesDispatchFableAsRequested(input *OpenAIRecordUsageInput, result *OpenAIForwardResult) bool {
+	if input == nil || result == nil {
+		return false
+	}
+	originalModel := strings.ToLower(strings.TrimSpace(input.OriginalModel))
+	if !strings.Contains(originalModel, "claude") || !strings.Contains(originalModel, "fable") {
+		return false
+	}
+	upstreamModel := strings.TrimSpace(result.UpstreamModel)
+	if upstreamModel == "" || strings.EqualFold(upstreamModel, input.OriginalModel) {
+		return false
+	}
+	endpoint := strings.ToLower(strings.TrimSpace(input.InboundEndpoint))
+	return strings.Contains(endpoint, "messages")
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(

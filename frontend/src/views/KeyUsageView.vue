@@ -696,6 +696,14 @@ const statusInfo = computed(() => {
     }
   }
 
+  if (data.mode === 'dedicated_unlimited') {
+    return {
+      label: data.planName || t('keyUsage.dedicatedUnlimitedMode'),
+      statusText: t('keyUsage.dedicatedUnlimitedStatus'),
+      isActive: data.isValid !== false && data.status !== 'expired',
+    }
+  }
+
   return {
     label: data.planName || t('keyUsage.walletBalance'),
     statusText: 'Active',
@@ -709,7 +717,12 @@ const ringItems = computed<RingItem[]>(() => {
 
   const items: RingItem[] = []
 
-  if (data.mode === 'quota_limited') {
+  if (data.mode === 'dedicated_unlimited') {
+    const todayCost = data.usage?.today?.actual_cost ?? data.usage?.today?.cost
+    const totalCost = data.usage?.total?.actual_cost ?? data.usage?.total?.cost
+    items.push({ title: t('keyUsage.todayUsage'), pct: 0, amount: usd(todayCost), isBalance: true, iconType: 'dollar' })
+    items.push({ title: t('keyUsage.totalUsage'), pct: 0, amount: usd(totalCost), isBalance: true, iconType: 'dollar' })
+  } else if (data.mode === 'quota_limited') {
     if (data.quota) {
       const pct = data.quota.limit > 0 ? Math.min(Math.round((data.quota.used / data.quota.limit) * 100), 100) : 0
       items.push({ title: t('keyUsage.totalQuota'), pct, amount: `${usd(data.quota.used)} / ${usd(data.quota.limit)}`, iconType: 'dollar' })
@@ -784,7 +797,27 @@ const detailRows = computed<DetailRow[]>(() => {
   const ICON_DOLLAR = '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'
   const ICON_CHECK = '<polyline points="20 6 9 17 4 12"/>'
 
-  if (data.mode === 'quota_limited') {
+  if (data.mode === 'dedicated_unlimited') {
+    rows.push({
+      iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_CHECK,
+      label: t('keyUsage.subscriptionType'), value: data.planName || t('keyUsage.dedicatedUnlimitedMode'), valueClass: '',
+    })
+    rows.push({
+      iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_SHIELD,
+      label: t('keyUsage.limitPolicy'), value: t('keyUsage.concurrencyOnly'), valueClass: '',
+    })
+    if (data.expires_at) {
+      const daysLeft = data.days_until_expiry
+      let expiryStr = formatDate(data.expires_at)
+      if (daysLeft != null) {
+        expiryStr += daysLeft > 0 ? ` ${t('keyUsage.daysLeft', { days: daysLeft })}` : daysLeft === 0 ? ` ${t('keyUsage.todayExpires')}` : ''
+      }
+      rows.push({
+        iconBg: 'bg-amber-500/10', iconColor: 'text-amber-500', iconSvg: ICON_CALENDAR,
+        label: t('keyUsage.expiresAt'), value: expiryStr, valueClass: '',
+      })
+    }
+  } else if (data.mode === 'quota_limited') {
     if (data.quota) {
       const remainColor = data.quota.remaining <= 0 ? 'text-rose-500'
         : data.quota.remaining < data.quota.limit * 0.1 ? 'text-amber-500'

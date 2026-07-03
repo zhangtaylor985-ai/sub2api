@@ -13,7 +13,7 @@
 - 本地源码路径：`/Users/taylor/sdk/sub2api`
 - 这是后续主要维护项目；涉及 Sub2API 的代码、文档、部署、黑盒测试和运行配置，默认都在本目录完成。
 - 旧项目 `/Users/taylor/code/tools/CLIProxyAPI-ori` 只作为 Claude -> GPT 迁移参考项目使用；不要在旧项目里承载新的 Sub2API 业务实现。
-- 两个项目共享同一线上环境 `204.168.245.138` / `cc.claudepool.com`，排查时必须先确认当前操作对象是 Sub2API 还是 CLIProxyAPI，避免把配置、日志和部署流程混用。
+- 两个项目历史上共享旧线上环境 `204.168.245.138` / `cc.claudepool.com`；2026-06-13 起 Sub2API 主运行环境迁到新机器 `172.247.109.38:41012`，排查时必须先确认当前操作对象是新 Sub2API、旧 Sub2API 回滚环境还是 CLIProxyAPI，避免把配置、日志和部署流程混用。
 - 当前维护远端：`origin git@github.com:zhangtaylor985-ai/sub2api.git`
 - 上游参考远端：`upstream https://github.com/Wei-Shaw/sub2api.git`
 - 后端目录：`backend/`
@@ -21,36 +21,54 @@
 
 ## 线上 Sub2API
 
-- SSH 入口：`ssh root@204.168.245.138`
-- 线上主机名：`PG-01`
-- 线上部署目录：`/root/cliapp/sub2api`
-- 线上运行方式：Docker Compose
-- Compose 文件：`/root/cliapp/sub2api/docker-compose.yml`
-- 当前容器：
-  - `sub2api`，镜像 `zhangtaylor985/sub2api:main-191cbfcd`，健康检查通过，宿主机 `0.0.0.0:8080 -> 8080/tcp`
-  - `sub2api-postgres`，镜像 `postgres:18-alpine`
-  - `sub2api-redis`，镜像 `redis:8-alpine`
-- 线上挂载：
-  - `/root/cliapp/sub2api/data -> /app/data`
-  - Postgres 数据在 `/root/cliapp/sub2api/postgres_data`
-  - Redis 数据在 `/root/cliapp/sub2api/redis_data`
+- SSH 入口：`ssh -p 41012 root@172.247.109.38`
+- 线上主机名：`C20260613138680`
+- 线上部署目录：`/opt/sub2api`
+- 线上运行方式：宿主机 systemd
+- systemd 服务：`sub2api.service`
+- 当前服务：
+  - Sub2API app：`/opt/sub2api/sub2api`，systemd 管理，监听 `0.0.0.0:8080`
+  - PostgreSQL：宿主机 `postgresql-18`，数据库 `sub2api`
+  - Redis：宿主机 `redis-server`
+- 线上数据：
+  - Sub2API data/config/logs：`/opt/sub2api/data`
+  - 环境变量文件：`/etc/sub2api/sub2api.env`
+  - 最终迁移备份：`/root/cliapp/sub2api-migration/prod_sub2api_final_20260613T054258Z.dump`
 - 反代入口：
-  - Caddy 当前 active。
-  - `/etc/caddy/Caddyfile` 中 `cc.claudepool.com` 反代到 `127.0.0.1:8080`。
+  - 新机 Caddy 当前 active。
+  - 新机 `/etc/caddy/Caddyfile` 中 `cc.claudepool.com` 反代到 `127.0.0.1:8080`。
+  - 2026-06-13 迁移后，Cloudflare DNS A 记录已直切到 `172.247.109.38`；新机 Caddy 已为 `cc.claudepool.com` 签发正式证书并直接承载公网 HTTPS。
   - `/management.html` 重定向到 `https://admin.claudepool.com/`。
-  - Nginx 当前 inactive。
 - 健康检查：
   - `curl -fsS http://127.0.0.1:8080/health`
-  - `docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" | grep -E "sub2api|NAMES"`
+  - `systemctl status sub2api --no-pager`
+  - `journalctl -u sub2api -n 100 --no-pager`
+
+## 旧线上 Sub2API
+
+- 旧 SSH 入口：`ssh root@204.168.245.138`
+- 旧主机名：`PG-01`
+- 旧部署目录：`/root/cliapp/sub2api`
+- 旧运行方式：Docker Compose
+- 旧 Compose 文件：`/root/cliapp/sub2api/docker-compose.yml`
+- 2026-06-13 迁移后状态：
+  - 旧 `sub2api` app 容器已停止，避免旧库继续写入。
+  - 旧 `sub2api-postgres` / `sub2api-redis` 容器保留，用于回滚窗口。
+  - 旧 Caddy 仍保留 `cc.claudepool.com` 到新机 `172.247.109.38:8080` 的桥接配置，但 DNS 已不再指向旧机；保留用于短期回滚观察。
+- 回滚原则：
+  - 如需迁移级回滚，先把 Cloudflare DNS A 记录切回 `204.168.245.138`，再把旧 Caddyfile 从 `/etc/caddy/Caddyfile.bak.sub2api-migration-20260613T055908Z` 恢复并启动旧 app 容器。
 
 ## 线上只读排查
 
 - 查看容器：
-  - `docker ps --filter name=sub2api`
+  - 新机：`systemctl status sub2api --no-pager`
+  - 旧机回滚环境：`docker ps --filter name=sub2api`
 - 查看应用日志：
-  - `docker logs sub2api --tail 200`
+  - 新机：`journalctl -u sub2api -n 200 --no-pager`
+  - 旧机回滚环境：`docker logs sub2api --tail 200`
 - 查看数据库 schema 或非敏感配置时，优先通过容器内 `psql`，不要读取 `.env` 明文：
-  - `docker exec -i sub2api-postgres sh -lc 'psql -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}'`
+  - 新机：`sudo -u postgres psql -d sub2api`
+  - 旧机回滚环境：`docker exec -i sub2api-postgres sh -lc 'psql -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}'`
 - 可以查询 group/account 的非敏感字段，例如 `groups.name/platform/allow_messages_dispatch/messages_dispatch_model_config`、账号状态与 `credentials.model_mapping`。
 - 不要在未确认发布流程前直接进入容器修改文件；当前线上应用代码来自镜像，不是宿主机 Git 工作区。
 
@@ -66,7 +84,9 @@
 
 - 线上地址库、容器状态、生产库只读查询、用户/API Key/分组关系、生图权限与模型映射排查：优先使用 `.codex/skills/sub2api-production-inspection/SKILL.md`。
 - 生产部署、Docker app 容器替换、回滚与 systemd/Docker 取舍：使用 `.codex/skills/sub2api-deploy/SKILL.md`。
+- 临时不走 GitHub/CI 的本地构建二进制上线、zstd patch 传输、systemd binary 替换与回滚：使用 `.codex/skills/sub2api-local-binary-deploy/SKILL.md`；这是临时方案，后续恢复 GitHub 发布链路后应停用。
 - 上线前回归、Claude/OpenAI/Codex 协议兼容、Web search、streaming、cc1 黑盒：使用 `.codex/skills/sub2api-production-regression/SKILL.md`。
+- Claude Code / `cc1` / `claude2` 真实 TTY/PTY 黑盒、debug-file、settings 覆盖、连续多轮证据链：使用 `.codex/skills/sub2api-cc1-tty-blackbox-testing/SKILL.md`。
 
 ## Claude -> GPT 模型映射
 
@@ -97,6 +117,7 @@
 - 2026-06-02：已上线 API Key 模型族策略与 Claude->GPT 错误黑盒，镜像 `zhangtaylor985/sub2api:main-32ddc96c`。生产库 `api_keys` 已新增 `allow_claude_family` / `allow_gpt_family`，并从旧 CLIProxyAPI audit policy 回填；客户端侧错误不得泄露 GPT/Codex/ChatGPT/auth file 内部信息，运维日志允许保留上游明细。
 - 2026-06-02：已上线 API Key 级 Claude -> GPT 目标模型覆盖，镜像 `zhangtaylor985/sub2api:main-85cd117b`。生产库 `api_keys` 已新增 `messages_dispatch_model_config`；`api_keys.id=125` 当前三类 Claude family 均覆盖到 `gpt-5.4`，分组默认不受影响。
 - 2026-06-02：已上线错误可观测性增强，镜像 `zhangtaylor985/sub2api:main-191cbfcd`。用户侧错误响应继续黑盒，但会在响应头 `X-Request-ID` 和错误体 `request_id` / `error.request_id` 返回同一个网关 request id，便于用 `ops_error_logs`、`ops_system_logs` 和 `/app/data/logs/sub2api.log` 反查。
+- 2026-06-13：Sub2API 主运行环境已迁到新机器 `172.247.109.38:41012`，使用 systemd + 宿主机 PostgreSQL 18 + Redis + Caddy；最终 dump `prod_sub2api_final_20260613T054258Z.dump` 已恢复到新机，Cloudflare DNS A 记录已直切到 `172.247.109.38`，新机 Caddy 已签发 `cc.claudepool.com` 正式证书并通过公网 health/API smoke。
 - 任务细节见：
   - `task_plan.md`
   - `findings.md`

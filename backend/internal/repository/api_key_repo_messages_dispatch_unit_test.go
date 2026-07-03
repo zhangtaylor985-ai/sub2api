@@ -18,6 +18,7 @@ func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T)
 		SubscriptionType:      service.SubscriptionTypeStandard,
 		RateMultiplier:        1,
 		Concurrency:           2,
+		DedicatedUnlimited:    true,
 		AllowMessagesDispatch: true,
 		DefaultMappedModel:    "gpt-5.4",
 		MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
@@ -34,6 +35,7 @@ func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T)
 	require.NotNil(t, got)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
 	require.Equal(t, 2, got.Concurrency)
+	require.True(t, got.DedicatedUnlimited)
 }
 
 func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_SQLite(t *testing.T) {
@@ -48,6 +50,7 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 		SetSubscriptionType(service.SubscriptionTypeStandard).
 		SetRateMultiplier(1).
 		SetConcurrency(2).
+		SetDedicatedUnlimited(true).
 		SetAllowMessagesDispatch(true).
 		SetDefaultMappedModel("gpt-5.4").
 		SetMessagesDispatchModelConfig(service.OpenAIMessagesDispatchModelConfig{
@@ -82,4 +85,5 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.NotNil(t, got.Group)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
 	require.Equal(t, 2, got.Group.Concurrency)
+	require.True(t, got.Group.DedicatedUnlimited)
 }

@@ -48,6 +48,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetRateMultiplier(key.BillingRateMultiplier()).
 		SetAllowClaudeFamily(key.AllowClaudeFamily).
 		SetAllowGptFamily(key.AllowGPTFamily).
+		SetAllowImageGeneration(key.AllowImageGeneration).
 		SetMessagesDispatchModelConfig(key.MessagesDispatchModelConfig).
 		SetNillableGroupID(key.GroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
@@ -137,6 +138,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldRateMultiplier,
 			apikey.FieldAllowClaudeFamily,
 			apikey.FieldAllowGptFamily,
+			apikey.FieldAllowImageGeneration,
 			apikey.FieldMessagesDispatchModelConfig,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
@@ -175,6 +177,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldStatus,
 				group.FieldSubscriptionType,
 				group.FieldRateMultiplier,
+				group.FieldDedicatedUnlimited,
 				group.FieldDailyLimitUsd,
 				group.FieldWeeklyLimitUsd,
 				group.FieldMonthlyLimitUsd,
@@ -224,6 +227,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		SetRateMultiplier(key.BillingRateMultiplier()).
 		SetAllowClaudeFamily(key.AllowsClaudeFamily()).
 		SetAllowGptFamily(key.AllowsGPTFamily()).
+		SetAllowImageGeneration(key.AllowsImageGeneration()).
 		SetMessagesDispatchModelConfig(key.MessagesDispatchModelConfig).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
@@ -831,6 +835,8 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		AllowClaudeFamily:           m.AllowClaudeFamily,
 		AllowGPTFamily:              m.AllowGptFamily,
 		ModelFamilyPolicySet:        true,
+		AllowImageGeneration:        m.AllowImageGeneration,
+		ImageGenerationPolicySet:    true,
 		MessagesDispatchModelConfig: m.MessagesDispatchModelConfig,
 		IPWhitelist:                 m.IPWhitelist,
 		IPBlacklist:                 m.IPBlacklist,
@@ -907,6 +913,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		Platform:                        g.Platform,
 		RateMultiplier:                  g.RateMultiplier,
 		IsExclusive:                     g.IsExclusive,
+		DedicatedUnlimited:              g.DedicatedUnlimited,
 		Status:                          g.Status,
 		Hydrated:                        true,
 		SubscriptionType:                g.SubscriptionType,

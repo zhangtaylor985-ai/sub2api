@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	openAIResponsesEndpoint          = "/v1/responses"
-	openAIResponsesCompactEndpoint   = "/v1/responses/compact"
-	imageGenerationPermissionMessage = "Image generation is not enabled for this group"
+	openAIResponsesEndpoint                = "/v1/responses"
+	openAIResponsesCompactEndpoint         = "/v1/responses/compact"
+	imageGenerationPermissionMessage       = "Image generation is not enabled for this group"
+	apiKeyImageGenerationPermissionMessage = "Image generation is not enabled for this API key"
 )
 
 // ImageGenerationPermissionMessage returns the stable end-user error text for disabled groups.
@@ -18,9 +19,18 @@ func ImageGenerationPermissionMessage() string {
 	return imageGenerationPermissionMessage
 }
 
+func APIKeyImageGenerationPermissionMessage() string {
+	return apiKeyImageGenerationPermissionMessage
+}
+
 // GroupAllowsImageGeneration preserves ungrouped-key behavior and enforces the flag when a group is present.
 func GroupAllowsImageGeneration(group *Group) bool {
 	return group == nil || group.AllowImageGeneration
+}
+
+// APIKeyAllowsImageGeneration preserves legacy-key behavior and enforces the flag when the key is hydrated.
+func APIKeyAllowsImageGeneration(apiKey *APIKey) bool {
+	return apiKey == nil || apiKey.AllowsImageGeneration()
 }
 
 // IsImageGenerationIntent classifies requests that can produce generated images.

@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 14 // v14: include API key billing multiplier
+const apiKeyAuthSnapshotVersion = 16 // v16: include API key image generation policy
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -216,6 +216,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		RateMultiplier:              apiKey.BillingRateMultiplier(),
 		AllowClaudeFamily:           apiKey.AllowsClaudeFamily(),
 		AllowGPTFamily:              apiKey.AllowsGPTFamily(),
+		AllowImageGeneration:        apiKey.AllowsImageGeneration(),
 		MessagesDispatchModelConfig: normalizeOpenAIMessagesDispatchModelConfig(apiKey.MessagesDispatchModelConfig),
 		IPWhitelist:                 apiKey.IPWhitelist,
 		IPBlacklist:                 apiKey.IPBlacklist,
@@ -258,6 +259,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			Status:                          apiKey.Group.Status,
 			SubscriptionType:                apiKey.Group.SubscriptionType,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
+			DedicatedUnlimited:              apiKey.Group.DedicatedUnlimited,
 			DailyLimitUSD:                   apiKey.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
 			MonthlyLimitUSD:                 apiKey.Group.MonthlyLimitUSD,
@@ -300,6 +302,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		AllowClaudeFamily:           snapshot.AllowClaudeFamily,
 		AllowGPTFamily:              snapshot.AllowGPTFamily,
 		ModelFamilyPolicySet:        true,
+		AllowImageGeneration:        snapshot.AllowImageGeneration,
+		ImageGenerationPolicySet:    true,
 		MessagesDispatchModelConfig: snapshot.MessagesDispatchModelConfig,
 		IPWhitelist:                 snapshot.IPWhitelist,
 		IPBlacklist:                 snapshot.IPBlacklist,
@@ -335,6 +339,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Hydrated:                        true,
 			SubscriptionType:                snapshot.Group.SubscriptionType,
 			RateMultiplier:                  snapshot.Group.RateMultiplier,
+			DedicatedUnlimited:              snapshot.Group.DedicatedUnlimited,
 			DailyLimitUSD:                   snapshot.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  snapshot.Group.WeeklyLimitUSD,
 			MonthlyLimitUSD:                 snapshot.Group.MonthlyLimitUSD,

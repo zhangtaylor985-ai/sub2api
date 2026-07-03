@@ -76,6 +76,8 @@ pnpm --dir frontend run build
 - 改动触达 thinking、tool_use、tool_result、web_search 可见性。
 - 用户明确要求黑盒。
 
+执行黑盒细流程时使用 `.codex/skills/sub2api-cc1-tty-blackbox-testing/SKILL.md`；本节只保留上线门禁口径。
+
 最小验证：
 
 - 临时修改 `/Users/taylor/.claude_local/settings.json` 指向候选 Sub2API endpoint。

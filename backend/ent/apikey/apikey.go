@@ -40,6 +40,8 @@ const (
 	FieldAllowClaudeFamily = "allow_claude_family"
 	// FieldAllowGptFamily holds the string denoting the allow_gpt_family field in the database.
 	FieldAllowGptFamily = "allow_gpt_family"
+	// FieldAllowImageGeneration holds the string denoting the allow_image_generation field in the database.
+	FieldAllowImageGeneration = "allow_image_generation"
 	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
@@ -118,6 +120,7 @@ var Columns = []string{
 	FieldRateMultiplier,
 	FieldAllowClaudeFamily,
 	FieldAllowGptFamily,
+	FieldAllowImageGeneration,
 	FieldMessagesDispatchModelConfig,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
@@ -176,6 +179,8 @@ var (
 	DefaultAllowClaudeFamily bool
 	// DefaultAllowGptFamily holds the default value on creation for the "allow_gpt_family" field.
 	DefaultAllowGptFamily bool
+	// DefaultAllowImageGeneration holds the default value on creation for the "allow_image_generation" field.
+	DefaultAllowImageGeneration bool
 	// DefaultMessagesDispatchModelConfig holds the default value on creation for the "messages_dispatch_model_config" field.
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultQuota holds the default value on creation for the "quota" field.
@@ -262,6 +267,11 @@ func ByAllowClaudeFamily(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowGptFamily orders the results by the allow_gpt_family field.
 func ByAllowGptFamily(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowGptFamily, opts...).ToFunc()
+}
+
+// ByAllowImageGeneration orders the results by the allow_image_generation field.
+func ByAllowImageGeneration(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowImageGeneration, opts...).ToFunc()
 }
 
 // ByLastUsedAt orders the results by the last_used_at field.

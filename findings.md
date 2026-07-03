@@ -301,3 +301,164 @@
 - 根因在 `GatewayHandler.Models`：该路径从 `GatewayService.GetAvailableModels` 聚合分组内可调度账号的 `credentials.model_mapping` key，并直接作为用户可见模型返回；请求路径已有模型族策略拦截，但列表路径没有套同一层策略。
 - 修复口径：`/v1/models` 返回前必须按 API Key 模型族策略过滤所有来源的模型列表。Claude-only + OpenAI dispatch 分组如果过滤掉内部 GPT mapping 后无可见模型，应 fallback 到 Claude 默认模型列表，而不是 OpenAI 默认模型列表。
 - 本地回归已覆盖：Claude-only OpenAI dispatch 不暴露 GPT mapping，且 GPT-only OpenAI key 仍能看到 OpenAI 模型。
+
+## 2026-06-05 新服务器迁移快照
+
+- 线上只读确认：`sub2api` 当前镜像 `zhangtaylor985/sub2api:main-d271fbbf`，app/Postgres/Redis 容器 healthy；生产数据库体量约 `1922 MB`。
+- 本地迁移快照目录：`deploy/migration_snapshots/sub2api_migration_20260605T020823Z`，权限 700，已通过 `deploy/.gitignore` 忽略。
+- 最新生产 dump：`db/prod_sub2api_pg18_20260605T020823Z.dump`，约 `84M`，SHA256 `b838c73204d4b33fdc4e28bd33e7a5f6d50915eb2d93025581049ebe8ea89269`。
+- 已覆盖恢复到本地独立 PG18 容器 `sub2api-postgres-restore-pg18`，监听 `127.0.0.1:5434`；本地 PG17 沙盒未覆盖。
+- 恢复校验：本地 PG18 恢复库 `public` 表数 79；关键表行数 `users=83`、`api_keys=84`、`groups=8`、`accounts=12`、`account_groups=88`、`cliproxy_legacy_api_key_migration=82`，与线上对照一致。
+- `usage_logs` 本地恢复后为 1,127,960；线上恢复后即时对照为 1,128,102。差异 142 行来自生产在 dump 之后继续写入，符合在线只读逻辑备份预期。
+- 已打包 Sub2API runtime/data 与 compose：`sub2api_runtime/sub2api_runtime_data_and_compose.tar.gz`；实时日志 `data/logs/*` 已排除。
+- 已打包生产 `.env`、`docker-compose.yml` 和 Caddyfile：`sub2api_runtime/deployment_config_env_compose_caddy.tar.gz`。
+- 已收集并打包 50 个 Codex auth JSON：`auth_files/codex_auth_files.tar.gz`，并解压到 `auth_files/extracted/`，文件权限 600、目录权限 700。
+- 迁移说明已归档：`docs/sub2api_migration_snapshot_20260605_CN.md`。Redis 未作为权威数据迁移；建议新服务器 Redis 重新初始化，避免旧缓存污染。
+
+## 2026-06-08 新服务器迁移快照
+
+- 线上只读确认：`sub2api` 当前镜像 `zhangtaylor985/sub2api:main-d271fbbf`，app/Postgres/Redis 容器 healthy；生产数据库体量约 `2131 MB`。
+- 本地迁移快照目录：`deploy/migration_snapshots/sub2api_migration_20260608T025111Z`，权限 700，已通过 `deploy/.gitignore` 忽略。
+- 最新生产 dump：`db/prod_sub2api_pg18_20260608T025111Z.dump`，约 `102M`，SHA256 `5bfc570c9367930ba8795f061428d795f3e728bf7aa9eef686d9ece95cb8d401`。
+- 已覆盖恢复到本地独立 PG18 容器 `sub2api-postgres-restore-pg18`，监听 `127.0.0.1:5434`；本地 PG17 沙盒未覆盖。
+- 恢复校验：本地 PG18 恢复库 `public` 表数 79；关键表行数 `users=83`、`api_keys=85`、`groups=8`、`accounts=12`、`account_groups=88`、`cliproxy_legacy_api_key_migration=82`，与线上对照一致。
+- `usage_logs` 本地恢复后为 1,195,662；线上恢复后即时对照为 1,195,788。差异 126 行来自生产在 dump 之后继续写入，符合在线只读逻辑备份预期。
+- 已打包 Sub2API runtime/data 与 compose：`sub2api_runtime/sub2api_runtime_data_and_compose.tar.gz`；实时日志 `data/logs/*` 已排除。
+- 已打包生产 `.env`、`docker-compose.yml` 和 Caddyfile：`sub2api_runtime/deployment_config_env_compose_caddy.tar.gz`。
+- 已收集并打包 50 个 Codex auth JSON：`auth_files/codex_auth_files.tar.gz`，并解压到 `auth_files/extracted/`，文件权限 600、目录权限 700。
+- 迁移说明已归档：`docs/sub2api_migration_snapshot_20260608_CN.md`。Redis 未作为权威数据迁移；建议新服务器 Redis 重新初始化，避免旧缓存污染。
+
+## 2026-06-09 新服务器迁移快照
+
+- 线上只读确认：`sub2api` 当前镜像 `zhangtaylor985/sub2api:main-d271fbbf`，app/Postgres/Redis 容器 healthy；生产数据库体量约 `2207 MB`。
+- 本地迁移快照目录：`deploy/migration_snapshots/sub2api_migration_20260609T022630Z`，权限 700，已通过 `deploy/.gitignore` 忽略。
+- 最新生产 dump：`db/prod_sub2api_pg18_20260609T022630Z.dump`，约 `108M`，SHA256 `d8762d370260962bfcf91c4058026b4164668d3b44a9a602fa3f67b46f0f3bac`。
+- 已覆盖恢复到本地独立 PG18 容器 `sub2api-postgres-restore-pg18`，监听 `127.0.0.1:5434`；本地 PG17 沙盒未覆盖。
+- 恢复校验：本地 PG18 恢复库 `public` 表数 79；关键表行数 `users=83`、`api_keys=85`、`groups=8`、`accounts=12`、`account_groups=88`、`cliproxy_legacy_api_key_migration=82`，与线上对照一致。
+- `usage_logs` 本地恢复后为 1,218,825；线上恢复后即时对照为 1,218,919。差异 94 行来自生产在 dump 之后继续写入，符合在线只读逻辑备份预期。
+- 已打包 Sub2API runtime/data 与 compose：`sub2api_runtime/sub2api_runtime_data_and_compose.tar.gz`；实时日志 `data/logs/*` 已排除。
+- 已打包生产 `.env`、`docker-compose.yml` 和 Caddyfile：`sub2api_runtime/deployment_config_env_compose_caddy.tar.gz`。
+- 已收集并打包 50 个 Codex auth JSON：`auth_files/codex_auth_files.tar.gz`，并解压到 `auth_files/extracted/`，文件权限 600、目录权限 700。
+- 迁移说明已归档：`docs/sub2api_migration_snapshot_20260609_CN.md`。Redis 未作为权威数据迁移；建议新服务器 Redis 重新初始化，避免旧缓存污染。
+
+## 2026-06-10 新服务器迁移快照
+
+- 线上只读确认：`sub2api` 当前镜像 `zhangtaylor985/sub2api:main-d271fbbf`，app/Postgres/Redis 容器 healthy；生产数据库体量约 `2325 MB`。
+- 本地迁移快照目录：`deploy/migration_snapshots/sub2api_migration_20260610T150259Z`，权限 700，已通过 `deploy/.gitignore` 忽略。
+- 最新生产 dump：`db/prod_sub2api_pg18_20260610T150259Z.dump`，约 `118M`，SHA256 `296b29b2ede83a16d06c9d8422ec95913bc1f23ab7b36001618f6690891a8d0a`。
+- 已覆盖恢复到本地独立 PG18 容器 `sub2api-postgres-restore-pg18`，监听 `127.0.0.1:5434`；本地 PG17 沙盒未覆盖。
+- 恢复校验：本地 PG18 恢复库 `public` 表数 79；关键表行数 `users=83`、`api_keys=87`、`groups=8`、`accounts=12`、`account_groups=88`、`cliproxy_legacy_api_key_migration=82`，与线上对照一致。
+- `usage_logs` 本地恢复后为 1,255,213；线上恢复后即时对照为 1,255,259。差异 46 行来自生产在 dump 之后继续写入，符合在线只读逻辑备份预期。
+- 已打包 Sub2API runtime/data 与 compose：`sub2api_runtime/sub2api_runtime_data_and_compose.tar.gz`；实时日志 `data/logs/*` 已排除。
+- 已打包生产 `.env`、`docker-compose.yml` 和 Caddyfile：`sub2api_runtime/deployment_config_env_compose_caddy.tar.gz`。
+- 已收集并打包 50 个 Codex auth JSON：`auth_files/codex_auth_files.tar.gz`，并解压到 `auth_files/extracted/`，文件权限 600、目录权限 700。
+- 迁移说明已归档：`docs/sub2api_migration_snapshot_20260610_CN.md`。Redis 未作为权威数据迁移；建议新服务器 Redis 重新初始化，避免旧缓存污染。
+
+## 2026-06-10 生产 502 代理认证失败排查
+
+- 用户截图中的错误为 Claude/Codex 客户端显示的 `API Error: 502 Upstream request failed`，来自 `cc.claudepool.com` 网关的黑盒上游错误包装。
+- 线上只读确认：`sub2api` 当前镜像 `zhangtaylor985/sub2api:main-d271fbbf`，app/Postgres/Redis 容器 healthy，宿主机 `/health` 返回 ok；不是整个 Sub2API 或 Caddy 入口故障。
+- 最近 6 小时 `ops_error_logs` 显示 502 集中在 OpenAI/Codex 请求，尤其是 `account_id=8` 的 `gpt-5.5`、`account_id=6` 的 `claude-opus-4-8/gpt-5.5`、`account_id=9` 的 `claude-opus-4-7` 等。
+- 文件日志反查样本 request id 后，真实错误均为访问 `https://chatgpt.com/backend-api/codex/responses` 时 SOCKS5 代理认证失败：`username/password authentication failed`。
+- 管理端里唯一 `status=error` 的账号是 `account_id=11`，原因是 OAuth token revoked；但本次截图对应的 502 不是该账号导致，而是多个仍为 `active/schedulable` 的账号在运行时被坏代理击中。
+- 代理只读快照：`proxy_id=4/5/6/7` 均为 SOCKS5 且状态仍是 `active`，分别绑定活跃账号 `4,5`、`6,7`、`8,9`、`10`；其中 4/5/6/7 对应账号最近都有 502 样本。
+- 结论：当前“账号状态正常但请求 502”的直接原因是代理层认证失败未体现在账号 `status=error`；短期处置应更新/替换这些代理凭据，或临时下线坏代理绑定的账号/代理，避免调度继续打到坏链路。
+
+## 2026-06-10 生产 SOCKS5 代理续费后更新验证
+
+- 用户提供 4 条续费后的代理文本；本次只将这些代理的 `protocol` 更新为 `socks5` 并刷新对应用户名/密码，不在文档记录密钥明文。
+- 更新对象：`proxy_id=2` (`69.3.236.211:443`)、`proxy_id=6` (`207.97.135.24:443`)、`proxy_id=7` (`206.135.155.102:443`)、`proxy_id=8` (`206.135.155.208:443`)。
+- 更新前备份保存在生产机 `/root/cliapp/sub2api/ops_backups/proxies_before_socks_refresh_20260610T144540Z.psv`。
+- 验证方式：在生产机使用 `curl --socks5-hostname` 分别连 `https://chatgpt.com/backend-api/codex/responses` 和 `https://api.ipify.org`。4 条代理均通过 SOCKS5 认证；ChatGPT endpoint 返回 HTTP 405，说明已成功连到目标但探测方法不匹配 endpoint；`api.ipify.org` 返回 HTTP 200 且出口 IP 与代理 IP 一致。
+- 更新后日志复核：未发现这 4 条新文本代理继续出现 `username/password authentication failed`。
+- 额外发现：`proxy_id=4` (`38.125.1.28:443`) 和 `proxy_id=5` (`38.75.200.116:443`) 不在用户本次文本中，但仍绑定活跃账号 `4,5` 和 `6,7`，并在更新后继续产生 SOCKS5 认证失败日志。若用户仍看到 502，应优先处理这两个旧代理或其绑定账号。
+
+## 2026-06-10 生产代理收敛与账号均摊
+
+- 用户明确要求把当前账号平均分摊到 4 个续费后的 IP，并删除此前没有用的旧代理，只保留这 4 个。
+- 执行前备份：账号代理分布备份 `/root/cliapp/sub2api/ops_backups/accounts_proxy_distribution_before_20260610T144825Z.psv`；代理表收敛备份 `/root/cliapp/sub2api/ops_backups/proxies_before_keep_four_20260610T145017Z.psv`。
+- 账号均摊结果：`proxy_id=2` (`69.3.236.211`) 绑定 active+schedulable 账号 `2,3,4`；`proxy_id=6` (`207.97.135.24`) 绑定 `5,6`；`proxy_id=7` (`206.135.155.102`) 绑定 `7,8`；`proxy_id=8` (`206.135.155.208`) 绑定 `9,10`。`account_id=11` 仍为 `status=error/schedulable=false`，不计入可调度均摊。
+- 旧代理收敛结果：未删除代理表当前只剩 `proxy_id=2/6/7/8` 四条 active SOCKS5 代理；旧坏代理 `proxy_id=4/5` 与无账号 HTTP 代理 `proxy_id=9` 已软删除并设为 inactive；更早的 `proxy_id=1/3` 原本已是软删除状态。
+- 因更新账号 proxy_id 后运行日志仍短暂命中旧代理，已重启 Docker app 容器 `sub2api` 刷新运行态缓存；Postgres/Redis 未重启。
+- 重启验证：宿主机和公网 `/health` 均返回 ok，`sub2api` 容器 healthy；重启后用户请求样本出现 `status_code=200`，且重启完成后的时间窗未再检索到旧代理 IP 或 `username/password authentication failed`。
+
+## 2026-06-13 生产迁移到新机器
+
+- 新机器入口：`ssh -p 41012 root@172.247.109.38`，主机名 `C20260613138680`，系统为 Ubuntu 24.04.1 LTS，支持 systemd。
+- 旧生产入口：`ssh root@204.168.245.138`，主机名 `PG-01`，当前仍由 Docker Compose 托管 `sub2api`、`sub2api-postgres`、`sub2api-redis`。
+- 迁移策略：新机器不用 Docker，采用宿主机 PostgreSQL 18、Redis、Caddy 和 systemd 托管 Sub2API 二进制；正式切换前重新做最终 PostgreSQL dump，并迁移 `/root/cliapp/sub2api/data` 与 Codex auth JSON。
+- `cc.claudepool.com` 的 Cloudflare DNS A 记录已从旧机 `204.168.245.138` 直切到新机 `172.247.109.38`；本机解析会被本地代理返回 fake IP，不作为切换依据。
+- 回滚边界：DNS 切换后保留旧机 Docker Compose，不清理旧库和旧容器；若新机 smoke 或真实流量异常，可把 DNS A 记录切回 `204.168.245.138`。
+- 最终迁移 dump：旧机停 app 后生成 `/root/cliapp/sub2api/final_migration/prod_sub2api_final_20260613T054258Z.dump`，恢复到新机 `/root/cliapp/sub2api-migration/prod_sub2api_final_20260613T054258Z.dump`。
+- 最终恢复校验：新机 `users=83`、`api_keys=88`、`groups=8`、`accounts=13`、`account_groups=89`、`usage_logs=1309290`，与停写后旧机 dump 前读数一致。
+- Codex auth JSON 已从旧机迁到新机，共 51 个候选文件，权限已收紧到目录 700、文件 600。
+- 新机本地 `/health` 和 `/v1/models` 认证 smoke 通过；公开 `https://cc.claudepool.com/health` 和公开 `/v1/models` 认证 smoke 也通过。
+- 通过 Cloudflare API MCP 已将 `cc.claudepool.com` A 记录改到 `172.247.109.38`，DNS-only，TTL 自动；新机 Caddy 已成功签发正式证书。旧机 Caddy 仍保留到新机的桥接配置，但 DNS 已不再指向旧机；旧 app 容器保持停止，避免旧库写入分叉。
+
+## 2026-06-13 坏 SOCKS 代理下线与 Codex auth 重新均摊
+
+- `.codex_capi` 使用 `base_url=https://cc.claudepool.com`、`wire_api=responses`，生产 502 对应 `api_key_id=120`、`group_id=14`、`account_id=3`。
+- 直接原因是 `proxy_id=2` (`69.3.236.211:443`) SOCKS5 认证失败；生产机使用数据库内代理凭据探测时返回 `User was rejected by the SOCKS5 server`。其余 `proxy_id=6/7/8` 能完成 SOCKS5 连接。
+- 已将 `proxy_id=2` 设为 `inactive` 并软删除；备份 tag 为 `codex_proxy_rebalance_20260613T0655Z`，存于生产库 `ops_proxy_rebalance_backup`。
+- 7 个 active+schedulable OpenAI OAuth 账号已重新均摊到 3 个健康代理：`proxy_id=6` (`207.97.135.24`) 绑定账号 `3,6,9`；`proxy_id=7` (`206.135.155.102`) 绑定账号 `4,7`；`proxy_id=8` (`206.135.155.208`) 绑定账号 `5,8`。`account_id=2/10/11` 仍为 error 或不可调度，不计入均摊；`account_id=12` 是 apikey worker，不计入 Codex OAuth。
+- 已重启新机 `sub2api.service` 刷新运行态缓存。`.codex_capi` `/responses` 连续 5 次 smoke 均返回 completed；切换后 `api_key_id=120` 未再出现新 502，且 `account_id=3` 已在新代理 `207.97.135.24` 上成功请求。
+
+## 2026-06-15 API Key 纯流量包模式与分组
+
+- 根因：`BillingCacheService.evaluateRateLimits` 已支持 token-package-only API Key 的前置检查，但 `buildUsageBillingCommand` 只在 `apiKey.HasRateLimits()` 为真时写入 `APIKeyRateLimitCost`。因此“无 5h/1d/7d 限额但有流量包”的 key 可以通过前置检查，却不会进入 `usage_billing_repo` 的流量包分配逻辑。
+- 本地修复：`postUsageBillingParams.shouldUpdateRateLimits(ctx)` 在无 rate limit 时，通过 `APIKeyService.GetTokenPackageState` 判断是否存在 token package；存在时将 `ActualCost` 写入 `APIKeyRateLimitCost`，触发 `api_key_token_packages.used_usd` 与 `api_key_token_package_usage` 后扣。
+- 本地测试：新增 unit 覆盖 token-package-only 会写入 `APIKeyRateLimitCost`，无 rate limit 且无流量包的普通 key 不写入；`go test ./...` 已通过。
+- 生产分组现状：线上已有多个 `standard/openai` 分组，包括 `Codex Base`、`CP Legacy dedicated/double/triple/quad/ungrouped`，均开启 `allow_messages_dispatch`，每个绑定 10 个未删除 OpenAI 账号，其中 6 个当前 active+schedulable。
+- 新增生产分组：已创建 `Codex Token Package Pool` (`group_id=19`)，`platform=openai`、`subscription_type=standard`、日/周/月限额均为 0、`allow_messages_dispatch=true`，沿用 `Codex Base` 的 Claude family 映射，并绑定 10 个未删除 OpenAI 账号。未自动迁移任何 API Key。
+
+## 2026-06-17 API Key 生图权限与 Image 2.0 排查
+
+- 生产只读确认：用户提供的 key 对应 `api_key_id=493`、名称 `沙栎`，绑定 `group_id=16` (`CP Legacy quad`)；该分组为 `platform=openai`、`allow_messages_dispatch=true`，但 `allow_image_generation=false`。
+- 因此当前线上 Image 2.0 / `gpt-image-2` 不支持的直接原因是分组生图开关未启用，不是 API Key 已有 GPT 族权限缺失。该 key 当前 `allow_gpt_family=true`，`allow_claude_family=false`。
+- `group_id=16` 绑定的 OpenAI OAuth 账号中，active+schedulable 账号存在；账号级 `credentials.model_mapping` 未显式列出 `gpt-image-2`，但本次已在分组级开关处被挡住，尚未进入上游账号能力验证阶段。
+- 本地实现新增 `api_keys.allow_image_generation`，默认 true；管理端 API Key 创建/编辑弹窗可维护该字段。运行时图片生成需要 API Key 级和分组级同时允许。
+
+## 2026-06-18 CP Legacy 分组生图开关
+
+- 生产只读确认：用户提供的第二把 key 对应 `api_key_id=495`、名称 `Aiden 邓先生`，绑定 `group_id=14` (`CP Legacy double`)；该分组已经是 `allow_image_generation=true`，所以这把 key 当前在已部署代码下不再被分组生图开关挡住。
+- 生产当前尚未部署本地新增的 `api_keys.allow_image_generation` 字段，线上 `api_keys` 表没有该列；本次立即生效的变更是分组级 `groups.allow_image_generation`。
+- 已将所有未删除 `CP Legacy %` 分组开启生图：`CP Legacy dedicated`、`CP Legacy double`、`CP Legacy triple`、`CP Legacy quad`、`CP Legacy ungrouped` 均为 `allow_image_generation=true`。
+- 写库前已备份旧值到 `ops_group_image_generation_backup`，`backup_tag=cp_legacy_image_generation_20260618T0929Z`；更新后对这些分组下 90 个有效 API Key 执行 Redis auth snapshot 删除和 `auth:cache:invalidate` 广播。
+
+## 2026-06-18 生产 Claude -> GPT 默认映射调整
+
+- 用户截图对应 API Key 级 Claude -> GPT 映射覆盖表单，目标为 Opus `gpt-5.4`、Sonnet `gpt-5.3-codex`；若 API Key 留空，会继承分组级 `groups.messages_dispatch_model_config`。
+- 生产只读确认：8 个 active OpenAI 分组的 `sonnet_mapped_model` 已为 `gpt-5.3-codex`，但 `opus_mapped_model` 以及 `claude-opus-4-6/4-7/4-8` exact mapping 仍为 `gpt-5.5`。由于 exact mapping 优先级高于 family default，必须同时调整 exact Opus 项。
+- 已更新 8 个 active OpenAI 分组：`Codex Base`、`CP Legacy dedicated/double/triple/quad/ungrouped`、`Codex Token Package Pool`、`CP Dedicated - nguyenvanlinh0208`。更新后 `opus_mapped_model=gpt-5.4`，`sonnet_mapped_model=gpt-5.3-codex`，三个 Opus exact mapping 均为 `gpt-5.4`。
+- 变更前已生成生产完整 dump `/root/cliapp/sub2api/ops_backups/prod_sub2api_before_group_opus54_20260618T105611Z.dump`，并备份分组映射行 `/root/cliapp/sub2api/ops_backups/groups_messages_dispatch_before_opus54_20260618T105611Z.psv`。
+- 更新后已清理 Redis `apikey:auth:*` 快照，数量从 7 降为 0，并发布 `auth:cache:invalidate`；新机本地 `/health` 返回 ok。
+
+## 2026-06-26 生产 API Key 日限额时区排查
+
+- 线上新机宿主机与 PostgreSQL session 默认时区为 `Etc/UTC`，但 `sub2api.service` 进程环境和 `/etc/sub2api/sub2api.env` 均设置 `TZ=Asia/Shanghai`。因此应用层北京时间是有效的，数据库层 `NOW()` 截日仍默认按 UTC。
+- 用户截图对应的 API Key 为 `api_key_id=110`，绑定 `group_id=14` (`CP Legacy double`)。当前 `api_keys.usage_1d=13.77345170`，`window_1d_start=2026-06-26 00:00:00+00`，说明环形“日限额”使用的是 UTC 0 点窗口。
+- 同一 key 北京时间 `2026-06-26 00:00:00` 到 `2026-06-27 00:00:00` 的 `usage_logs` 汇总为 `3614` 次请求、`actual_cost=150.67959165`，与截图明细表 `2026-06-26 $150.68` 一致；这不是单纯展示误差。
+- 北京时间当天用量集中在 `00:00` 到 `08:35`，最后一条样本为 `2026-06-26 08:35:10`，均为 `/v1/messages`。模型分布：`claude-opus-4-8 -> gpt-5.4` 约 `$114.11`，`claude-4.5-haiku -> gpt-5.4-mini` 约 `$36.57`。
+- 代码根因在 `backend/internal/repository/api_key_repo.go`：`IncrementRateLimitUsage` / `ResetRateLimitWindows` 使用 `date_trunc('day', NOW())` 写 `window_1d_start` 和 `window_7d_start`。生产 DB session 为 UTC 时，该 SQL 不会跟随 Go 应用的 `timezone.Init("Asia/Shanghai")`。
+- 前端另有潜在边界问题：`frontend/src/views/KeyUsageView.vue` 的 `getDateParams()` 用 `new Date().toISOString().split('T')[0]` 生成默认日期，在 UTC+8 的 `00:00-07:59` 会把“今天”算成 UTC 前一天；本次截图已进入 `2026-06-26` UTC 日，不是这次 $150.68 的主因，但应一并修。
+
+## 2026-06-26 新机 SOCKS5 入口
+
+- 新生产机 `C20260613138680` 已存在 Xray 26.3.27，systemd 服务为 `xray.service`，原配置仅提供 `127.0.0.1:10085` VLESS/WS 入站。
+- 本次新增 `public-socks5-in` 入站：监听 `0.0.0.0:26812`，协议 `socks`，认证方式 `password`，账号复用本机 `/Users/taylor/.codex_td/.env` 既有代理凭据；不记录明文。
+- Xray 配置备份位于 `/usr/local/etc/xray/config.json.bak.socks5_20260626T035626Z`。如需回滚，可恢复该文件并重启 `xray.service`。
+- 验证结果：带认证经新 SOCKS5 访问 `https://api.ipify.org` 出口为 `172.247.109.38`；无认证访问同端口被拒绝，未变成开放代理。
+- 本机 `/Users/taylor/.codex_td/.env` 已切换到 `172.247.109.38:26812`；备份为 `/Users/taylor/.codex_td/.env.bak.sub2api_socks5_20260626T035813Z`。
+
+## 2026-07-02 Claude Fable 5 支持
+
+- 官方 Claude 文档确认 `claude-fable-5` 的 Claude API 价格为 input `$10/MTok`、output `$50/MTok`、5m cache write `$12.50/MTok`、1h cache write `$20/MTok`、cache read `$1/MTok`。
+- 本地价格目录和生产 `/opt/sub2api/data/model_pricing.json`、`/opt/sub2api/resources/model-pricing/model_prices_and_context_window.json` 均已有 `claude-fable-5`，值分别为 `0.00001/0.00005/0.0000125/0.00002/0.000001` per token。
+- 生产当前 8 个 active OpenAI dispatch 分组均已为 Opus `gpt-5.4`，但 `exact_model_mappings.claude-fable-5` 为空；98 个 active API Key 也没有 key 级 Fable exact mapping。
+- 由于当前线上已部署代码还不会把 `fable` 识别为 Opus family，立即上线支持可通过给 active OpenAI dispatch 分组增加 `claude-fable-5 -> gpt-5.4` exact mapping，并清理相关 API Key auth snapshot 实现，不需要立即重启 app。
+- 本地代码已补长期修复：`fable` 归入 Opus dispatch family、默认模型列表新增 `claude-fable-5`、硬编码 fallback price 使用 Fable 官方价，避免动态 pricing 不可用时误回 Sonnet 价。
+- 生产热配置结论：仅给 8 个 active OpenAI dispatch 分组和 96 个 active API Key 增加 `exact_model_mappings.claude-fable-5=gpt-5.4` 后，旧二进制仍会把 `claude-fable-5` 原样发给 Codex 上游，smoke 返回 400/502；因此 Fable 支持必须包含代码发布。
+- 上线结果：当前线上二进制 sha256 为 `eda55842f08cdcbd10c935a3b0baf5bc9e3cc35b42f4a36b9740d5ab81570f7e`；备份包括 `/opt/sub2api/sub2api.bak.20260702T0620Z-before-fable5` 和 `/opt/sub2api/sub2api.bak.20260702T0654Z-before-fable5-billing-fix`。
+- 生产 DB 备份：分组映射备份 `/root/cliapp/sub2api/ops_backups/groups_messages_dispatch_before_fable5_20260702T040807Z.psv`；API Key 映射备份 `/root/cliapp/sub2api/ops_backups/api_keys_messages_dispatch_before_fable5_20260702T041113Z.psv`。
+- 最终 smoke：`claude-fable-5` `/v1/messages` 返回 HTTP 200 和 `FABLE_SMOKE_OK`；usage 记录 `requested_model=model=claude-fable-5`、`upstream_model=gpt-5.4`、`model_mapping_chain=claude-fable-5→gpt-5.4`。
+- 最终计费证据：smoke 行 input_tokens=120、output_tokens=19，`input_cost=0.0012000000`、`output_cost=0.0009500000`，即按 Fable `$10/MTok` 和 `$50/MTok` 计算，不再按 `gpt-5.4` 的 `$2.5/$15 MTok` 成本价计算。

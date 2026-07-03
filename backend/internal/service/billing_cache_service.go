@@ -772,6 +772,9 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
 		return ErrBillingServiceUnavailable
 	}
+	if group != nil && group.IsDedicatedUnlimited() {
+		return nil
+	}
 
 	// 判断计费模式
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil

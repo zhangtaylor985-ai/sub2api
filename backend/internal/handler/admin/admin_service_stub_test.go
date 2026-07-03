@@ -596,20 +596,25 @@ func (s *stubAdminService) AdminCreateAPIKey(ctx context.Context, input service.
 		status = *input.Status
 	}
 	apiKey := service.APIKey{
-		ID:          id,
-		UserID:      userID,
-		Key:         key,
-		Name:        input.Name,
-		GroupID:     input.GroupID,
-		Status:      status,
-		Quota:       input.Quota,
-		ExpiresAt:   input.ExpiresAt,
-		RateLimit5h: input.RateLimit5h,
-		RateLimit1d: input.RateLimit1d,
-		RateLimit7d: input.RateLimit7d,
-		Concurrency: input.Concurrency,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
+		ID:                       id,
+		UserID:                   userID,
+		Key:                      key,
+		Name:                     input.Name,
+		GroupID:                  input.GroupID,
+		Status:                   status,
+		Quota:                    input.Quota,
+		ExpiresAt:                input.ExpiresAt,
+		RateLimit5h:              input.RateLimit5h,
+		RateLimit1d:              input.RateLimit1d,
+		RateLimit7d:              input.RateLimit7d,
+		Concurrency:              input.Concurrency,
+		AllowImageGeneration:     true,
+		ImageGenerationPolicySet: true,
+		CreatedAt:                time.Now().UTC(),
+		UpdatedAt:                time.Now().UTC(),
+	}
+	if input.AllowImageGeneration != nil {
+		apiKey.AllowImageGeneration = *input.AllowImageGeneration
 	}
 	s.apiKeys = append(s.apiKeys, apiKey)
 	return &service.AdminUpdateAPIKeyGroupIDResult{APIKey: &apiKey}, nil
@@ -650,6 +655,10 @@ func (s *stubAdminService) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 			}
 			if input.Concurrency != nil {
 				s.apiKeys[i].Concurrency = *input.Concurrency
+			}
+			if input.AllowImageGeneration != nil {
+				s.apiKeys[i].AllowImageGeneration = *input.AllowImageGeneration
+				s.apiKeys[i].ImageGenerationPolicySet = true
 			}
 			if input.ResetRateLimitUsage {
 				s.apiKeys[i].Usage5h = 0

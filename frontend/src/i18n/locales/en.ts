@@ -157,6 +157,8 @@ export default {
     cost: 'Cost',
     // Status
     quotaMode: 'Key Quota Mode',
+    dedicatedUnlimitedMode: 'Dedicated Unlimited',
+    dedicatedUnlimitedStatus: 'Dedicated active',
     walletBalance: 'Wallet Balance',
     // Ring card titles
     totalQuota: 'Total Quota',
@@ -165,6 +167,8 @@ export default {
     limit7d: '7-Day Limit',
     limitWeekly: 'Weekly Limit',
     limitMonthly: 'Monthly Limit',
+    todayUsage: 'Today Usage',
+    totalUsage: 'Total Usage',
     // Detail rows
     remainingQuota: 'Remaining Quota',
     expiresAt: 'Expires At',
@@ -174,6 +178,8 @@ export default {
     windowPeriod: 'Period',
     resetNow: 'Resetting soon',
     subscriptionType: 'Subscription Type',
+    limitPolicy: 'Limit Policy',
+    concurrencyOnly: 'No amount or usage limits; concurrency still applies',
     subscriptionExpires: 'Subscription Expires',
     // Usage stat cells
     todayRequests: 'Today Requests',
@@ -1414,7 +1420,7 @@ export default {
         rateMultiplier: 'Speed',
         usage: 'Usage',
         concurrency: 'Concurrency',
-        modelAccess: 'Model Family',
+        modelAccess: 'Model & Capability',
         status: 'Status',
         expiresAt: 'Expires At',
         createdAt: 'Created At',
@@ -1438,9 +1444,11 @@ export default {
         weeklyWindowHint: 'Changing this resets weekly rate-limit usage; the end time is always 7 days after the start',
         fiveHourLimit: '5-hour Limit USD',
         concurrency: 'Concurrency Limit',
-        modelAccess: 'Model family access',
+        modelAccess: 'Model & capability access',
         allowClaudeFamily: 'Allow Claude',
         allowGPTFamily: 'Allow GPT/OpenAI',
+        allowImageGeneration: 'Allow image generation',
+        modelAccessHint: 'Image generation also requires the bound group to allow image generation.',
         dispatchOverride: 'Claude -> GPT mapping override',
         dispatchOverrideHint: 'Leave empty to inherit the group config; only affects this API key when Claude /v1/messages dispatches to OpenAI/Codex.',
         opusMappedModel: 'Opus target model',
@@ -1473,6 +1481,7 @@ export default {
       },
       modelAccessClaude: 'Claude',
       modelAccessGPT: 'GPT',
+      modelAccessImage: 'Images',
       modelAccessNone: 'None',
       dispatchOverrideShort: 'Claude->GPT {model}',
       dispatchOverrideMixed: 'Claude->GPT custom',
@@ -2161,6 +2170,8 @@ export default {
       allStatus: 'All Status',
       allGroups: 'All Groups',
       exclusive: 'Exclusive',
+      dedicatedUnlimited: 'Dedicated unlimited',
+      standardLimits: 'Standard limits',
       nonExclusive: 'Non-Exclusive',
       public: 'Public',
       columns: {
@@ -2173,6 +2184,7 @@ export default {
         rateDefault: 'default',
         rpmDefault: 'default',
         type: 'Type',
+        dedicatedUnlimited: 'Dedicated Unlimited',
         accounts: 'Accounts',
         capacity: 'Capacity',
         usage: 'Usage',
@@ -2204,7 +2216,10 @@ export default {
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
         concurrency: 'API Key Concurrency',
         concurrencyPlaceholder: '0 = inherit user concurrency',
-        concurrencyHint: 'Default concurrency cap for API keys in this group. 0 = inherit user concurrency; individual API keys can still override it.'
+        concurrencyHint: 'Default concurrency cap for API keys in this group. 0 = inherit user concurrency; individual API keys can still override it.',
+        dedicatedUnlimited: 'Dedicated unlimited',
+        dedicatedUnlimitedHint:
+          'Use the bound dedicated account and keep recording usage, but skip internal amount, quota, and frequency limits. API key concurrency still applies. Not available for subscription groups.'
       },
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',

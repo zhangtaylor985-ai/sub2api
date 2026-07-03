@@ -504,6 +504,7 @@ export interface Group {
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   concurrency?: number // Group-level API key concurrency cap (0 = inherit user concurrency)
   is_exclusive: boolean
+  dedicated_unlimited: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
   daily_limit_usd: number | null
@@ -570,6 +571,7 @@ export interface ApiKey {
   rate_multiplier?: number // Admin-only API key billing multiplier
   allow_claude_family: boolean
   allow_gpt_family: boolean
+  allow_image_generation: boolean
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   expires_at: string | null // Expiration time (null = never expires)
   created_at: string
@@ -607,6 +609,7 @@ export interface CreateApiKeyRequest {
   status?: 'active' | 'inactive'
   allow_claude_family?: boolean
   allow_gpt_family?: boolean
+  allow_image_generation?: boolean
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 }
 
@@ -627,6 +630,7 @@ export interface UpdateApiKeyRequest {
   reset_rate_limit_usage?: boolean
   allow_claude_family?: boolean
   allow_gpt_family?: boolean
+  allow_image_generation?: boolean
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 }
 
@@ -638,6 +642,7 @@ export interface CreateGroupRequest {
   rpm_limit?: number
   concurrency?: number
   is_exclusive?: boolean
+  dedicated_unlimited?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
@@ -667,6 +672,7 @@ export interface UpdateGroupRequest {
   rpm_limit?: number
   concurrency?: number
   is_exclusive?: boolean
+  dedicated_unlimited?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null

@@ -49,6 +49,7 @@ type CreateGroupRequest struct {
 	Description          string   `json:"description"`
 	RateMultiplier       float64  `json:"rate_multiplier"`
 	IsExclusive          bool     `json:"is_exclusive"`
+	DedicatedUnlimited   bool     `json:"dedicated_unlimited"`
 	AllowImageGeneration bool     `json:"allow_image_generation"`
 	ImageRateIndependent bool     `json:"image_rate_independent"`
 	ImageRateMultiplier  *float64 `json:"image_rate_multiplier"`
@@ -60,6 +61,7 @@ type UpdateGroupRequest struct {
 	Description          *string  `json:"description"`
 	RateMultiplier       *float64 `json:"rate_multiplier"`
 	IsExclusive          *bool    `json:"is_exclusive"`
+	DedicatedUnlimited   *bool    `json:"dedicated_unlimited"`
 	Status               *string  `json:"status"`
 	AllowImageGeneration *bool    `json:"allow_image_generation"`
 	ImageRateIndependent *bool    `json:"image_rate_independent"`
@@ -105,6 +107,7 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		Platform:             PlatformAnthropic,
 		RateMultiplier:       req.RateMultiplier,
 		IsExclusive:          req.IsExclusive,
+		DedicatedUnlimited:   req.DedicatedUnlimited,
 		Status:               StatusActive,
 		SubscriptionType:     SubscriptionTypeStandard,
 		AllowImageGeneration: req.AllowImageGeneration,
@@ -176,6 +179,9 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 
 	if req.IsExclusive != nil {
 		group.IsExclusive = *req.IsExclusive
+	}
+	if req.DedicatedUnlimited != nil {
+		group.DedicatedUnlimited = *req.DedicatedUnlimited
 	}
 
 	if req.Status != nil {

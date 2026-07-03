@@ -191,15 +191,16 @@ type AdminBoundAuthIdentityChannel struct {
 }
 
 type CreateGroupInput struct {
-	Name             string
-	Description      string
-	Platform         string
-	RateMultiplier   float64
-	IsExclusive      bool
-	SubscriptionType string   // standard/subscription
-	DailyLimitUSD    *float64 // 日限额 (USD)
-	WeeklyLimitUSD   *float64 // 周限额 (USD)
-	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	Name               string
+	Description        string
+	Platform           string
+	RateMultiplier     float64
+	IsExclusive        bool
+	DedicatedUnlimited bool
+	SubscriptionType   string   // standard/subscription
+	DailyLimitUSD      *float64 // 日限额 (USD)
+	WeeklyLimitUSD     *float64 // 周限额 (USD)
+	MonthlyLimitUSD    *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool
 	ImageRateIndependent bool
@@ -232,16 +233,17 @@ type CreateGroupInput struct {
 }
 
 type UpdateGroupInput struct {
-	Name             string
-	Description      string
-	Platform         string
-	RateMultiplier   *float64 // 使用指针以支持设置为0
-	IsExclusive      *bool
-	Status           string
-	SubscriptionType string   // standard/subscription
-	DailyLimitUSD    *float64 // 日限额 (USD)
-	WeeklyLimitUSD   *float64 // 周限额 (USD)
-	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	Name               string
+	Description        string
+	Platform           string
+	RateMultiplier     *float64 // 使用指针以支持设置为0
+	IsExclusive        *bool
+	DedicatedUnlimited *bool
+	Status             string
+	SubscriptionType   string   // standard/subscription
+	DailyLimitUSD      *float64 // 日限额 (USD)
+	WeeklyLimitUSD     *float64 // 周限额 (USD)
+	MonthlyLimitUSD    *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration *bool
 	ImageRateIndependent *bool
@@ -379,6 +381,7 @@ type AdminCreateAPIKeyInput struct {
 	Concurrency                 int
 	AllowClaudeFamily           *bool
 	AllowGPTFamily              *bool
+	AllowImageGeneration        *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	ResetRateLimitUsage         bool
 }
@@ -393,6 +396,7 @@ type AdminUpdateAPIKeyPolicyInput struct {
 	Concurrency                 *int
 	AllowClaudeFamily           *bool
 	AllowGPTFamily              *bool
+	AllowImageGeneration        *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 
 	RateLimit5h        *float64
@@ -1665,6 +1669,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if subscriptionType == "" {
 		subscriptionType = SubscriptionTypeStandard
 	}
+	if input.DedicatedUnlimited && subscriptionType == SubscriptionTypeSubscription {
+		return nil, errors.New("dedicated_unlimited groups must use standard subscription_type")
+	}
 
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
@@ -1744,6 +1751,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
 		IsExclusive:                     input.IsExclusive,
+		DedicatedUnlimited:              input.DedicatedUnlimited,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
 		DailyLimitUSD:                   dailyLimit,
@@ -1915,6 +1923,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive
 	}
+	if input.DedicatedUnlimited != nil {
+		group.DedicatedUnlimited = *input.DedicatedUnlimited
+	}
 	if input.Status != "" {
 		group.Status = input.Status
 	}
@@ -1922,6 +1933,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	// 订阅相关字段
 	if input.SubscriptionType != "" {
 		group.SubscriptionType = input.SubscriptionType
+	}
+	if group.DedicatedUnlimited && group.SubscriptionType == SubscriptionTypeSubscription {
+		return nil, errors.New("dedicated_unlimited groups must use standard subscription_type")
 	}
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	// 前端始终发送这三个字段，无需 nil 守卫
@@ -2286,21 +2300,23 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCre
 	}
 
 	apiKey := &APIKey{
-		UserID:               userID,
-		Key:                  keyValue,
-		Name:                 strings.TrimSpace(input.Name),
-		Status:               status,
-		Quota:                input.Quota,
-		RateMultiplier:       rateMultiplier,
-		QuotaUsed:            0,
-		ExpiresAt:            input.ExpiresAt,
-		RateLimit5h:          input.RateLimit5h,
-		RateLimit1d:          input.RateLimit1d,
-		RateLimit7d:          input.RateLimit7d,
-		Concurrency:          input.Concurrency,
-		AllowClaudeFamily:    true,
-		AllowGPTFamily:       true,
-		ModelFamilyPolicySet: true,
+		UserID:                   userID,
+		Key:                      keyValue,
+		Name:                     strings.TrimSpace(input.Name),
+		Status:                   status,
+		Quota:                    input.Quota,
+		RateMultiplier:           rateMultiplier,
+		QuotaUsed:                0,
+		ExpiresAt:                input.ExpiresAt,
+		RateLimit5h:              input.RateLimit5h,
+		RateLimit1d:              input.RateLimit1d,
+		RateLimit7d:              input.RateLimit7d,
+		Concurrency:              input.Concurrency,
+		AllowClaudeFamily:        true,
+		AllowGPTFamily:           true,
+		ModelFamilyPolicySet:     true,
+		AllowImageGeneration:     true,
+		ImageGenerationPolicySet: true,
 	}
 	if input.MessagesDispatchModelConfig != nil {
 		apiKey.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
@@ -2310,6 +2326,9 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCre
 	}
 	if input.AllowGPTFamily != nil {
 		apiKey.AllowGPTFamily = *input.AllowGPTFamily
+	}
+	if input.AllowImageGeneration != nil {
+		apiKey.AllowImageGeneration = *input.AllowImageGeneration
 	}
 	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
 		return nil, fmt.Errorf("create api key: %w", err)
@@ -2560,6 +2579,10 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 	if input.AllowGPTFamily != nil {
 		apiKey.AllowGPTFamily = *input.AllowGPTFamily
 		apiKey.ModelFamilyPolicySet = true
+	}
+	if input.AllowImageGeneration != nil {
+		apiKey.AllowImageGeneration = *input.AllowImageGeneration
+		apiKey.ImageGenerationPolicySet = true
 	}
 	if input.MessagesDispatchModelConfig != nil {
 		apiKey.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)

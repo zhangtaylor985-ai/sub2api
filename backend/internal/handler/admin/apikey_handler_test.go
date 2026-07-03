@@ -163,7 +163,7 @@ func TestAdminAPIKeyHandler_UpdatePolicyFields(t *testing.T) {
 	svc.apiKeys[0].Usage1d = 2.4
 	router := setupAPIKeyHandler(svc)
 	expiresAt := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second)
-	body := `{"status":"inactive","quota":25.5,"expires_at":"` + expiresAt.Format(time.RFC3339) + `","reset_quota":true,"rate_limit_1d":8,"reset_rate_limit_usage":true}`
+	body := `{"status":"inactive","quota":25.5,"expires_at":"` + expiresAt.Format(time.RFC3339) + `","reset_quota":true,"rate_limit_1d":8,"reset_rate_limit_usage":true,"allow_image_generation":false}`
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString(body))
@@ -181,6 +181,7 @@ func TestAdminAPIKeyHandler_UpdatePolicyFields(t *testing.T) {
 				ExpiresAt   *time.Time `json:"expires_at"`
 				RateLimit1d float64    `json:"rate_limit_1d"`
 				Usage1d     float64    `json:"usage_1d"`
+				AllowImages bool       `json:"allow_image_generation"`
 			} `json:"api_key"`
 		} `json:"data"`
 	}
@@ -192,6 +193,7 @@ func TestAdminAPIKeyHandler_UpdatePolicyFields(t *testing.T) {
 	require.True(t, resp.Data.APIKey.ExpiresAt.Equal(expiresAt))
 	require.Equal(t, 8.0, resp.Data.APIKey.RateLimit1d)
 	require.Zero(t, resp.Data.APIKey.Usage1d)
+	require.False(t, resp.Data.APIKey.AllowImages)
 }
 
 func TestAdminAPIKeyHandler_UpdateWeeklyWindowStart(t *testing.T) {

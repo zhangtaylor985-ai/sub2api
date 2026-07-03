@@ -42,6 +42,9 @@ type APIKey struct {
 	AllowClaudeFamily    bool
 	AllowGPTFamily       bool
 	ModelFamilyPolicySet bool
+	// Image generation policy gates dedicated Images endpoints and Responses image tools.
+	AllowImageGeneration     bool
+	ImageGenerationPolicySet bool
 	// Optional API key-level override for Claude /v1/messages dispatch to OpenAI/Codex.
 	// Empty config means inherit the group's messages dispatch mapping.
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig

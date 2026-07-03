@@ -480,11 +480,12 @@ func TestAdminService_AdminUpdateAPIKeyPolicy_UpdatesManagedFields(t *testing.T)
 	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, authCacheInvalidator: cache}
 
 	got, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{
-		Quota:               testPtrFloat64(25),
-		ExpiresAt:           &expiresAt,
-		RateLimit1d:         testPtrFloat64(8),
-		ResetQuota:          true,
-		ResetRateLimitUsage: true,
+		Quota:                testPtrFloat64(25),
+		ExpiresAt:            &expiresAt,
+		RateLimit1d:          testPtrFloat64(8),
+		AllowImageGeneration: testPtrBool(false),
+		ResetQuota:           true,
+		ResetRateLimitUsage:  true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, StatusActive, got.Status)
@@ -492,6 +493,7 @@ func TestAdminService_AdminUpdateAPIKeyPolicy_UpdatesManagedFields(t *testing.T)
 	require.Zero(t, got.QuotaUsed)
 	require.Equal(t, &expiresAt, got.ExpiresAt)
 	require.Equal(t, 8.0, got.RateLimit1d)
+	require.False(t, got.AllowsImageGeneration())
 	require.Zero(t, got.Usage1d)
 	require.Nil(t, got.Window1dStart)
 	require.Equal(t, []string{"sk-test"}, cache.keys)

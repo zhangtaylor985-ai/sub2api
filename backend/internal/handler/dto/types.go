@@ -57,6 +57,7 @@ type APIKey struct {
 	Concurrency                 int                                      `json:"concurrency"` // 0 = inherit from group/user
 	AllowClaudeFamily           bool                                     `json:"allow_claude_family"`
 	AllowGPTFamily              bool                                     `json:"allow_gpt_family"`
+	AllowImageGeneration        bool                                     `json:"allow_image_generation"`
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	IPWhitelist                 []string                                 `json:"ip_whitelist"`
 	IPBlacklist                 []string                                 `json:"ip_blacklist"`
@@ -93,13 +94,14 @@ type AdminAPIKey struct {
 }
 
 type Group struct {
-	ID             int64   `json:"id"`
-	Name           string  `json:"name"`
-	Description    string  `json:"description"`
-	Platform       string  `json:"platform"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
-	Status         string  `json:"status"`
+	ID                 int64   `json:"id"`
+	Name               string  `json:"name"`
+	Description        string  `json:"description"`
+	Platform           string  `json:"platform"`
+	RateMultiplier     float64 `json:"rate_multiplier"`
+	IsExclusive        bool    `json:"is_exclusive"`
+	DedicatedUnlimited bool    `json:"dedicated_unlimited"`
+	Status             string  `json:"status"`
 
 	SubscriptionType string   `json:"subscription_type"`
 	DailyLimitUSD    *float64 `json:"daily_limit_usd"`

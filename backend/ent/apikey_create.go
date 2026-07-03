@@ -170,6 +170,20 @@ func (_c *APIKeyCreate) SetNillableAllowGptFamily(v *bool) *APIKeyCreate {
 	return _c
 }
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_c *APIKeyCreate) SetAllowImageGeneration(v bool) *APIKeyCreate {
+	_c.mutation.SetAllowImageGeneration(v)
+	return _c
+}
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableAllowImageGeneration(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetAllowImageGeneration(*v)
+	}
+	return _c
+}
+
 // SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
 func (_c *APIKeyCreate) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *APIKeyCreate {
 	_c.mutation.SetMessagesDispatchModelConfig(v)
@@ -474,6 +488,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultAllowGptFamily
 		_c.mutation.SetAllowGptFamily(v)
 	}
+	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
+		v := apikey.DefaultAllowImageGeneration
+		_c.mutation.SetAllowImageGeneration(v)
+	}
 	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
 		v := apikey.DefaultMessagesDispatchModelConfig
 		_c.mutation.SetMessagesDispatchModelConfig(v)
@@ -559,6 +577,9 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowGptFamily(); !ok {
 		return &ValidationError{Name: "allow_gpt_family", err: errors.New(`ent: missing required field "APIKey.allow_gpt_family"`)}
+	}
+	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
+		return &ValidationError{Name: "allow_image_generation", err: errors.New(`ent: missing required field "APIKey.allow_image_generation"`)}
 	}
 	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
 		return &ValidationError{Name: "messages_dispatch_model_config", err: errors.New(`ent: missing required field "APIKey.messages_dispatch_model_config"`)}
@@ -656,6 +677,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowGptFamily(); ok {
 		_spec.SetField(apikey.FieldAllowGptFamily, field.TypeBool, value)
 		_node.AllowGptFamily = value
+	}
+	if value, ok := _c.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(apikey.FieldAllowImageGeneration, field.TypeBool, value)
+		_node.AllowImageGeneration = value
 	}
 	if value, ok := _c.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(apikey.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
@@ -976,6 +1001,18 @@ func (u *APIKeyUpsert) SetAllowGptFamily(v bool) *APIKeyUpsert {
 // UpdateAllowGptFamily sets the "allow_gpt_family" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateAllowGptFamily() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldAllowGptFamily)
+	return u
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *APIKeyUpsert) SetAllowImageGeneration(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldAllowImageGeneration, v)
+	return u
+}
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateAllowImageGeneration() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldAllowImageGeneration)
 	return u
 }
 
@@ -1485,6 +1522,20 @@ func (u *APIKeyUpsertOne) SetAllowGptFamily(v bool) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateAllowGptFamily() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateAllowGptFamily()
+	})
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *APIKeyUpsertOne) SetAllowImageGeneration(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAllowImageGeneration(v)
+	})
+}
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateAllowImageGeneration() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAllowImageGeneration()
 	})
 }
 
@@ -2207,6 +2258,20 @@ func (u *APIKeyUpsertBulk) SetAllowGptFamily(v bool) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateAllowGptFamily() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateAllowGptFamily()
+	})
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *APIKeyUpsertBulk) SetAllowImageGeneration(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAllowImageGeneration(v)
+	})
+}
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateAllowImageGeneration() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAllowImageGeneration()
 	})
 }
 

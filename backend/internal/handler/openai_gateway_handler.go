@@ -207,9 +207,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	imageIntent := service.IsImageGenerationIntent("/v1/responses", reqModel, body)
-	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
-		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
-		return
+	if imageIntent {
+		if !service.APIKeyAllowsImageGeneration(apiKey) {
+			h.errorResponse(c, http.StatusForbidden, "permission_error", service.APIKeyImageGenerationPermissionMessage())
+			return
+		}
+		if !service.GroupAllowsImageGeneration(apiKey.Group) {
+			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+			return
+		}
 	}
 	var imageReleaseFunc func()
 	if imageIntent {
@@ -1211,9 +1217,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 
-	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) && !service.GroupAllowsImageGeneration(apiKey.Group) {
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
-		return
+	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) {
+		if !service.APIKeyAllowsImageGeneration(apiKey) {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.APIKeyImageGenerationPermissionMessage())
+			return
+		}
+		if !service.GroupAllowsImageGeneration(apiKey.Group) {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
+			return
+		}
 	}
 
 	// 解析渠道级模型映射

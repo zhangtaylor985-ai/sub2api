@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 )
 
@@ -70,7 +71,7 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 				IsSubscriptionBill: tt.isSubscription,
 			}
 
-			cmd := buildUsageBillingCommand("req-1", nil, p)
+			cmd := buildUsageBillingCommand(context.Background(), "req-1", nil, p)
 			if cmd == nil {
 				t.Fatal("buildUsageBillingCommand returned nil")
 			}
@@ -81,5 +82,95 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 				t.Errorf("BalanceCost = %v, want %v", cmd.BalanceCost, tt.wantBalance)
 			}
 		})
+	}
+}
+
+type tokenPackageStateAPIKeyServiceStub struct {
+	total float64
+}
+
+func (s tokenPackageStateAPIKeyServiceStub) UpdateQuotaUsed(context.Context, int64, float64) error {
+	return nil
+}
+
+func (s tokenPackageStateAPIKeyServiceStub) UpdateRateLimitUsage(context.Context, int64, float64) error {
+	return nil
+}
+
+func (s tokenPackageStateAPIKeyServiceStub) GetTokenPackageState(context.Context, int64) (*APIKeyTokenPackageState, error) {
+	return &APIKeyTokenPackageState{TotalUSD: s.total, RemainingUSD: s.total}, nil
+}
+
+func TestBuildUsageBillingCommand_TokenPackageOnlyUpdatesRateLimitLedger(t *testing.T) {
+	t.Parallel()
+
+	p := &postUsageBillingParams{
+		Cost:          &CostBreakdown{TotalCost: 2.5, ActualCost: 2.5},
+		User:          &User{ID: 1},
+		APIKey:        &APIKey{ID: 2},
+		Account:       &Account{ID: 3},
+		APIKeyService: tokenPackageStateAPIKeyServiceStub{total: 10},
+	}
+
+	cmd := buildUsageBillingCommand(context.Background(), "req-token-package-only", nil, p)
+	if cmd == nil {
+		t.Fatal("buildUsageBillingCommand returned nil")
+	}
+	if cmd.APIKeyRateLimitCost != 2.5 {
+		t.Fatalf("APIKeyRateLimitCost = %v, want 2.5", cmd.APIKeyRateLimitCost)
+	}
+}
+
+func TestBuildUsageBillingCommand_NoRateLimitOrTokenPackageSkipsRateLimitLedger(t *testing.T) {
+	t.Parallel()
+
+	p := &postUsageBillingParams{
+		Cost:          &CostBreakdown{TotalCost: 2.5, ActualCost: 2.5},
+		User:          &User{ID: 1},
+		APIKey:        &APIKey{ID: 2},
+		Account:       &Account{ID: 3},
+		APIKeyService: tokenPackageStateAPIKeyServiceStub{},
+	}
+
+	cmd := buildUsageBillingCommand(context.Background(), "req-no-package", nil, p)
+	if cmd == nil {
+		t.Fatal("buildUsageBillingCommand returned nil")
+	}
+	if cmd.APIKeyRateLimitCost != 0 {
+		t.Fatalf("APIKeyRateLimitCost = %v, want 0", cmd.APIKeyRateLimitCost)
+	}
+}
+
+func TestBuildUsageBillingCommand_DedicatedUnlimitedSkipsInternalBilling(t *testing.T) {
+	t.Parallel()
+
+	groupID := int64(7)
+	p := &postUsageBillingParams{
+		Cost: &CostBreakdown{TotalCost: 2.5, ActualCost: 2.5},
+		User: &User{ID: 1},
+		APIKey: &APIKey{
+			ID:          2,
+			GroupID:     &groupID,
+			Group:       &Group{ID: groupID, DedicatedUnlimited: true},
+			Quota:       10,
+			RateLimit1d: 5,
+		},
+		Account: &Account{
+			ID:   3,
+			Type: AccountTypeAPIKey,
+			Extra: map[string]any{
+				"quota_limit": 100.0,
+			},
+		},
+		APIKeyService: tokenPackageStateAPIKeyServiceStub{total: 10},
+	}
+
+	cmd := buildUsageBillingCommand(context.Background(), "req-dedicated-unlimited", nil, p)
+	if cmd == nil {
+		t.Fatal("buildUsageBillingCommand returned nil")
+	}
+	if cmd.BalanceCost != 0 || cmd.SubscriptionCost != 0 || cmd.APIKeyQuotaCost != 0 || cmd.APIKeyRateLimitCost != 0 || cmd.AccountQuotaCost != 0 {
+		t.Fatalf("dedicated unlimited costs = balance:%v subscription:%v api_key_quota:%v api_key_rate:%v account_quota:%v, want all zero",
+			cmd.BalanceCost, cmd.SubscriptionCost, cmd.APIKeyQuotaCost, cmd.APIKeyRateLimitCost, cmd.AccountQuotaCost)
 	}
 }

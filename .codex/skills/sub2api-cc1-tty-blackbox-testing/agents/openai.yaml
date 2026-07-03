@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sub2API CC1 TTY Blackbox Testing"
+  short_description: "Run Claude Code cc1 real TTY blackbox checks against Sub2API."
+  default_prompt: "Use this skill to verify Claude Code or cc1 really reaches a Sub2API endpoint with debug logs, server logs, and multi-turn TTY evidence."

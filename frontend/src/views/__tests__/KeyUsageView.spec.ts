@@ -67,6 +67,12 @@ const messages: Record<string, string> = {
   'keyUsage.querySuccess': 'Query successful',
   'keyUsage.queryFailed': 'Query failed',
   'keyUsage.queryFailedRetry': 'Query failed, please try again later',
+  'keyUsage.dedicatedUnlimitedMode': 'Dedicated Unlimited',
+  'keyUsage.dedicatedUnlimitedStatus': 'Dedicated active',
+  'keyUsage.todayUsage': 'Today Usage',
+  'keyUsage.totalUsage': 'Total Usage',
+  'keyUsage.limitPolicy': 'Limit Policy',
+  'keyUsage.concurrencyOnly': 'No amount or usage limits; concurrency still applies',
   'home.viewDocs': 'Docs',
   'home.switchToLight': 'Light',
   'home.switchToDark': 'Dark',
@@ -216,6 +222,67 @@ describe('KeyUsageView daily detail', () => {
     expect(text).toContain('Period')
     expect(text).toContain('05-28')
     expect(text).toContain('06-04')
+
+    wrapper.unmount()
+  })
+
+  it('renders dedicated unlimited mode without quota progress', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        mode: 'dedicated_unlimited',
+        isValid: true,
+        status: 'active',
+        planName: 'Dedicated Codex',
+        limit_policy: 'unlimited_usage_concurrency_only',
+        concurrency: 2,
+        usage: {
+          today: {
+            requests: 3,
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            total_tokens: 150,
+            actual_cost: 1.23,
+          },
+          total: {
+            requests: 30,
+            input_tokens: 1000,
+            output_tokens: 500,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            total_tokens: 1500,
+            actual_cost: 12.34,
+          },
+          rpm: 0,
+          tpm: 0,
+        },
+      }),
+    } as Response)
+
+    const wrapper = mount(KeyUsageView, {
+      global: {
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' },
+          LocaleSwitcher: true,
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.find('input').setValue('sk-dedicated-key')
+    await wrapper.find('input').trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('Dedicated Codex')
+    expect(text).toContain('Dedicated active')
+    expect(text).toContain('Today Usage')
+    expect(text).toContain('Total Usage')
+    expect(text).toContain('No amount or usage limits; concurrency still applies')
+    expect(text).not.toContain('Remaining Quota')
 
     wrapper.unmount()
   })

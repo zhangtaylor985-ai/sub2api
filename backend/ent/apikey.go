@@ -45,6 +45,8 @@ type APIKey struct {
 	AllowClaudeFamily bool `json:"allow_claude_family,omitempty"`
 	// Whether this API key may request GPT/OpenAI-family models from user-facing endpoints
 	AllowGptFamily bool `json:"allow_gpt_family,omitempty"`
+	// Whether this API key may use image generation endpoints and tools
+	AllowImageGeneration bool `json:"allow_image_generation,omitempty"`
 	// API key-level OpenAI Messages dispatch model override
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	// Last usage time of this API key
@@ -134,7 +136,7 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case apikey.FieldMessagesDispatchModelConfig, apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
 			values[i] = new([]byte)
-		case apikey.FieldAllowClaudeFamily, apikey.FieldAllowGptFamily:
+		case apikey.FieldAllowClaudeFamily, apikey.FieldAllowGptFamily, apikey.FieldAllowImageGeneration:
 			values[i] = new(sql.NullBool)
 		case apikey.FieldRateMultiplier, apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
@@ -238,6 +240,12 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field allow_gpt_family", values[i])
 			} else if value.Valid {
 				_m.AllowGptFamily = value.Bool
+			}
+		case apikey.FieldAllowImageGeneration:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_image_generation", values[i])
+			} else if value.Valid {
+				_m.AllowImageGeneration = value.Bool
 			}
 		case apikey.FieldMessagesDispatchModelConfig:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -436,6 +444,9 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_gpt_family=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowGptFamily))
+	builder.WriteString(", ")
+	builder.WriteString("allow_image_generation=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowImageGeneration))
 	builder.WriteString(", ")
 	builder.WriteString("messages_dispatch_model_config=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MessagesDispatchModelConfig))

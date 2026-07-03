@@ -119,6 +119,20 @@ func (_c *GroupCreate) SetNillableIsExclusive(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetDedicatedUnlimited sets the "dedicated_unlimited" field.
+func (_c *GroupCreate) SetDedicatedUnlimited(v bool) *GroupCreate {
+	_c.mutation.SetDedicatedUnlimited(v)
+	return _c
+}
+
+// SetNillableDedicatedUnlimited sets the "dedicated_unlimited" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDedicatedUnlimited(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetDedicatedUnlimited(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *GroupCreate) SetStatus(v string) *GroupCreate {
 	_c.mutation.SetStatus(v)
@@ -644,6 +658,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultIsExclusive
 		_c.mutation.SetIsExclusive(v)
 	}
+	if _, ok := _c.mutation.DedicatedUnlimited(); !ok {
+		v := group.DefaultDedicatedUnlimited
+		_c.mutation.SetDedicatedUnlimited(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := group.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -744,6 +762,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		return &ValidationError{Name: "is_exclusive", err: errors.New(`ent: missing required field "Group.is_exclusive"`)}
+	}
+	if _, ok := _c.mutation.DedicatedUnlimited(); !ok {
+		return &ValidationError{Name: "dedicated_unlimited", err: errors.New(`ent: missing required field "Group.dedicated_unlimited"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Group.status"`)}
@@ -876,6 +897,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 		_node.IsExclusive = value
+	}
+	if value, ok := _c.mutation.DedicatedUnlimited(); ok {
+		_spec.SetField(group.FieldDedicatedUnlimited, field.TypeBool, value)
+		_node.DedicatedUnlimited = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
@@ -1232,6 +1257,18 @@ func (u *GroupUpsert) SetIsExclusive(v bool) *GroupUpsert {
 // UpdateIsExclusive sets the "is_exclusive" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateIsExclusive() *GroupUpsert {
 	u.SetExcluded(group.FieldIsExclusive)
+	return u
+}
+
+// SetDedicatedUnlimited sets the "dedicated_unlimited" field.
+func (u *GroupUpsert) SetDedicatedUnlimited(v bool) *GroupUpsert {
+	u.Set(group.FieldDedicatedUnlimited, v)
+	return u
+}
+
+// UpdateDedicatedUnlimited sets the "dedicated_unlimited" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDedicatedUnlimited() *GroupUpsert {
+	u.SetExcluded(group.FieldDedicatedUnlimited)
 	return u
 }
 
@@ -1850,6 +1887,20 @@ func (u *GroupUpsertOne) SetIsExclusive(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateIsExclusive() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateIsExclusive()
+	})
+}
+
+// SetDedicatedUnlimited sets the "dedicated_unlimited" field.
+func (u *GroupUpsertOne) SetDedicatedUnlimited(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDedicatedUnlimited(v)
+	})
+}
+
+// UpdateDedicatedUnlimited sets the "dedicated_unlimited" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDedicatedUnlimited() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDedicatedUnlimited()
 	})
 }
 
@@ -2712,6 +2763,20 @@ func (u *GroupUpsertBulk) SetIsExclusive(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateIsExclusive() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateIsExclusive()
+	})
+}
+
+// SetDedicatedUnlimited sets the "dedicated_unlimited" field.
+func (u *GroupUpsertBulk) SetDedicatedUnlimited(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDedicatedUnlimited(v)
+	})
+}
+
+// UpdateDedicatedUnlimited sets the "dedicated_unlimited" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDedicatedUnlimited() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDedicatedUnlimited()
 	})
 }
 

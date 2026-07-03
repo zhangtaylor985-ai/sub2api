@@ -276,7 +276,12 @@
                 <input v-model="createForm.allow_gpt_family" type="checkbox" class="rounded border-gray-300 text-primary-600" />
                 <span>{{ t('admin.apiKeys.form.allowGPTFamily') }}</span>
               </label>
+              <label class="inline-flex items-center gap-2">
+                <input v-model="createForm.allow_image_generation" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>{{ t('admin.apiKeys.form.allowImageGeneration') }}</span>
+              </label>
             </div>
+            <span class="input-hint">{{ t('admin.apiKeys.form.modelAccessHint') }}</span>
           </div>
           <div class="space-y-3 md:col-span-2">
             <div>
@@ -393,7 +398,12 @@
                 <input v-model="editForm.allow_gpt_family" type="checkbox" class="rounded border-gray-300 text-primary-600" />
                 <span>{{ t('admin.apiKeys.form.allowGPTFamily') }}</span>
               </label>
+              <label class="inline-flex items-center gap-2">
+                <input v-model="editForm.allow_image_generation" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>{{ t('admin.apiKeys.form.allowImageGeneration') }}</span>
+              </label>
             </div>
+            <span class="input-hint">{{ t('admin.apiKeys.form.modelAccessHint') }}</span>
           </div>
           <div class="space-y-3 md:col-span-2">
             <div>
@@ -607,6 +617,7 @@ const defaultCreateForm = () => ({
   concurrency: 0,
   allow_claude_family: true,
   allow_gpt_family: true,
+  allow_image_generation: true,
   dispatch_opus_mapped_model: '',
   dispatch_sonnet_mapped_model: '',
   dispatch_haiku_mapped_model: '',
@@ -627,6 +638,7 @@ const editForm = reactive({
   concurrency: 0,
   allow_claude_family: true,
   allow_gpt_family: true,
+  allow_image_generation: true,
   dispatch_opus_mapped_model: '',
   dispatch_sonnet_mapped_model: '',
   dispatch_haiku_mapped_model: '',
@@ -809,6 +821,7 @@ const formatModelAccess = (key: ApiKey) => {
   const parts: string[] = []
   if (key.allow_claude_family) parts.push(t('admin.apiKeys.modelAccessClaude'))
   if (key.allow_gpt_family) parts.push(t('admin.apiKeys.modelAccessGPT'))
+  if (key.allow_image_generation !== false) parts.push(t('admin.apiKeys.modelAccessImage'))
   const base = parts.length > 0 ? parts.join(' / ') : t('admin.apiKeys.modelAccessNone')
   const override = formatDispatchOverride(key.messages_dispatch_model_config)
   return override ? `${base} · ${override}` : base
@@ -962,6 +975,7 @@ const openEditDialog = (key: ApiKey) => {
   editForm.concurrency = key.concurrency || 0
   editForm.allow_claude_family = key.allow_claude_family !== false
   editForm.allow_gpt_family = key.allow_gpt_family !== false
+  editForm.allow_image_generation = key.allow_image_generation !== false
   applyDispatchConfigToForm(editForm, key.messages_dispatch_model_config)
   editForm.expires_at_local = toDateTimeLocal(key.expires_at)
   editForm.window_7d_start_local = toDateTimeLocal(key.window_7d_start)
@@ -1056,6 +1070,7 @@ const handleCreate = async () => {
       concurrency: numericValue(createForm.concurrency),
       allow_claude_family: createForm.allow_claude_family,
       allow_gpt_family: createForm.allow_gpt_family,
+      allow_image_generation: createForm.allow_image_generation,
       messages_dispatch_model_config: dispatchConfigFromForm(createForm),
       expires_at: expiresAt || undefined
     })
@@ -1097,6 +1112,7 @@ const handleUpdate = async () => {
       concurrency: numericValue(editForm.concurrency),
       allow_claude_family: editForm.allow_claude_family,
       allow_gpt_family: editForm.allow_gpt_family,
+      allow_image_generation: editForm.allow_image_generation,
       messages_dispatch_model_config: dispatchConfigFromForm(editForm),
       expires_at: editForm.clear_expires_at || editForm.expires_at_local ? expiresAt : undefined,
       window_7d_start: weeklyWindowStart,

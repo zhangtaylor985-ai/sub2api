@@ -11,6 +11,7 @@ postgres_data_pg17_local/
 postgres_data_prod_restore_pg18/
 redis_data_local/
 db_backups/
+migration_snapshots/
 
 # Environment configuration (contains sensitive information)
 .env

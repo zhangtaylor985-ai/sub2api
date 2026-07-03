@@ -115,6 +115,11 @@ func AllowGptFamily(v bool) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldAllowGptFamily, v))
 }
 
+// AllowImageGeneration applies equality check predicate on the "allow_image_generation" field. It's identical to AllowImageGenerationEQ.
+func AllowImageGeneration(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldAllowImageGeneration, v))
+}
+
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
 func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
@@ -653,6 +658,16 @@ func AllowGptFamilyEQ(v bool) predicate.APIKey {
 // AllowGptFamilyNEQ applies the NEQ predicate on the "allow_gpt_family" field.
 func AllowGptFamilyNEQ(v bool) predicate.APIKey {
 	return predicate.APIKey(sql.FieldNEQ(FieldAllowGptFamily, v))
+}
+
+// AllowImageGenerationEQ applies the EQ predicate on the "allow_image_generation" field.
+func AllowImageGenerationEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldAllowImageGeneration, v))
+}
+
+// AllowImageGenerationNEQ applies the NEQ predicate on the "allow_image_generation" field.
+func AllowImageGenerationNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldAllowImageGeneration, v))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.

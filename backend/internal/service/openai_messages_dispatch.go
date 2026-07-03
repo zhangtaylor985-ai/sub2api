@@ -4,7 +4,7 @@ import "strings"
 
 const (
 	defaultOpenAIMessagesDispatchOpusMappedModel   = "gpt-5.4"
-	defaultOpenAIMessagesDispatchSonnetMappedModel = "gpt-5.3-codex"
+	defaultOpenAIMessagesDispatchSonnetMappedModel = "gpt-5.4"
 	defaultOpenAIMessagesDispatchHaikuMappedModel  = "gpt-5.4-mini"
 )
 
@@ -44,6 +44,8 @@ func claudeMessagesDispatchFamily(model string) string {
 		return ""
 	}
 	switch {
+	case strings.Contains(normalized, "fable"):
+		return "opus"
 	case strings.Contains(normalized, "opus"):
 		return "opus"
 	case strings.Contains(normalized, "sonnet"):

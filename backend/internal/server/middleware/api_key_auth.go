@@ -135,8 +135,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		var subscription *service.UserSubscription
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+		isDedicatedUnlimited := apiKey.Group != nil && apiKey.Group.IsDedicatedUnlimited()
 
-		if isSubscriptionType && subscriptionService != nil {
+		if isSubscriptionType && !isDedicatedUnlimited && subscriptionService != nil {
 			sub, subErr := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
 				apiKey.User.ID,
@@ -159,8 +160,10 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// Key 状态检查
 			switch apiKey.Status {
 			case service.StatusAPIKeyQuotaExhausted:
-				AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
-				return
+				if !isDedicatedUnlimited {
+					AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
+					return
+				}
 			case service.StatusAPIKeyExpired:
 				AbortWithError(c, 403, "API_KEY_EXPIRED", "API key has expired")
 				return
@@ -171,13 +174,13 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				AbortWithError(c, 403, "API_KEY_EXPIRED", "API key has expired")
 				return
 			}
-			if apiKey.IsQuotaExhausted() {
+			if !isDedicatedUnlimited && apiKey.IsQuotaExhausted() {
 				AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
 				return
 			}
 
 			// 订阅模式：验证订阅限额
-			if subscription != nil {
+			if subscription != nil && !isDedicatedUnlimited {
 				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
 				if validateErr != nil {
 					code := "SUBSCRIPTION_INVALID"
@@ -199,7 +202,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				}
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
-				if apiKey.User.Balance <= 0 {
+				if !isDedicatedUnlimited && apiKey.User.Balance <= 0 {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 				}

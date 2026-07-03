@@ -716,6 +716,71 @@ func TestAPIKeyAuthTouchesLastUsedInStandardMode(t *testing.T) {
 	require.Equal(t, 1, touchCalls)
 }
 
+func TestDedicatedUnlimitedBypassesQuotaExhaustedBillingGate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name               string
+		dedicatedUnlimited bool
+		wantStatus         int
+	}{
+		{name: "standard_group_blocks_quota_exhausted_key", dedicatedUnlimited: false, wantStatus: http.StatusTooManyRequests},
+		{name: "dedicated_unlimited_group_allows_quota_exhausted_key", dedicatedUnlimited: true, wantStatus: http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			group := &service.Group{
+				ID:                 42,
+				Name:               "dedicated",
+				Platform:           service.PlatformOpenAI,
+				Status:             service.StatusActive,
+				Hydrated:           true,
+				SubscriptionType:   service.SubscriptionTypeStandard,
+				DedicatedUnlimited: tt.dedicatedUnlimited,
+			}
+			user := &service.User{
+				ID:          7,
+				Role:        service.RoleUser,
+				Status:      service.StatusActive,
+				Balance:     0,
+				Concurrency: 3,
+			}
+			apiKey := &service.APIKey{
+				ID:        102,
+				UserID:    user.ID,
+				GroupID:   &group.ID,
+				Key:       "quota-exhausted",
+				Status:    service.StatusAPIKeyQuotaExhausted,
+				User:      user,
+				Group:     group,
+				Quota:     10,
+				QuotaUsed: 10,
+			}
+			apiKeyRepo := &stubApiKeyRepo{
+				getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+					if key != apiKey.Key {
+						return nil, service.ErrAPIKeyNotFound
+					}
+					clone := *apiKey
+					return &clone, nil
+				},
+			}
+
+			cfg := &config.Config{RunMode: config.RunModeStandard}
+			apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+			router := newAuthTestRouter(apiKeyService, nil, cfg)
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/t", nil)
+			req.Header.Set("x-api-key", apiKey.Key)
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, tt.wantStatus, w.Code)
+		})
+	}
+}
+
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))

@@ -98,6 +98,21 @@
 | 27. 生产错误可观测性与 Request ID 排查 | complete | 已确认截图为 Claude Code 本地输出上限口径；Sub2API 日志落点/级别已梳理；错误体 request_id 已实现、测试、上线到 `main-191cbfcd` |
 | 28. 生产全 API Key Claude -> GPT 映射收敛 | complete | 已全量写入 82 个有效 API Key 的 key 级 Opus/Sonnet 映射；Opus `→gpt-5.4` 黑盒通过，Sonnet `→gpt-5.3-codex` 映射生效但当前生产 ChatGPT/Codex 账号不支持该目标模型 |
 | 29. `/v1/models` GPT 黑盒展示修复 | complete | 已上线 `zhangtaylor985/sub2api:main-d271fbbf`；同一 Claude-only key 公开 `/v1/models` 只返回 Claude 模型，`contains_gpt=false` |
+| 30. 2026-06-05 新服务器迁移快照 | complete | 已重新同步生产 PG18 dump 到本地恢复库，并打包 Sub2API runtime、部署配置、Caddyfile 和 50 个 Codex auth JSON；迁移说明已归档 |
+| 31. 2026-06-08 新服务器迁移快照 | complete | 已重新同步生产 PG18 dump 到本地恢复库，并再次打包 Sub2API runtime、部署配置、Caddyfile 和 50 个 Codex auth JSON |
+| 32. 2026-06-09 新服务器迁移快照 | complete | 已重新同步生产 PG18 dump 到本地恢复库，并再次打包 Sub2API runtime、部署配置、Caddyfile 和 50 个 Codex auth JSON |
+| 33. 2026-06-10 生产 502 代理认证失败排查 | complete | 截图中的 `502 Upstream request failed` 已确认为 Codex/OpenAI 上游请求走 SOCKS5 代理时认证失败；生产服务本身 healthy，账号 UI 状态正常不代表代理可用 |
+| 34. 2026-06-10 生产 SOCKS5 代理续费后更新验证 | complete | 已按用户提供文本更新 4 条代理为 `socks5` 并验证均可认证连通；另发现未包含在本次文本里的两个旧代理仍在报认证失败 |
+| 35. 2026-06-10 生产代理收敛与账号均摊 | complete | 已将 9 个 active+schedulable OpenAI/Codex 账号按 `3/2/2/2` 均摊到 4 个可用 SOCKS5 IP，软删除旧代理并重启 app；重启后未再见旧代理认证失败 |
+| 36. 2026-06-10 新服务器迁移快照 | complete | 已重新同步生产 PG18 dump 到本地恢复库，并再次打包 Sub2API runtime、部署配置、Caddyfile 和 50 个 Codex auth JSON |
+| 37. 2026-06-13 生产迁移到新机器 | complete | 新机 systemd + PostgreSQL 18 + Redis 已运行；Cloudflare DNS A 记录已直切到 `172.247.109.38`；新机 Caddy 已签发证书并通过公网 health/API smoke |
+| 38. 2026-06-13 坏 SOCKS 代理下线与 Codex auth 重新均摊 | complete | 已将 `69.3.236.211:443` 软删除并设为 inactive；7 个 active+schedulable OpenAI OAuth 账号已按 `3/2/2` 均摊到剩余 3 个 SOCKS5 IP，重启 systemd app 后 `.codex_capi` `/responses` smoke 连续成功 |
+| 39. 2026-06-15 API Key 纯流量包模式修复 | complete | 本地已修复 token-package-only API Key 后扣不进入流量包账本的问题；后端全量测试通过；按要求尚未上线 |
+| 40. 2026-06-15 生产 Codex 流量包分组 | complete | 已新增 `Codex Token Package Pool` (`group_id=19`) 标准 OpenAI 分组，绑定当前 10 个未删除 OpenAI 账号，其中 6 个 active+schedulable；未自动切换任何 API Key |
+| 41. 2026-06-18 生产 Claude -> GPT 默认映射调整 | complete | 已将 8 个 active OpenAI 分组默认 Opus 和 Opus exact mapping 调整为 `gpt-5.4`，Sonnet 保持 `gpt-5.3-codex`；已备份、清 Redis auth cache 并复核 `/health` |
+| 42. 2026-06-26 生产 API Key 日限额时区排查 | complete | 只读确认 app 环境为 `TZ=Asia/Shanghai`，但 API Key rate-limit DB 更新仍用 PostgreSQL UTC `date_trunc('day', NOW())` 写入日窗口；该 key 北京时间当天确有 `/v1/messages` 用量入账，截图中环形日限额与明细日表口径不一致 |
+| 43. 2026-06-26 新机 SOCKS5 入口 | complete | 已复用现有 Xray 服务新增认证 SOCKS5 入站 `172.247.109.38:26812`，并切换本机 `.codex_td/.env` 代理目标；带认证 smoke 通过，无认证被拒绝 |
+| 44. 2026-07-02 Claude Fable 5 支持 | complete | 已上线 `claude-fable-5`：OpenAI dispatch 内部路由到 `gpt-5.4`，usage 保持请求模型并按 Fable 官方价计费；生产 smoke HTTP 200，`model_mapping_chain=claude-fable-5→gpt-5.4` |
 
 ## 决策记录
 
@@ -125,6 +140,13 @@
 - 2026-06-02：API Key 级 Claude -> GPT 目标模型覆盖应高于分组级 `messages_dispatch_model_config`，低于账号级 `credentials.model_mapping` 的最终上游改写/白名单语义。空 key 级配置必须表示“不覆盖”，继续走分组默认，避免影响已有 key。
 - 2026-06-02：全量 API Key Opus/Sonnet 目标模型收敛使用 API Key 级 `messages_dispatch_model_config`，不改账号级 `credentials.model_mapping`。Sonnet 目标按用户要求保持 `gpt-5.3-codex`；即使黑盒验证发现当前生产账号不支持该模型，也不擅自改成其他可用模型。
 - 2026-06-04：`/v1/models` 属于用户可见模型清单，必须按 API Key 的 `allow_claude_family` / `allow_gpt_family` 做黑盒过滤；OpenAI dispatch 分组中账号 `model_mapping` 的 GPT key 是内部上游白名单，不应直接暴露给 Claude-only 用户。
+- 2026-06-13：生产迁移目标新机为 `root@172.247.109.38:41012`；新生产建议采用 systemd 管理 Sub2API app，并把 PostgreSQL/Redis 一并迁到新机宿主机服务，避免 app 宿主机化后仍依赖旧 Docker 网络。
+- 2026-06-15：API Key 纯流量包模式必须同时覆盖前置限额检查和后扣账本写入；只有前置检查存在时，流量包用尽拦截会生效，但成功请求不会真实扣减 `api_key_token_packages.used_usd`。本次本地修复只改后扣命令构造，不上线。
+- 2026-06-15：生产新增的 `Codex Token Package Pool` 只作为可选目标分组，不自动迁移现有 API Key；API Key 切换分组后应清理/失效对应 auth cache 或通过管理 API 更新，以确保新分组快照立即生效。
+- 2026-06-17：图片生成权限需要支持 API Key 级开关，默认允许；最终生效仍需同时满足 API Key 级 `allow_image_generation=true` 与分组级 `groups.allow_image_generation=true`。现有 key 默认迁移为允许，避免发布后意外关停。
+- 2026-06-18：生产 Claude -> GPT 默认映射按用户要求收敛到分组层：Opus family default 与 `claude-opus-4-6/4-7/4-8` exact mapping 均为 `gpt-5.4`，Sonnet family default 保持 `gpt-5.3-codex`；API Key 级覆盖仍高于分组默认。
+- 2026-06-26：API Key rate-limit 的 `usage_1d/window_1d_start` 不能继续依赖 DB session `date_trunc('day', NOW())`，否则生产 PostgreSQL 为 UTC 时会与应用 `TZ=Asia/Shanghai`、用户侧 `/v1/usage` 明细日期口径错位。
+- 2026-07-02：`claude-fable-5` 对外应保持 Claude 请求模型，OpenAI dispatch 内部路由按 Opus family 走 `gpt-5.4`；计费必须按 Claude Fable 5 官方 API 价格，不按内部 `gpt-5.4` 成本价。
 
 ## 错误记录
 
@@ -158,3 +180,8 @@
 | 2026-06-02 | 全 API Key 映射收敛首次备份 SQL 被 shell 引号吃掉 `'{}'`，生成 0 行备份 | 未写库；立即重跑 heredoc 备份，得到 82 行有效备份文件 |
 | 2026-06-02 | 全 API Key 映射收敛清理 Redis auth cache 时先后遇到空 `REDISCLI_AUTH` 提示和一次远端变量引用失败 | 用 `env -u REDISCLI_AUTH` 复核并重新删除，最终 `apikey:auth:*` 剩余 0 |
 | 2026-06-02 | 全 API Key 映射收敛后一次只读 SQL 复核因 docker exec 环境变量和 JSON 引号处理失败 | 未写库；改为通过 stdin 把 SQL 传入容器内 `psql`，复核结果为 82/82/82/82 |
+| 2026-06-18 | 调整生产映射时 SSH 入口多次在握手阶段 reset | 改用更保守 SSH 参数并等待入口恢复；确认失败尝试均未进入远端写库命令，最终通过 `IPQoS=none` 连接完成 |
+| 2026-06-18 | 首次 `pg_dump -f /root/...` 由 `postgres` 用户写 root 目录失败 | 更新 SQL 尚未执行；改为 `pg_dump` stdout 由 root 重定向写备份文件后重跑成功 |
+| 2026-07-02 | 生产 Fable 热配置后 smoke 仍把 `claude-fable-5` 发到上游 Codex，返回不支持该 Claude 模型 | 分组/API Key exact mapping 已写入并清 Redis，但线上旧二进制不识别 Fable family；改为发布代码修复 |
+| 2026-07-02 | 首版 Fable 二进制上线后路由正确，但 usage 费用按 `gpt-5.4` 价计费 | 补 `OpenAI /v1/messages` dispatch 的 Fable 计费优先使用请求模型，新增单测并二次上线 |
+| 2026-07-02 | 新机 SSH 上传大文件极慢，远端 2G 内存无 swap 导致远端 Go 构建被 OOM 杀掉 | 改用本地 Linux 构建；首版通过 `.zst` 上传，二次修复用 `zstd --patch-from` 基于上一版二进制生成 2.4M patch |

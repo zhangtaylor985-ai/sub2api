@@ -199,6 +199,16 @@
             </span>
           </template>
 
+          <template #cell-dedicated_unlimited="{ value }">
+            <span :class="['badge', value ? 'badge-success' : 'badge-gray']">
+              {{
+                value
+                  ? t("admin.groups.dedicatedUnlimited")
+                  : t("admin.groups.standardLimits")
+              }}
+            </span>
+          </template>
+
           <template #cell-account_count="{ row }">
             <div class="space-y-0.5 text-xs">
               <div>
@@ -597,6 +607,44 @@
                 createForm.is_exclusive
                   ? t("admin.groups.exclusive")
                   : t("admin.groups.public")
+              }}
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.dedicatedUnlimited")
+          }}</label>
+          <p class="input-hint mb-3">
+            {{ t("admin.groups.form.dedicatedUnlimitedHint") }}
+          </p>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              :disabled="createForm.subscription_type === 'subscription'"
+              @click="createForm.dedicated_unlimited = !createForm.dedicated_unlimited"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                createForm.dedicated_unlimited
+                  ? 'bg-emerald-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.dedicated_unlimited
+                    ? 'translate-x-6'
+                    : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                createForm.dedicated_unlimited
+                  ? t("admin.groups.dedicatedUnlimited")
+                  : t("admin.groups.standardLimits")
               }}
             </span>
           </div>
@@ -1794,6 +1842,43 @@
           </div>
         </div>
         <div>
+          <label class="input-label">{{
+            t("admin.groups.form.dedicatedUnlimited")
+          }}</label>
+          <p class="input-hint mb-3">
+            {{ t("admin.groups.form.dedicatedUnlimitedHint") }}
+          </p>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              :disabled="editForm.subscription_type === 'subscription'"
+              @click="editForm.dedicated_unlimited = !editForm.dedicated_unlimited"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                editForm.dedicated_unlimited
+                  ? 'bg-emerald-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.dedicated_unlimited
+                    ? 'translate-x-6'
+                    : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                editForm.dedicated_unlimited
+                  ? t("admin.groups.dedicatedUnlimited")
+                  : t("admin.groups.standardLimits")
+              }}
+            </span>
+          </div>
+        </div>
+        <div>
           <label class="input-label">{{ t("admin.groups.form.status") }}</label>
           <Select v-model="editForm.status" :options="editStatusOptions" />
         </div>
@@ -2926,6 +3011,11 @@ const columns = computed<Column[]>(() => [
     sortable: true,
   },
   {
+    key: "dedicated_unlimited",
+    label: t("admin.groups.columns.dedicatedUnlimited"),
+    sortable: true,
+  },
+  {
     key: "account_count",
     label: t("admin.groups.columns.accounts"),
     sortable: true,
@@ -3138,6 +3228,7 @@ const createForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  dedicated_unlimited: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
@@ -3424,6 +3515,7 @@ const editForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  dedicated_unlimited: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -3674,6 +3766,7 @@ const closeCreateModal = () => {
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
+  createForm.dedicated_unlimited = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
@@ -3798,6 +3891,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
+  editForm.dedicated_unlimited = group.dedicated_unlimited ?? false;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
   editForm.daily_limit_usd = group.daily_limit_usd;
@@ -3984,7 +4078,35 @@ watch(
   (newVal) => {
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
+      createForm.dedicated_unlimited = false;
       createForm.fallback_group_id_on_invalid_request = null;
+    }
+  },
+);
+
+watch(
+  () => createForm.dedicated_unlimited,
+  (enabled) => {
+    if (enabled) {
+      createForm.subscription_type = "standard";
+    }
+  },
+);
+
+watch(
+  () => editForm.subscription_type,
+  (newVal) => {
+    if (newVal === "subscription") {
+      editForm.dedicated_unlimited = false;
+    }
+  },
+);
+
+watch(
+  () => editForm.dedicated_unlimited,
+  (enabled) => {
+    if (enabled) {
+      editForm.subscription_type = "standard";
     }
   },
 );

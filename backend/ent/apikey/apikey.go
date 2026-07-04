@@ -36,6 +36,8 @@ const (
 	FieldConcurrency = "concurrency"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
+	// FieldTokenPackageRequired holds the string denoting the token_package_required field in the database.
+	FieldTokenPackageRequired = "token_package_required"
 	// FieldAllowClaudeFamily holds the string denoting the allow_claude_family field in the database.
 	FieldAllowClaudeFamily = "allow_claude_family"
 	// FieldAllowGptFamily holds the string denoting the allow_gpt_family field in the database.
@@ -118,6 +120,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldConcurrency,
 	FieldRateMultiplier,
+	FieldTokenPackageRequired,
 	FieldAllowClaudeFamily,
 	FieldAllowGptFamily,
 	FieldAllowImageGeneration,
@@ -175,6 +178,8 @@ var (
 	DefaultConcurrency int
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
+	// DefaultTokenPackageRequired holds the default value on creation for the "token_package_required" field.
+	DefaultTokenPackageRequired bool
 	// DefaultAllowClaudeFamily holds the default value on creation for the "allow_claude_family" field.
 	DefaultAllowClaudeFamily bool
 	// DefaultAllowGptFamily holds the default value on creation for the "allow_gpt_family" field.
@@ -257,6 +262,11 @@ func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 // ByRateMultiplier orders the results by the rate_multiplier field.
 func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
+}
+
+// ByTokenPackageRequired orders the results by the token_package_required field.
+func ByTokenPackageRequired(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTokenPackageRequired, opts...).ToFunc()
 }
 
 // ByAllowClaudeFamily orders the results by the allow_claude_family field.

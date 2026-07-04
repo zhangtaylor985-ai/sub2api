@@ -113,6 +113,7 @@ type APIKeyMutation struct {
 	addconcurrency                 *int
 	rate_multiplier                *float64
 	addrate_multiplier             *float64
+	token_package_required         *bool
 	allow_claude_family            *bool
 	allow_gpt_family               *bool
 	allow_image_generation         *bool
@@ -677,6 +678,42 @@ func (m *APIKeyMutation) AddedRateMultiplier() (r float64, exists bool) {
 func (m *APIKeyMutation) ResetRateMultiplier() {
 	m.rate_multiplier = nil
 	m.addrate_multiplier = nil
+}
+
+// SetTokenPackageRequired sets the "token_package_required" field.
+func (m *APIKeyMutation) SetTokenPackageRequired(b bool) {
+	m.token_package_required = &b
+}
+
+// TokenPackageRequired returns the value of the "token_package_required" field in the mutation.
+func (m *APIKeyMutation) TokenPackageRequired() (r bool, exists bool) {
+	v := m.token_package_required
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokenPackageRequired returns the old "token_package_required" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldTokenPackageRequired(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokenPackageRequired is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokenPackageRequired requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokenPackageRequired: %w", err)
+	}
+	return oldValue.TokenPackageRequired, nil
+}
+
+// ResetTokenPackageRequired resets all changes to the "token_package_required" field.
+func (m *APIKeyMutation) ResetTokenPackageRequired() {
+	m.token_package_required = nil
 }
 
 // SetAllowClaudeFamily sets the "allow_claude_family" field.
@@ -1788,7 +1825,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 30)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1818,6 +1855,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, apikey.FieldRateMultiplier)
+	}
+	if m.token_package_required != nil {
+		fields = append(fields, apikey.FieldTokenPackageRequired)
 	}
 	if m.allow_claude_family != nil {
 		fields = append(fields, apikey.FieldAllowClaudeFamily)
@@ -1904,6 +1944,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Concurrency()
 	case apikey.FieldRateMultiplier:
 		return m.RateMultiplier()
+	case apikey.FieldTokenPackageRequired:
+		return m.TokenPackageRequired()
 	case apikey.FieldAllowClaudeFamily:
 		return m.AllowClaudeFamily()
 	case apikey.FieldAllowGptFamily:
@@ -1971,6 +2013,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldConcurrency(ctx)
 	case apikey.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
+	case apikey.FieldTokenPackageRequired:
+		return m.OldTokenPackageRequired(ctx)
 	case apikey.FieldAllowClaudeFamily:
 		return m.OldAllowClaudeFamily(ctx)
 	case apikey.FieldAllowGptFamily:
@@ -2087,6 +2131,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRateMultiplier(v)
+		return nil
+	case apikey.FieldTokenPackageRequired:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokenPackageRequired(v)
 		return nil
 	case apikey.FieldAllowClaudeFamily:
 		v, ok := value.(bool)
@@ -2479,6 +2530,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldRateMultiplier:
 		m.ResetRateMultiplier()
+		return nil
+	case apikey.FieldTokenPackageRequired:
+		m.ResetTokenPackageRequired()
 		return nil
 	case apikey.FieldAllowClaudeFamily:
 		m.ResetAllowClaudeFamily()

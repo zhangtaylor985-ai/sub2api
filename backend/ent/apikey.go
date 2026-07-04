@@ -41,6 +41,8 @@ type APIKey struct {
 	Concurrency int `json:"concurrency,omitempty"`
 	// API key billing multiplier (1 = normal)
 	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
+	// Whether this API key can only spend from token packages
+	TokenPackageRequired bool `json:"token_package_required,omitempty"`
 	// Whether this API key may request Claude-family models from user-facing endpoints
 	AllowClaudeFamily bool `json:"allow_claude_family,omitempty"`
 	// Whether this API key may request GPT/OpenAI-family models from user-facing endpoints
@@ -136,7 +138,7 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case apikey.FieldMessagesDispatchModelConfig, apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
 			values[i] = new([]byte)
-		case apikey.FieldAllowClaudeFamily, apikey.FieldAllowGptFamily, apikey.FieldAllowImageGeneration:
+		case apikey.FieldTokenPackageRequired, apikey.FieldAllowClaudeFamily, apikey.FieldAllowGptFamily, apikey.FieldAllowImageGeneration:
 			values[i] = new(sql.NullBool)
 		case apikey.FieldRateMultiplier, apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
@@ -228,6 +230,12 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field rate_multiplier", values[i])
 			} else if value.Valid {
 				_m.RateMultiplier = value.Float64
+			}
+		case apikey.FieldTokenPackageRequired:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field token_package_required", values[i])
+			} else if value.Valid {
+				_m.TokenPackageRequired = value.Bool
 			}
 		case apikey.FieldAllowClaudeFamily:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -438,6 +446,9 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("rate_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RateMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("token_package_required=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TokenPackageRequired))
 	builder.WriteString(", ")
 	builder.WriteString("allow_claude_family=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowClaudeFamily))

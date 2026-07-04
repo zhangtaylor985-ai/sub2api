@@ -18,6 +18,7 @@ export interface AdminUpdateApiKeyPolicyPayload {
   status?: 'active' | 'inactive'
   quota?: number
   rate_multiplier?: number
+  token_package_required?: boolean
   concurrency?: number
   expires_at?: string
   reset_quota?: boolean
@@ -49,6 +50,7 @@ export interface AdminCreateAPIKeyPayload {
   status?: 'active' | 'inactive'
   quota?: number
   rate_multiplier?: number
+  token_package_required?: boolean
   expires_at?: string
   rate_limit_5h?: number
   rate_limit_1d?: number

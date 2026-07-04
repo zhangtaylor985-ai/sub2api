@@ -46,6 +46,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetStatus(key.Status).
 		SetConcurrency(key.Concurrency).
 		SetRateMultiplier(key.BillingRateMultiplier()).
+		SetTokenPackageRequired(key.TokenPackageRequired).
 		SetAllowClaudeFamily(key.AllowClaudeFamily).
 		SetAllowGptFamily(key.AllowGPTFamily).
 		SetAllowImageGeneration(key.AllowImageGeneration).
@@ -136,6 +137,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldStatus,
 			apikey.FieldConcurrency,
 			apikey.FieldRateMultiplier,
+			apikey.FieldTokenPackageRequired,
 			apikey.FieldAllowClaudeFamily,
 			apikey.FieldAllowGptFamily,
 			apikey.FieldAllowImageGeneration,
@@ -225,6 +227,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		SetStatus(key.Status).
 		SetConcurrency(key.Concurrency).
 		SetRateMultiplier(key.BillingRateMultiplier()).
+		SetTokenPackageRequired(key.TokenPackageRequired).
 		SetAllowClaudeFamily(key.AllowsClaudeFamily()).
 		SetAllowGptFamily(key.AllowsGPTFamily()).
 		SetAllowImageGeneration(key.AllowsImageGeneration()).
@@ -832,6 +835,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		Name:                        m.Name,
 		Status:                      m.Status,
 		RateMultiplier:              m.RateMultiplier,
+		TokenPackageRequired:        m.TokenPackageRequired,
 		AllowClaudeFamily:           m.AllowClaudeFamily,
 		AllowGPTFamily:              m.AllowGptFamily,
 		ModelFamilyPolicySet:        true,

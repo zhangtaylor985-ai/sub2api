@@ -54,6 +54,9 @@ func (APIKey) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1).
 			Comment("API key billing multiplier (1 = normal)"),
+		field.Bool("token_package_required").
+			Default(false).
+			Comment("Whether this API key can only spend from token packages"),
 		field.Bool("allow_claude_family").
 			Default(true).
 			Comment("Whether this API key may request Claude-family models from user-facing endpoints"),

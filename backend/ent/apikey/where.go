@@ -105,6 +105,11 @@ func RateMultiplier(v float64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldRateMultiplier, v))
 }
 
+// TokenPackageRequired applies equality check predicate on the "token_package_required" field. It's identical to TokenPackageRequiredEQ.
+func TokenPackageRequired(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldTokenPackageRequired, v))
+}
+
 // AllowClaudeFamily applies equality check predicate on the "allow_claude_family" field. It's identical to AllowClaudeFamilyEQ.
 func AllowClaudeFamily(v bool) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldAllowClaudeFamily, v))
@@ -638,6 +643,16 @@ func RateMultiplierLT(v float64) predicate.APIKey {
 // RateMultiplierLTE applies the LTE predicate on the "rate_multiplier" field.
 func RateMultiplierLTE(v float64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldLTE(FieldRateMultiplier, v))
+}
+
+// TokenPackageRequiredEQ applies the EQ predicate on the "token_package_required" field.
+func TokenPackageRequiredEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldTokenPackageRequired, v))
+}
+
+// TokenPackageRequiredNEQ applies the NEQ predicate on the "token_package_required" field.
+func TokenPackageRequiredNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldTokenPackageRequired, v))
 }
 
 // AllowClaudeFamilyEQ applies the EQ predicate on the "allow_claude_family" field.

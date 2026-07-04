@@ -107,7 +107,7 @@ func TestBuildUsageBillingCommand_TokenPackageOnlyUpdatesRateLimitLedger(t *test
 	p := &postUsageBillingParams{
 		Cost:          &CostBreakdown{TotalCost: 2.5, ActualCost: 2.5},
 		User:          &User{ID: 1},
-		APIKey:        &APIKey{ID: 2},
+		APIKey:        &APIKey{ID: 2, TokenPackageRequired: true},
 		Account:       &Account{ID: 3},
 		APIKeyService: tokenPackageStateAPIKeyServiceStub{total: 10},
 	}
@@ -118,6 +118,9 @@ func TestBuildUsageBillingCommand_TokenPackageOnlyUpdatesRateLimitLedger(t *test
 	}
 	if cmd.APIKeyRateLimitCost != 2.5 {
 		t.Fatalf("APIKeyRateLimitCost = %v, want 2.5", cmd.APIKeyRateLimitCost)
+	}
+	if cmd.BalanceCost != 0 {
+		t.Fatalf("BalanceCost = %v, want 0", cmd.BalanceCost)
 	}
 }
 

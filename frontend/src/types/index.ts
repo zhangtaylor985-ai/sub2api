@@ -565,6 +565,7 @@ export interface ApiKey {
   ip_whitelist: string[]
   ip_blacklist: string[]
   last_used_at: string | null
+  token_package_required: boolean
   quota: number // Quota limit in USD (0 = unlimited)
   quota_used: number // Used quota amount in USD
   concurrency: number // API key concurrency override (0 = inherit group/user)
@@ -600,6 +601,7 @@ export interface CreateApiKeyRequest {
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (0 = unlimited)
+  token_package_required?: boolean
   concurrency?: number // API key concurrency override (0 = inherit group/user)
   expires_in_days?: number // Days until expiry (null = never expires)
   expires_at?: string | null
@@ -620,6 +622,7 @@ export interface UpdateApiKeyRequest {
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
+  token_package_required?: boolean
   concurrency?: number // API key concurrency override (0 = inherit group/user)
   expires_at?: string | null // Expiration time (null = no change)
   reset_quota?: boolean // Reset quota_used to 0

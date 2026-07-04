@@ -1438,6 +1438,8 @@ export default {
         totalQuota: 'Total Quota USD',
         rateMultiplier: 'Speed',
         rateMultiplierHint: 'Admin-only; 2 means user consumption is counted at 2x',
+        tokenPackageRequired: 'Token package only',
+        tokenPackageRequiredHint: 'When enabled, requests do not spend wallet or subscription quota and are rejected when no package balance remains.',
         dailyLimit: 'Daily Limit USD',
         weeklyLimit: 'Weekly Limit USD',
         weeklyWindowStart: 'Weekly window start',

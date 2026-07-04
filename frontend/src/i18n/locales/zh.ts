@@ -1442,6 +1442,8 @@ export default {
         totalQuota: '总额度 USD',
         rateMultiplier: '倍速',
         rateMultiplierHint: '仅管理员可见；2 表示用户消耗按 2 倍累计',
+        tokenPackageRequired: '仅流量包可用',
+        tokenPackageRequiredHint: '开启后不扣用户余额或套餐额度；没有可用流量包时请求会被拒绝。',
         dailyLimit: '日限额 USD',
         weeklyLimit: '周限额 USD',
         weeklyWindowStart: '周限额周期起点',

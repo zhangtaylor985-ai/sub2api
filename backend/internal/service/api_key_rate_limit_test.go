@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
 func TestIsWindowExpired(t *testing.T) {
@@ -219,6 +221,17 @@ func TestAPIKey_EffectiveRateLimits(t *testing.T) {
 			wantHas: false,
 		},
 		{
+			name: "token package required does not inherit group daily or weekly limits",
+			key: APIKey{
+				TokenPackageRequired: true,
+				Group: &Group{
+					DailyLimitUSD:  &groupDaily,
+					WeeklyLimitUSD: &groupWeekly,
+				},
+			},
+			wantHas: false,
+		},
+		{
 			name: "zero group values are unlimited",
 			key: APIKey{
 				Group: &Group{
@@ -342,7 +355,7 @@ type tokenPackageRateLimitLoaderStub struct {
 }
 
 func (s *tokenPackageRateLimitLoaderStub) GetRateLimitData(context.Context, int64) (*APIKeyRateLimitData, error) {
-	return nil, nil
+	return &APIKeyRateLimitData{}, nil
 }
 
 func (s *tokenPackageRateLimitLoaderStub) GetTokenPackageRemaining(context.Context, int64) (float64, error) {
@@ -473,6 +486,44 @@ func TestBillingCacheService_EvaluateRateLimits_TokenPackageOnly(t *testing.T) {
 				t.Fatalf("evaluateRateLimits() error = %v, want %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestBillingCacheService_CheckBillingEligibility_TokenPackageRequiredSkipsBalance(t *testing.T) {
+	svc := &BillingCacheService{
+		apiKeyRateLimitLoader: &tokenPackageRateLimitLoaderStub{total: 10, remaining: 3},
+		cfg:                   &config.Config{},
+	}
+
+	err := svc.CheckBillingEligibility(
+		context.Background(),
+		&User{ID: 1, Balance: 0},
+		&APIKey{ID: 9, TokenPackageRequired: true},
+		nil,
+		nil,
+		PlatformOpenAI,
+	)
+	if err != nil {
+		t.Fatalf("CheckBillingEligibility() error = %v, want nil", err)
+	}
+}
+
+func TestBillingCacheService_CheckBillingEligibility_TokenPackageRequiredBlocksWithoutRemaining(t *testing.T) {
+	svc := &BillingCacheService{
+		apiKeyRateLimitLoader: &tokenPackageRateLimitLoaderStub{total: 0, remaining: 0},
+		cfg:                   &config.Config{},
+	}
+
+	err := svc.CheckBillingEligibility(
+		context.Background(),
+		&User{ID: 1, Balance: 100},
+		&APIKey{ID: 9, TokenPackageRequired: true},
+		nil,
+		nil,
+		PlatformOpenAI,
+	)
+	if !errors.Is(err, ErrAPIKeyTokenPackageExhausted) {
+		t.Fatalf("CheckBillingEligibility() error = %v, want %v", err, ErrAPIKeyTokenPackageExhausted)
 	}
 }
 

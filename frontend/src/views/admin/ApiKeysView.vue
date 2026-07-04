@@ -102,6 +102,9 @@
 
           <template #cell-limits="{ row }">
             <div class="space-y-0.5 text-xs text-gray-600 dark:text-dark-300">
+              <div v-if="row.token_package_required" class="font-medium text-primary-600 dark:text-primary-400">
+                {{ t('admin.apiKeys.form.tokenPackageRequired') }}
+              </div>
               <div>{{ t('admin.apiKeys.form.totalQuota') }}: {{ formatLimit(row.quota) }}</div>
               <div>{{ t('admin.apiKeys.form.dailyLimit') }}: {{ formatLimit(effectiveDailyLimit(row)) }}</div>
               <div>{{ t('admin.apiKeys.form.weeklyLimit') }}: {{ formatLimit(effectiveWeeklyLimit(row)) }}</div>
@@ -241,6 +244,13 @@
             <input v-model.number="createForm.rate_multiplier" type="number" min="0.0001" step="0.0001" class="input" />
             <span class="input-hint">{{ t('admin.apiKeys.form.rateMultiplierHint') }}</span>
           </label>
+          <label class="space-y-1 md:col-span-2">
+            <span class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-dark-200">
+              <input v-model="createForm.token_package_required" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+              <span>{{ t('admin.apiKeys.form.tokenPackageRequired') }}</span>
+            </span>
+            <span class="input-hint">{{ t('admin.apiKeys.form.tokenPackageRequiredHint') }}</span>
+          </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.dailyLimit') }}</span>
             <input v-model.number="createForm.rate_limit_1d" type="number" min="0" step="0.0001" class="input" />
@@ -347,6 +357,13 @@
             <span class="input-label">{{ t('admin.apiKeys.form.rateMultiplier') }}</span>
             <input v-model.number="editForm.rate_multiplier" type="number" min="0.0001" step="0.0001" class="input" />
             <span class="input-hint">{{ t('admin.apiKeys.form.rateMultiplierHint') }}</span>
+          </label>
+          <label class="space-y-1 md:col-span-2">
+            <span class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-dark-200">
+              <input v-model="editForm.token_package_required" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+              <span>{{ t('admin.apiKeys.form.tokenPackageRequired') }}</span>
+            </span>
+            <span class="input-hint">{{ t('admin.apiKeys.form.tokenPackageRequiredHint') }}</span>
           </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.dailyLimit') }}</span>
@@ -611,6 +628,7 @@ const defaultCreateForm = () => ({
   status: 'active' as 'active' | 'inactive',
   quota: 0,
   rate_multiplier: 1,
+  token_package_required: false,
   rate_limit_5h: 0,
   rate_limit_1d: 0,
   rate_limit_7d: 0,
@@ -632,6 +650,7 @@ const editForm = reactive({
   status: 'active' as 'active' | 'inactive',
   quota: 0,
   rate_multiplier: 1,
+  token_package_required: false,
   rate_limit_5h: 0,
   rate_limit_1d: 0,
   rate_limit_7d: 0,
@@ -969,6 +988,7 @@ const openEditDialog = (key: ApiKey) => {
   editForm.status = key.status === 'inactive' ? 'inactive' : 'active'
   editForm.quota = key.quota || 0
   editForm.rate_multiplier = key.rate_multiplier && key.rate_multiplier > 0 ? key.rate_multiplier : 1
+  editForm.token_package_required = key.token_package_required === true
   editForm.rate_limit_5h = key.rate_limit_5h || 0
   editForm.rate_limit_1d = key.rate_limit_1d || 0
   editForm.rate_limit_7d = key.rate_limit_7d || 0
@@ -1064,6 +1084,7 @@ const handleCreate = async () => {
       status: createForm.status,
       quota: numericValue(createForm.quota),
       rate_multiplier: rateMultiplier,
+      token_package_required: createForm.token_package_required,
       rate_limit_5h: numericValue(createForm.rate_limit_5h),
       rate_limit_1d: numericValue(createForm.rate_limit_1d),
       rate_limit_7d: numericValue(createForm.rate_limit_7d),
@@ -1106,6 +1127,7 @@ const handleUpdate = async () => {
       status: editForm.status,
       quota: numericValue(editForm.quota),
       rate_multiplier: rateMultiplier,
+      token_package_required: editForm.token_package_required,
       rate_limit_5h: numericValue(editForm.rate_limit_5h),
       rate_limit_1d: numericValue(editForm.rate_limit_1d),
       rate_limit_7d: numericValue(editForm.rate_limit_7d),

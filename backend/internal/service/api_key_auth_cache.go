@@ -12,6 +12,7 @@ type APIKeyAuthSnapshot struct {
 	Status                      string                            `json:"status"`
 	Concurrency                 int                               `json:"concurrency"`
 	RateMultiplier              float64                           `json:"rate_multiplier"`
+	TokenPackageRequired        bool                              `json:"token_package_required"`
 	AllowClaudeFamily           bool                              `json:"allow_claude_family"`
 	AllowGPTFamily              bool                              `json:"allow_gpt_family"`
 	AllowImageGeneration        bool                              `json:"allow_image_generation"`

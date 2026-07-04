@@ -233,13 +233,15 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, cmd *
 	state.resetExpired(now)
 
 	baseCovered := cost
-	if state.limit1d > 0 {
+	if state.tokenPackageRequired {
+		baseCovered = 0
+	} else if state.limit1d > 0 {
 		baseCovered = math.Min(baseCovered, positiveRemaining(state.limit1d, state.usage1d))
 	}
-	if state.limit7d > 0 {
+	if !state.tokenPackageRequired && state.limit7d > 0 {
 		baseCovered = math.Min(baseCovered, positiveRemaining(state.limit7d, state.usage7d))
 	}
-	if state.limit1d <= 0 && state.limit7d <= 0 {
+	if !state.tokenPackageRequired && state.limit1d <= 0 && state.limit7d <= 0 {
 		hasTokenPackageLimit, err := hasAPIKeyTokenPackageLimit(ctx, tx, apiKeyID)
 		if err != nil {
 			return err
@@ -276,14 +278,15 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, cmd *
 }
 
 type apiKeyRateLimitSQLState struct {
-	usage5h float64
-	usage1d float64
-	usage7d float64
-	limit1d float64
-	limit7d float64
-	w5h     *time.Time
-	w1d     *time.Time
-	w7d     *time.Time
+	usage5h              float64
+	usage1d              float64
+	usage7d              float64
+	limit1d              float64
+	limit7d              float64
+	tokenPackageRequired bool
+	w5h                  *time.Time
+	w1d                  *time.Time
+	w7d                  *time.Time
 }
 
 func lockAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64) (*apiKeyRateLimitSQLState, error) {
@@ -292,6 +295,7 @@ func lockAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64) (
 		limit1d, groupDailyLimit  sql.NullFloat64
 		limit7d, groupWeeklyLimit sql.NullFloat64
 		w5h, w1d, w7d             sql.NullTime
+		tokenPackageRequired      bool
 	)
 	err := tx.QueryRowContext(ctx, `
 		SELECT
@@ -304,27 +308,29 @@ func lockAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64) (
 			NULLIF(k.rate_limit_1d, 0),
 			g.daily_limit_usd,
 			NULLIF(k.rate_limit_7d, 0),
-			g.weekly_limit_usd
+			g.weekly_limit_usd,
+			k.token_package_required
 		FROM api_keys k
 		LEFT JOIN groups g ON g.id = k.group_id AND g.deleted_at IS NULL
 		WHERE k.id = $1 AND k.deleted_at IS NULL
 		FOR UPDATE OF k`,
 		apiKeyID,
-	).Scan(&usage5h, &usage1d, &usage7d, &w5h, &w1d, &w7d, &limit1d, &groupDailyLimit, &limit7d, &groupWeeklyLimit)
+	).Scan(&usage5h, &usage1d, &usage7d, &w5h, &w1d, &w7d, &limit1d, &groupDailyLimit, &limit7d, &groupWeeklyLimit, &tokenPackageRequired)
 	if err != nil {
 		return nil, err
 	}
 	state := &apiKeyRateLimitSQLState{
-		usage5h: usage5h,
-		usage1d: usage1d,
-		usage7d: usage7d,
-		limit1d: nullableFloat(limit1d),
-		limit7d: nullableFloat(limit7d),
+		usage5h:              usage5h,
+		usage1d:              usage1d,
+		usage7d:              usage7d,
+		limit1d:              nullableFloat(limit1d),
+		limit7d:              nullableFloat(limit7d),
+		tokenPackageRequired: tokenPackageRequired,
 	}
-	if state.limit1d <= 0 {
+	if !state.tokenPackageRequired && state.limit1d <= 0 {
 		state.limit1d = nullableFloat(groupDailyLimit)
 	}
-	if state.limit7d <= 0 {
+	if !state.tokenPackageRequired && state.limit7d <= 0 {
 		state.limit7d = nullableFloat(groupWeeklyLimit)
 	}
 	if w5h.Valid {

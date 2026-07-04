@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 16 // v16: include API key image generation policy
+const apiKeyAuthSnapshotVersion = 17 // v17: include token package required policy
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -214,6 +214,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		Status:                      apiKey.Status,
 		Concurrency:                 apiKey.Concurrency,
 		RateMultiplier:              apiKey.BillingRateMultiplier(),
+		TokenPackageRequired:        apiKey.TokenPackageRequired,
 		AllowClaudeFamily:           apiKey.AllowsClaudeFamily(),
 		AllowGPTFamily:              apiKey.AllowsGPTFamily(),
 		AllowImageGeneration:        apiKey.AllowsImageGeneration(),
@@ -299,6 +300,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		Status:                      snapshot.Status,
 		Concurrency:                 snapshot.Concurrency,
 		RateMultiplier:              snapshot.RateMultiplier,
+		TokenPackageRequired:        snapshot.TokenPackageRequired,
 		AllowClaudeFamily:           snapshot.AllowClaudeFamily,
 		AllowGPTFamily:              snapshot.AllowGPTFamily,
 		ModelFamilyPolicySet:        true,

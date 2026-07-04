@@ -117,52 +117,56 @@ func init() {
 	apikeyDescRateMultiplier := apikeyFields[6].Descriptor()
 	// apikey.DefaultRateMultiplier holds the default value on creation for the rate_multiplier field.
 	apikey.DefaultRateMultiplier = apikeyDescRateMultiplier.Default.(float64)
+	// apikeyDescTokenPackageRequired is the schema descriptor for token_package_required field.
+	apikeyDescTokenPackageRequired := apikeyFields[7].Descriptor()
+	// apikey.DefaultTokenPackageRequired holds the default value on creation for the token_package_required field.
+	apikey.DefaultTokenPackageRequired = apikeyDescTokenPackageRequired.Default.(bool)
 	// apikeyDescAllowClaudeFamily is the schema descriptor for allow_claude_family field.
-	apikeyDescAllowClaudeFamily := apikeyFields[7].Descriptor()
+	apikeyDescAllowClaudeFamily := apikeyFields[8].Descriptor()
 	// apikey.DefaultAllowClaudeFamily holds the default value on creation for the allow_claude_family field.
 	apikey.DefaultAllowClaudeFamily = apikeyDescAllowClaudeFamily.Default.(bool)
 	// apikeyDescAllowGptFamily is the schema descriptor for allow_gpt_family field.
-	apikeyDescAllowGptFamily := apikeyFields[8].Descriptor()
+	apikeyDescAllowGptFamily := apikeyFields[9].Descriptor()
 	// apikey.DefaultAllowGptFamily holds the default value on creation for the allow_gpt_family field.
 	apikey.DefaultAllowGptFamily = apikeyDescAllowGptFamily.Default.(bool)
 	// apikeyDescAllowImageGeneration is the schema descriptor for allow_image_generation field.
-	apikeyDescAllowImageGeneration := apikeyFields[9].Descriptor()
+	apikeyDescAllowImageGeneration := apikeyFields[10].Descriptor()
 	// apikey.DefaultAllowImageGeneration holds the default value on creation for the allow_image_generation field.
 	apikey.DefaultAllowImageGeneration = apikeyDescAllowImageGeneration.Default.(bool)
 	// apikeyDescMessagesDispatchModelConfig is the schema descriptor for messages_dispatch_model_config field.
-	apikeyDescMessagesDispatchModelConfig := apikeyFields[10].Descriptor()
+	apikeyDescMessagesDispatchModelConfig := apikeyFields[11].Descriptor()
 	// apikey.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	apikey.DefaultMessagesDispatchModelConfig = apikeyDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
 	// apikeyDescQuota is the schema descriptor for quota field.
-	apikeyDescQuota := apikeyFields[14].Descriptor()
+	apikeyDescQuota := apikeyFields[15].Descriptor()
 	// apikey.DefaultQuota holds the default value on creation for the quota field.
 	apikey.DefaultQuota = apikeyDescQuota.Default.(float64)
 	// apikeyDescQuotaUsed is the schema descriptor for quota_used field.
-	apikeyDescQuotaUsed := apikeyFields[15].Descriptor()
+	apikeyDescQuotaUsed := apikeyFields[16].Descriptor()
 	// apikey.DefaultQuotaUsed holds the default value on creation for the quota_used field.
 	apikey.DefaultQuotaUsed = apikeyDescQuotaUsed.Default.(float64)
 	// apikeyDescRateLimit5h is the schema descriptor for rate_limit_5h field.
-	apikeyDescRateLimit5h := apikeyFields[17].Descriptor()
+	apikeyDescRateLimit5h := apikeyFields[18].Descriptor()
 	// apikey.DefaultRateLimit5h holds the default value on creation for the rate_limit_5h field.
 	apikey.DefaultRateLimit5h = apikeyDescRateLimit5h.Default.(float64)
 	// apikeyDescRateLimit1d is the schema descriptor for rate_limit_1d field.
-	apikeyDescRateLimit1d := apikeyFields[18].Descriptor()
+	apikeyDescRateLimit1d := apikeyFields[19].Descriptor()
 	// apikey.DefaultRateLimit1d holds the default value on creation for the rate_limit_1d field.
 	apikey.DefaultRateLimit1d = apikeyDescRateLimit1d.Default.(float64)
 	// apikeyDescRateLimit7d is the schema descriptor for rate_limit_7d field.
-	apikeyDescRateLimit7d := apikeyFields[19].Descriptor()
+	apikeyDescRateLimit7d := apikeyFields[20].Descriptor()
 	// apikey.DefaultRateLimit7d holds the default value on creation for the rate_limit_7d field.
 	apikey.DefaultRateLimit7d = apikeyDescRateLimit7d.Default.(float64)
 	// apikeyDescUsage5h is the schema descriptor for usage_5h field.
-	apikeyDescUsage5h := apikeyFields[20].Descriptor()
+	apikeyDescUsage5h := apikeyFields[21].Descriptor()
 	// apikey.DefaultUsage5h holds the default value on creation for the usage_5h field.
 	apikey.DefaultUsage5h = apikeyDescUsage5h.Default.(float64)
 	// apikeyDescUsage1d is the schema descriptor for usage_1d field.
-	apikeyDescUsage1d := apikeyFields[21].Descriptor()
+	apikeyDescUsage1d := apikeyFields[22].Descriptor()
 	// apikey.DefaultUsage1d holds the default value on creation for the usage_1d field.
 	apikey.DefaultUsage1d = apikeyDescUsage1d.Default.(float64)
 	// apikeyDescUsage7d is the schema descriptor for usage_7d field.
-	apikeyDescUsage7d := apikeyFields[22].Descriptor()
+	apikeyDescUsage7d := apikeyFields[23].Descriptor()
 	// apikey.DefaultUsage7d holds the default value on creation for the usage_7d field.
 	apikey.DefaultUsage7d = apikeyDescUsage7d.Default.(float64)
 	accountMixin := schema.Account{}.Mixin()

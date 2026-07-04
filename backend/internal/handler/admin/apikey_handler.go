@@ -31,6 +31,7 @@ type AdminUpdateAPIKeyGroupRequest struct {
 	Status                      *string                                    `json:"status"`                         // nil=不修改, active/inactive
 	Quota                       *float64                                   `json:"quota"`                          // nil=不修改, 0=不限制
 	RateMultiplier              *float64                                   `json:"rate_multiplier"`                // nil=不修改, >0=计费倍率
+	TokenPackageRequired        *bool                                      `json:"token_package_required"`         // nil=不修改
 	ExpiresAt                   *string                                    `json:"expires_at"`                     // nil=不修改, ""=清空, RFC3339=设置
 	ResetQuota                  *bool                                      `json:"reset_quota"`                    // true=重置总额度已用量
 	Concurrency                 *int                                       `json:"concurrency"`                    // nil=不修改, 0=继承分组/用户, >0=单 key 并发
@@ -52,6 +53,7 @@ type AdminCreateAPIKeyRequest struct {
 	Status                      *string                                    `json:"status"`
 	Quota                       float64                                    `json:"quota"`
 	RateMultiplier              *float64                                   `json:"rate_multiplier"`
+	TokenPackageRequired        bool                                       `json:"token_package_required"`
 	ExpiresAt                   *string                                    `json:"expires_at"`
 	RateLimit5h                 float64                                    `json:"rate_limit_5h"`
 	RateLimit1d                 float64                                    `json:"rate_limit_1d"`
@@ -146,6 +148,7 @@ func (h *AdminAPIKeyHandler) Create(c *gin.Context) {
 		Status:                      req.Status,
 		Quota:                       req.Quota,
 		RateMultiplier:              rateMultiplier,
+		TokenPackageRequired:        req.TokenPackageRequired,
 		ExpiresAt:                   expiresAt,
 		RateLimit5h:                 req.RateLimit5h,
 		RateLimit1d:                 req.RateLimit1d,
@@ -338,6 +341,7 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 		Status:                      req.Status,
 		Quota:                       req.Quota,
 		RateMultiplier:              req.RateMultiplier,
+		TokenPackageRequired:        req.TokenPackageRequired,
 		Concurrency:                 req.Concurrency,
 		AllowClaudeFamily:           req.AllowClaudeFamily,
 		AllowGPTFamily:              req.AllowGPTFamily,
@@ -376,6 +380,7 @@ func buildAdminAPIKeyPolicyInput(req AdminUpdateAPIKeyGroupRequest) (service.Adm
 	set := req.Status != nil ||
 		req.Quota != nil ||
 		req.RateMultiplier != nil ||
+		req.TokenPackageRequired != nil ||
 		req.ExpiresAt != nil ||
 		req.ResetQuota != nil ||
 		req.Concurrency != nil ||

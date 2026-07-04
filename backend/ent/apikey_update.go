@@ -177,6 +177,20 @@ func (_u *APIKeyUpdate) AddRateMultiplier(v float64) *APIKeyUpdate {
 	return _u
 }
 
+// SetTokenPackageRequired sets the "token_package_required" field.
+func (_u *APIKeyUpdate) SetTokenPackageRequired(v bool) *APIKeyUpdate {
+	_u.mutation.SetTokenPackageRequired(v)
+	return _u
+}
+
+// SetNillableTokenPackageRequired sets the "token_package_required" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableTokenPackageRequired(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetTokenPackageRequired(*v)
+	}
+	return _u
+}
+
 // SetAllowClaudeFamily sets the "allow_claude_family" field.
 func (_u *APIKeyUpdate) SetAllowClaudeFamily(v bool) *APIKeyUpdate {
 	_u.mutation.SetAllowClaudeFamily(v)
@@ -707,6 +721,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(apikey.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.TokenPackageRequired(); ok {
+		_spec.SetField(apikey.FieldTokenPackageRequired, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.AllowClaudeFamily(); ok {
 		_spec.SetField(apikey.FieldAllowClaudeFamily, field.TypeBool, value)
 	}
@@ -1083,6 +1100,20 @@ func (_u *APIKeyUpdateOne) SetNillableRateMultiplier(v *float64) *APIKeyUpdateOn
 // AddRateMultiplier adds value to the "rate_multiplier" field.
 func (_u *APIKeyUpdateOne) AddRateMultiplier(v float64) *APIKeyUpdateOne {
 	_u.mutation.AddRateMultiplier(v)
+	return _u
+}
+
+// SetTokenPackageRequired sets the "token_package_required" field.
+func (_u *APIKeyUpdateOne) SetTokenPackageRequired(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetTokenPackageRequired(v)
+	return _u
+}
+
+// SetNillableTokenPackageRequired sets the "token_package_required" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableTokenPackageRequired(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetTokenPackageRequired(*v)
+	}
 	return _u
 }
 
@@ -1645,6 +1676,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(apikey.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.TokenPackageRequired(); ok {
+		_spec.SetField(apikey.FieldTokenPackageRequired, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.AllowClaudeFamily(); ok {
 		_spec.SetField(apikey.FieldAllowClaudeFamily, field.TypeBool, value)

@@ -8013,6 +8013,9 @@ func (p *postUsageBillingParams) shouldUpdateRateLimits(ctx context.Context) boo
 	if p == nil || p.Cost == nil || p.APIKey == nil || p.APIKeyService == nil || p.Cost.ActualCost <= 0 || p.isDedicatedUnlimited() {
 		return false
 	}
+	if p.APIKey.TokenPackageRequired {
+		return true
+	}
 	if p.APIKey.HasRateLimits() {
 		return true
 	}
@@ -8192,6 +8195,8 @@ func buildUsageBillingCommand(ctx context.Context, requestID string, usageLog *U
 	} else if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
 		cmd.SubscriptionCost = p.Cost.ActualCost
+	} else if p.APIKey.TokenPackageRequired {
+		// Pure token-package keys do not spend user wallet balance.
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
 	}

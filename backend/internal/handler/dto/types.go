@@ -55,6 +55,7 @@ type APIKey struct {
 	GroupID                     *int64                                   `json:"group_id"`
 	Status                      string                                   `json:"status"`
 	Concurrency                 int                                      `json:"concurrency"` // 0 = inherit from group/user
+	TokenPackageRequired        bool                                     `json:"token_package_required"`
 	AllowClaudeFamily           bool                                     `json:"allow_claude_family"`
 	AllowGPTFamily              bool                                     `json:"allow_gpt_family"`
 	AllowImageGeneration        bool                                     `json:"allow_image_generation"`

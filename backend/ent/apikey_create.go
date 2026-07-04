@@ -142,6 +142,20 @@ func (_c *APIKeyCreate) SetNillableRateMultiplier(v *float64) *APIKeyCreate {
 	return _c
 }
 
+// SetTokenPackageRequired sets the "token_package_required" field.
+func (_c *APIKeyCreate) SetTokenPackageRequired(v bool) *APIKeyCreate {
+	_c.mutation.SetTokenPackageRequired(v)
+	return _c
+}
+
+// SetNillableTokenPackageRequired sets the "token_package_required" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableTokenPackageRequired(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetTokenPackageRequired(*v)
+	}
+	return _c
+}
+
 // SetAllowClaudeFamily sets the "allow_claude_family" field.
 func (_c *APIKeyCreate) SetAllowClaudeFamily(v bool) *APIKeyCreate {
 	_c.mutation.SetAllowClaudeFamily(v)
@@ -480,6 +494,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.TokenPackageRequired(); !ok {
+		v := apikey.DefaultTokenPackageRequired
+		_c.mutation.SetTokenPackageRequired(v)
+	}
 	if _, ok := _c.mutation.AllowClaudeFamily(); !ok {
 		v := apikey.DefaultAllowClaudeFamily
 		_c.mutation.SetAllowClaudeFamily(v)
@@ -571,6 +589,9 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "APIKey.rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.TokenPackageRequired(); !ok {
+		return &ValidationError{Name: "token_package_required", err: errors.New(`ent: missing required field "APIKey.token_package_required"`)}
 	}
 	if _, ok := _c.mutation.AllowClaudeFamily(); !ok {
 		return &ValidationError{Name: "allow_claude_family", err: errors.New(`ent: missing required field "APIKey.allow_claude_family"`)}
@@ -669,6 +690,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(apikey.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
+	}
+	if value, ok := _c.mutation.TokenPackageRequired(); ok {
+		_spec.SetField(apikey.FieldTokenPackageRequired, field.TypeBool, value)
+		_node.TokenPackageRequired = value
 	}
 	if value, ok := _c.mutation.AllowClaudeFamily(); ok {
 		_spec.SetField(apikey.FieldAllowClaudeFamily, field.TypeBool, value)
@@ -977,6 +1002,18 @@ func (u *APIKeyUpsert) UpdateRateMultiplier() *APIKeyUpsert {
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *APIKeyUpsert) AddRateMultiplier(v float64) *APIKeyUpsert {
 	u.Add(apikey.FieldRateMultiplier, v)
+	return u
+}
+
+// SetTokenPackageRequired sets the "token_package_required" field.
+func (u *APIKeyUpsert) SetTokenPackageRequired(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldTokenPackageRequired, v)
+	return u
+}
+
+// UpdateTokenPackageRequired sets the "token_package_required" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateTokenPackageRequired() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldTokenPackageRequired)
 	return u
 }
 
@@ -1494,6 +1531,20 @@ func (u *APIKeyUpsertOne) AddRateMultiplier(v float64) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateRateMultiplier() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetTokenPackageRequired sets the "token_package_required" field.
+func (u *APIKeyUpsertOne) SetTokenPackageRequired(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetTokenPackageRequired(v)
+	})
+}
+
+// UpdateTokenPackageRequired sets the "token_package_required" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateTokenPackageRequired() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateTokenPackageRequired()
 	})
 }
 
@@ -2230,6 +2281,20 @@ func (u *APIKeyUpsertBulk) AddRateMultiplier(v float64) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateRateMultiplier() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetTokenPackageRequired sets the "token_package_required" field.
+func (u *APIKeyUpsertBulk) SetTokenPackageRequired(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetTokenPackageRequired(v)
+	})
+}
+
+// UpdateTokenPackageRequired sets the "token_package_required" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateTokenPackageRequired() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateTokenPackageRequired()
 	})
 }
 

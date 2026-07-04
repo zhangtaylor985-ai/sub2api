@@ -37,6 +37,8 @@ type APIKey struct {
 	Concurrency int
 	// Admin-only billing multiplier. User-facing API key responses should not expose it.
 	RateMultiplier float64
+	// TokenPackageRequired makes this key usable only while it has remaining token package balance.
+	TokenPackageRequired bool
 	// Model family policy is evaluated against the user-requested endpoint/model,
 	// not the internal upstream routing target.
 	AllowClaudeFamily    bool
@@ -154,6 +156,9 @@ func (k *APIKey) EffectiveRateLimit1d() float64 {
 	if limit := positiveLimit(k.RateLimit1d); limit > 0 {
 		return limit
 	}
+	if k.TokenPackageRequired {
+		return 0
+	}
 	if k.Group != nil {
 		return positiveLimitPtr(k.Group.DailyLimitUSD)
 	}
@@ -167,6 +172,9 @@ func (k *APIKey) EffectiveRateLimit7d() float64 {
 	}
 	if limit := positiveLimit(k.RateLimit7d); limit > 0 {
 		return limit
+	}
+	if k.TokenPackageRequired {
+		return 0
 	}
 	if k.Group != nil {
 		return positiveLimitPtr(k.Group.WeeklyLimitUSD)

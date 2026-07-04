@@ -85,6 +85,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		GroupID:                     k.GroupID,
 		Status:                      k.Status,
 		Concurrency:                 k.Concurrency,
+		TokenPackageRequired:        k.TokenPackageRequired,
 		AllowClaudeFamily:           k.AllowsClaudeFamily(),
 		AllowGPTFamily:              k.AllowsGPTFamily(),
 		AllowImageGeneration:        k.AllowsImageGeneration(),

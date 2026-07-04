@@ -374,6 +374,7 @@ type AdminCreateAPIKeyInput struct {
 	Status                      *string
 	Quota                       float64
 	RateMultiplier              float64
+	TokenPackageRequired        bool
 	ExpiresAt                   *time.Time
 	RateLimit5h                 float64
 	RateLimit1d                 float64
@@ -391,6 +392,7 @@ type AdminUpdateAPIKeyPolicyInput struct {
 	Status                      *string
 	Quota                       *float64
 	RateMultiplier              *float64
+	TokenPackageRequired        *bool
 	ExpiresAt                   *time.Time
 	ClearExpires                bool
 	Concurrency                 *int
@@ -2306,6 +2308,7 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCre
 		Status:                   status,
 		Quota:                    input.Quota,
 		RateMultiplier:           rateMultiplier,
+		TokenPackageRequired:     input.TokenPackageRequired,
 		QuotaUsed:                0,
 		ExpiresAt:                input.ExpiresAt,
 		RateLimit5h:              input.RateLimit5h,
@@ -2559,6 +2562,9 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 			return nil, infraerrors.BadRequest("INVALID_API_KEY_RATE_MULTIPLIER", "rate_multiplier must be greater than 0")
 		}
 		apiKey.RateMultiplier = *input.RateMultiplier
+	}
+	if input.TokenPackageRequired != nil {
+		apiKey.TokenPackageRequired = *input.TokenPackageRequired
 	}
 	if input.ResetQuota {
 		apiKey.QuotaUsed = 0

@@ -341,12 +341,12 @@
 
 | 阶段 | 状态 | 输出 |
 | --- | --- | --- |
-| 1. 当前源码/生产基线保护 | in_progress | 分支、dirty patch、未跟踪文件快照、生产 binary 对应关系 |
-| 2. TTY Skills 与本地凭据沙盒 | pending | 安全 OAuth 导入流程、本地 PG/Redis/backend、脱敏证据 |
-| 3. GPT-5.4 / GPT-5.6 Sol A/B | pending | Opus/Sonnet、effort、常识、代码、tools、WebSearch、SSE、真实 TTY |
-| 4. 全局设置与继承实现 | pending | 后端 setting/resolver、API Key/分组/UI、迁移逻辑 |
-| 5. 全量回归与本地 TTY 复验 | pending | Go、frontend、embed、真实 PTY |
-| 6. Git、canary 与生产发布 | pending | commit/push、DB/binary 备份、canary、正式切换 |
+| 1. 当前源码/生产基线保护 | complete | 分支、dirty patch、未跟踪文件快照、生产 binary 对应关系 |
+| 2. TTY Skills 与本地凭据沙盒 | complete | 安全 OAuth 导入流程、本地 PG/Redis/backend、脱敏证据 |
+| 3. GPT-5.4 / GPT-5.6 Sol A/B | complete | 16 项直连矩阵、tool/SSE、自然任务、WebSearch、真实 PTY 与 usage 证据均通过 |
+| 4. 全局设置与继承实现 | complete | 后端 setting/resolver、API Key/分组/UI、迁移逻辑 |
+| 5. 全量回归与本地 TTY 复验 | complete | Go、frontend、embed、真实 PTY |
+| 6. Git、canary 与生产发布 | in_progress | commit/push、DB/binary 备份、canary、正式切换 |
 | 7. 发布后观察与清理 | pending | usage/effort/mapping 证据、回滚点、临时凭据清理 |
 
 ## 门禁
@@ -362,3 +362,13 @@
 | --- | --- | --- |
 | 2026-07-26 | 只读 usage 统计误用不存在的 `usage_logs.status` 列 | 查询 `information_schema.columns` 后按真实字段重跑；未产生写入 |
 | 2026-07-26 | zsh 对不存在的 `backend/config*` glob 报 `no matches found` | 改用明确目录和 `rg`；未产生写入 |
+| 2026-07-26 | 本地 `schema_migrations.version` 列不存在 | 查询实际 schema，确认列为 `filename/checksum/applied_at`；未产生写入 |
+| 2026-07-26 | 生产 token TTL 查询对 `double precision` 使用双参数 `round` 失败 | 显式转为 numeric 后重跑；未产生写入 |
+| 2026-07-26 | 协议测试最初用 `rg -c` 判断零匹配，空输出被当成脚本失败；SSE token 又被多个 delta 拆分 | 改为容忍零匹配，并按 SSE 事件顺序重建文本；两目标 tool/SSE 共 4/4 通过 |
+| 2026-07-26 | 首轮自然 A/B 对带换行的临时 key 文件直接做 sha256，且只删 Redis L2，导致标为 5.6 的样本仍命中 L1 中的 5.4 | 样本作废；改为对去除 CR/LF 的原始 key 计算 sha256，同时删除 L2 并发布 `auth:cache:invalidate`，每轮先用 usage 探针反证上游目标 |
+| 2026-07-26 | 本机没有 `redis-cli`，首轮自然测试在发请求前退出 | 改用本地 Redis 容器内的 `redis-cli`；未产生错误模型请求 |
+| 2026-07-26 | 首次真实 TTY 的危险权限确认两次选择流程退出 | 只更新了隔离配置的 onboarding 状态，未发模型请求；第三次进入真实 PTY 后完成两轮测试 |
+| 2026-07-26 | GPT-5.4 TTY“记住口令”触发并行 memory 工具时出现一次可恢复的 account concurrency limit | Claude Code 自动回退并完成；同会话后续正确，GPT-5.6 TTY 未出现 API/网关错误 |
+| 2026-07-26 | 当前 `pnpm` 包装器检测到不同版本创建的 `node_modules`，非 TTY 下请求确认重装并主动中止 | 未重装依赖；直接调用项目已有 `node_modules/.bin` 中的 ESLint、Vue TypeScript、Vitest 和 Vite |
+| 2026-07-26 | 前端完整 Vitest 的既有基线有 12 项失败 | 逐个确认失败文件均未被本任务修改；本功能专项 37/37 通过，lint/typecheck/build 通过，将既有失败作为非阻断基线记录 |
+| 2026-07-26 | TTY Skill 的 usage 示例仍查询当前 schema 不存在的 `platform/status` 列 | 改为查询 `model/upstream_model/model_mapping_chain/reasoning_effort`，并注明错误终态应结合 ops/server/session 证据 |

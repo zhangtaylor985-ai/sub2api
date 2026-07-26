@@ -693,3 +693,29 @@
   - 已检查 dirty worktree；当前生产仍运行 2026-07-14 构建的 binary，后续必须先保护并核对当前源码基线，不能从干净 HEAD 发布。
   - 已只读确认生产分组/key 映射、账号 5.6 eligibility、近 7 天 GPT-5.6 usage/error、服务状态和 `cc2` 实际配置；未修改生产 DB、Redis、服务或配置。
   - 已确定本地凭据安全边界：只使用短时 access token，不导入生产 refresh token；本地禁用 token refresh。若 token 无法完成测试，停止并请用户本地登录授权。
+  - 已创建分支 `codex/claude-gpt56-global`；现有 dirty 差异和未跟踪源码已快照到 `/Users/taylor/.codex/task-snapshots/sub2api-claude-gpt56-20260726.pKtCXx`，patch sha256=`3dcf713d30df243d84f97fdcfb152083b52b4e1a9956ac6ec1a204192890b587`，untracked archive sha256=`b688c4322756bc90bc7d39a5c60d8eba561df7967e4d4d81d2accda41cfacb83`。
+  - 本地既有候选 `backend/bin/sub2api-linux-amd64-20260714T094101Z-sonnet5-gpt54` 与生产 `/opt/sub2api/sub2api` sha256 均为 `27efc96830124c393a3caf839270bf613cc2b79b3b31e0eac328561fcf34eeab`；候选之后无 backend/frontend 源码文件更新，当前源码基线可复现。
+  - 已更新项目级 `sub2api-cc1-tty-blackbox-testing` 与 `sub2api-production-regression`：加入 `cc2 --effort`、短时 access token 安全导入、禁用 refresh、GPT-5.4/5.6 同账号 A/B 和失败门禁。
+  - 已启动本地 `sub2api-postgres-local` (`127.0.0.1:5433`) 与 `sub2api-redis-local` (`127.0.0.1:6380`)；旧本地 OAuth 账号已过期。
+  - 已从生产只读导出账号 3/16 的最小 access-token 凭据到仓库外 `/Users/taylor/.codex/runtime-secrets/sub2api-gpt56.wdap88`，目录/文件权限为 0700/0600；未包含 refresh token、id token、邮箱或代理信息。
+  - 本地新增两个临时直连 OAuth 账号，只允许 `gpt-5.4` 与 `gpt-5.6-sol`，绑定 `Local Codex GPT`；测试 key 当前 Opus/Sonnet 都固定到控制组 `gpt-5.4`。
+  - 本地 backend 已在 tmux `sub2api-gpt56-local` 启动，`TOKEN_REFRESH_ENABLED=false` 日志证据明确，health ok，scheduler outbox watermark 已到 64。
+  - 首条 GPT-5.4 控制 smoke 通过：`claude-opus-4-8` + effort high 返回 `LOCAL_GPT54_READY`，客户端模型保持 Claude；usage 记录 `claude-opus-4-8→gpt-5.4`、`reasoning_effort=high`。
+  - 已在仓库外创建隔离 `CLAUDE_CONFIG_DIR=/Users/taylor/.codex/runtime-secrets/sub2api-gpt56.wdap88/claude-config`，未修改 `~/.claude_cc`；配置和 debug-file 权限均为 0600。
+  - `cc2` 等价非交互控制 smoke 通过：Claude Code `2.1.174` 明确命中本地 `ANTHROPIC_BASE_URL` 和 `/v1/messages`，收到 stream first chunk，返回 `CC2_LOCAL_GPT54_OK`；usage 为 `claude-opus-4-8→gpt-5.4`、effort high、stream=true。
+  - 完成同账号 direct A/B：16/16 通过，覆盖 GPT-5.4/GPT-5.6 Sol、Opus/Sonnet、四档 effort 和四类常识题。
+  - 完成 tool/SSE 协议 A/B：4/4 通过；修复测试夹具对零匹配和 SSE token 分片的处理后，以完整事件重建作为判定。
+  - 完成真实 Claude Code effort A/B：两目标 effort 均正确；确认 GPT-5.6 四档均额外调用完成通知并多一次请求，已按真实 usage id 修正证据文件。
+  - 首轮自然测试因 key 文件换行与 L1 cache 未失效而作废；修复为 trimmed-key sha256 + Redis DEL/PUBLISH，并加 usage 探针后重跑。
+  - 完成有效自然 A/B：知识问答、只读代码检查、逻辑排序全部正确；内部 usage 逐条验证目标模型。
+  - 完成 WebSearch A/B：两目标的原生搜索事件和最终标题/日期/URL 均正确，用户侧无内部模型泄漏。
+  - 完成真实 Claude Code PTY：5.4 与 5.6 均在同会话连续两轮保持上下文并返回正确答案；5.6 无 API error，达到全局默认切换门禁。
+  - A/B 阶段结论为通过；开始实现全局默认设置、继承优先级和管理 UI。
+  - 已实现全局 `openai_messages_dispatch_default_target`：仅允许 `gpt-5.4` / `gpt-5.6-sol`；API Key > 分组 > 全局 > 安全回退，缺失配置默认 5.6，读取错误/非法值回退 5.4。
+  - 已完成 settings API/缓存/迁移、管理 UI 下拉框、API Key/分组继承提示与分组空默认；Haiku/Fable 既有语义不变。
+  - 后端 `go test ./...`、`go test -tags=unit ./...`、相关 `-race`、`go test -tags=embed ./cmd/server ./internal/web` 均通过。
+  - 前端 lint、typecheck、Vite production build 与本功能 37 项专项测试通过；完整 Vitest 649/661，12 项失败均位于本任务未改动的既有文件，已记录为基线。
+  - 新本地 binary `backend/bin/server-gpt56-global-local` sha256=`fda349677c4532e473eb04f6189538ecb2de82b45aa4a01d439e56e33d36dad1` 已替换本地 tmux 测试进程；迁移 154、settings GET/PUT、非法目标 400 均验证通过。
+  - 全局继承实测：usage 99/100 为全局 5.4；不重启切到 5.6 后 usage 101/102 为 5.6 且 effort 分别为 xhigh/low；usage 103/104 证明分组 5.4 与 API Key 5.6 的覆盖优先级。
+  - 新代码真实 `cc2` PTY 会话 `09846024-f07a-4a6c-b379-6abb38255deb` 连续两轮返回 `TTY-GLOBAL56-ONE` / `42`；usage 105–107 全部 `claude-opus-4-8→gpt-5.6-sol`、effort high，debug 与 session JSONL 无 API Error。
+  - 已修正 TTY Skill 中与当前 `usage_logs` schema 不兼容的示例 SQL，避免后续取证误查不存在的 `platform/status` 字段。

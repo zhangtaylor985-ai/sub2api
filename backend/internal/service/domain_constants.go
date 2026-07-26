@@ -431,6 +431,9 @@ const (
 	// 当客户端 UA 被识别为浏览器（Chrome/Firefox/Safari/Edge 等）时，转发给 OpenAI 上游前会替换为此值，
 	// 用于避免 Cloudflare 对浏览器型 UA 的质询拦截。
 	SettingKeyOpenAICodexUserAgent = "openai_codex_user_agent"
+	// SettingKeyOpenAIMessagesDispatchDefaultTarget Claude Opus/Sonnet
+	// 经 OpenAI /v1/messages 调度时的全局默认目标。
+	SettingKeyOpenAIMessagesDispatchDefaultTarget = "openai_messages_dispatch_default_target"
 
 	// 余额不足提醒
 	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关

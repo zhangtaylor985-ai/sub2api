@@ -87,6 +87,30 @@ pnpm --dir frontend run build
 
 测试结束后记录临时改过的 settings，并按需要恢复或保留。
 
+## Claude → GPT Target Upgrade Gate
+
+当变更 Claude `/v1/messages` 的内部 GPT 目标模型（例如从 `gpt-5.4` 升级到 `gpt-5.6-sol`）时，不能只做候选模型单点 smoke，必须以当前稳定模型为控制组做本地 A/B。
+
+要求：
+
+- 使用同一批本地 OAuth 账号、同 Claude model、同 effort、同 prompt。
+- 先跑直接 `/v1/messages`，再跑 `claude2 -p`，最后跑真实 TTY 连续多轮。
+- 覆盖 Opus、Sonnet、`low/medium/high/max`、non-stream/SSE、function tool、WebSearch。
+- 核对 `usage_logs.model_mapping_chain`、`upstream_model`、`reasoning_effort`、首 token/总耗时。
+- 客户端响应与错误继续保持 Claude 黑盒。
+- 对候选的 429/403/5xx 先区分 entitlement、账号限流、代理故障和模型/协议错误；必要时换第二个已确认支持候选模型的账号复验。
+
+候选出现以下任一可复现问题时，不得切全局默认：
+
+- 模型或 effort 参数不支持。
+- HTTP 200 后 SSE 未完成。
+- function/WebSearch 协议异常。
+- Claude Code 新会话或 resume 失败。
+- 客户端暴露内部 GPT/Codex/OpenAI 模型。
+- 相同任务出现明显、稳定的正确性回退。
+
+本地没有 OAuth 账号时，按 `sub2api-cc1-tty-blackbox-testing` 的 Safe Local OpenAI OAuth Bootstrap 执行。只复制短时 access token、禁用本地 token refresh；无法安全完成时请用户本地重新授权。
+
 ## Local Blackbox Sandbox
 
 Sub2API 的 Claude -> GPT 黑盒默认先走本地沙盒，不直接打生产。

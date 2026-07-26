@@ -3948,6 +3948,33 @@
                   }}
                 </p>
               </div>
+
+              <!-- Claude -> OpenAI global target -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openaiMessagesDispatchDefaultTarget",
+                    )
+                  }}
+                </label>
+                <select
+                  v-model="form.openai_messages_dispatch_default_target"
+                  class="input max-w-xs font-mono text-sm"
+                >
+                  <option value="gpt-5.6-sol">gpt-5.6-sol</option>
+                  <option value="gpt-5.4">gpt-5.4</option>
+                </select>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openaiMessagesDispatchDefaultTargetHint",
+                    )
+                  }}
+                </p>
+              </div>
             </div>
           </div>
           <!-- Web Search Emulation -->
@@ -7162,6 +7189,9 @@ const form = reactive<SettingsForm>({
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
+  openai_messages_dispatch_default_target: "gpt-5.6-sol" as
+    | "gpt-5.4"
+    | "gpt-5.6-sol",
   // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -8267,6 +8297,8 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
+      openai_messages_dispatch_default_target:
+        form.openai_messages_dispatch_default_target,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,

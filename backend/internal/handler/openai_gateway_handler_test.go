@@ -510,6 +510,18 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 		require.Equal(t, "gpt-5.4-mini", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-haiku-4-5-20251001"))
 	})
 
+	t.Run("uses_global_target_after_key_and_group_overrides", func(t *testing.T) {
+		apiKey := &service.APIKey{Group: &service.Group{}}
+		require.Equal(t, "gpt-5.6-sol", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-opus-4-8", "gpt-5.6-sol"))
+		require.Equal(t, "gpt-5.6-sol", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-5", "gpt-5.6-sol"))
+		require.Equal(t, "gpt-5.4-mini", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-haiku-4-5", "gpt-5.6-sol"))
+
+		apiKey.Group.MessagesDispatchModelConfig.OpusMappedModel = "gpt-5.4"
+		require.Equal(t, "gpt-5.4", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-opus-4-8", "gpt-5.6-sol"))
+		apiKey.MessagesDispatchModelConfig.OpusMappedModel = "gpt-5.5"
+		require.Equal(t, "gpt-5.5", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-opus-4-8", "gpt-5.6-sol"))
+	})
+
 	t.Run("fable_uses_messages_dispatch_default", func(t *testing.T) {
 		apiKey := &service.APIKey{
 			Group: &service.Group{

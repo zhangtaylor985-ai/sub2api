@@ -666,15 +666,16 @@ func TestAPIContracts(t *testing.T) {
 					service.SettingKeyTableDefaultPageSize: "20",
 					service.SettingKeyTablePageSizeOptions: "[10,20,50,100]",
 
-					service.SettingKeyOpsMonitoringEnabled:           "false",
-					service.SettingKeyOpsRealtimeMonitoringEnabled:   "true",
-					service.SettingKeyOpsQueryModeDefault:            "auto",
-					service.SettingKeyOpsMetricsIntervalSeconds:      "60",
-					service.SettingPaymentVisibleMethodAlipaySource:  service.VisibleMethodSourceEasyPayAlipay,
-					service.SettingPaymentVisibleMethodWxpaySource:   service.VisibleMethodSourceOfficialWechat,
-					service.SettingPaymentVisibleMethodAlipayEnabled: "true",
-					service.SettingPaymentVisibleMethodWxpayEnabled:  "false",
-					"openai_advanced_scheduler_enabled":              "true",
+					service.SettingKeyOpsMonitoringEnabled:                "false",
+					service.SettingKeyOpsRealtimeMonitoringEnabled:        "true",
+					service.SettingKeyOpsQueryModeDefault:                 "auto",
+					service.SettingKeyOpsMetricsIntervalSeconds:           "60",
+					service.SettingPaymentVisibleMethodAlipaySource:       service.VisibleMethodSourceEasyPayAlipay,
+					service.SettingPaymentVisibleMethodWxpaySource:        service.VisibleMethodSourceOfficialWechat,
+					service.SettingPaymentVisibleMethodAlipayEnabled:      "true",
+					service.SettingPaymentVisibleMethodWxpayEnabled:       "false",
+					"openai_advanced_scheduler_enabled":                   "true",
+					service.SettingKeyOpenAIMessagesDispatchDefaultTarget: service.OpenAIMessagesDispatchTargetGPT56,
 				})
 			},
 			method:     http.MethodGet,
@@ -857,6 +858,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": true,
 					"openai_codex_user_agent":           "",
+					"openai_messages_dispatch_default_target": "gpt-5.6-sol",
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -1093,6 +1095,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": false,
 					"openai_codex_user_agent":           "",
+					"openai_messages_dispatch_default_target": "gpt-5.6-sol",
 					"openai_fast_policy_settings": {
 						"rules": []
 					},

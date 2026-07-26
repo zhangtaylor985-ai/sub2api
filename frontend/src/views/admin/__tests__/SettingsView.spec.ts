@@ -161,6 +161,8 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.payment.findProvider": "查看支持的支付方式",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
+    "admin.settings.gatewayForwarding.openaiMessagesDispatchDefaultTarget": "Claude → GPT 全局默认目标",
+    "admin.settings.gatewayForwarding.openaiMessagesDispatchDefaultTargetHint": "API Key > 分组 > 全局设置",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -382,6 +384,7 @@ const baseSettingsResponse = {
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
+  openai_messages_dispatch_default_target: "gpt-5.6-sol",
   payment_enabled: true,
   payment_min_amount: 1,
   payment_max_amount: 10000,
@@ -658,6 +661,33 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         antigravity_user_agent_version: "1.23.2",
+      }),
+    );
+  });
+
+  it("loads and submits the global Claude to GPT dispatch target", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_messages_dispatch_default_target: "gpt-5.4",
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    const targetSelect = wrapper
+      .findAll("select")
+      .find((node) => node.findAll("option").some((option) => option.text() === "gpt-5.6-sol"));
+
+    expect(wrapper.text()).toContain("Claude → GPT 全局默认目标");
+    expect(targetSelect?.element.value).toBe("gpt-5.4");
+
+    await targetSelect?.setValue("gpt-5.6-sol");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_messages_dispatch_default_target: "gpt-5.6-sol",
       }),
     );
   });

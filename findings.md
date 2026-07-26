@@ -605,3 +605,24 @@
 - `cc2` 实际为 `CLAUDE_CONFIG_DIR=~/.claude_cc claude2 --dangerously-skip-permissions`，Claude Code 版本 `2.1.174`；CLI 支持 `--effort`、`--debug-file`、`--resume` 和真实交互会话。
 - 本地 8080 当前无服务；既有 `sub2api-postgres-local` / `sub2api-redis-local` 容器已停止，可在确认后恢复独立沙盒。
 - 生产 OpenAI OAuth 凭据实际存储于 PostgreSQL `accounts.credentials`，不是独立 auth file。安全本地验证应只导出短时 access token，去除 refresh token，并关闭本地 token refresh。
+
+## 2026-07-26 Claude → GPT-5.6 A/B 结论
+
+- 同一账号直连 A/B 共 16/16 通过：`gpt-5.4` / `gpt-5.6-sol` × Opus 4.8 / Sonnet 5 × `low/medium/high/max`。全部 HTTP 200、常识答案精确、客户端模型保持 Claude；usage 的 `max` 正确转为上游 `xhigh`。
+- function tool 与 SSE 协议矩阵 4/4 通过：两目标都返回精确 `lookup_weather(city=Paris)`；SSE 重建文本正确、具备 `message_start/message_stop`，没有 GPT/OpenAI 内部模型泄漏。
+- 真实 Claude Code effort 矩阵显示 5.6 四档都正确，但均先调用 `Bash` 发送 macOS 完成通知，再给最终答案，因而每例产生两次 `/v1/messages`；5.4 的精确回复样本只需一次。这是工具选择/效率差异，不是 effort 或协议错误。
+- 修正 auth cache 测试夹具后，自然任务两目标答案均正确。5.6 在知识、只读代码检查、逻辑排序三例均发送完成通知；5.4 在只读代码检查中也会发送完成通知，证明该行为不是 5.6 独有，但 5.6 触发更积极。
+- WebSearch A/B 均成功返回 OpenAI 官方 `Introducing GPT-5` 标题、`August 7, 2025` 和正确 URL，原生 `server_tool_use/web_search_tool_result` 事件完整。5.6 因完成通知多一次 API 轮次，但没有搜索协议错误。
+- 真实 PTY 已完成：5.4 同一会话正确保留 `ORBIT-731` 并完成年龄排序；5.6 同一会话正确保留 `X=17`，两轮分别返回 `37` 与 `285`。5.6 usage 全部为同一账号、`gpt-5.6-sol`、effort high，debug 无 API/网关错误。
+- A/B 门禁结论：GPT-5.6 Sol 的正确性、Claude 黑盒、effort、stream/tool/WebSearch 和多轮稳定性达到切换要求；把“更积极调用本机完成通知，增加一次工具和 API 轮次”记录为非阻断效率差异。
+
+## 2026-07-26 全局设置实现与新二进制本地验收
+
+- 新增全局 setting `openai_messages_dispatch_default_target`，仅允许 `gpt-5.4` / `gpt-5.6-sol`；迁移和缺失配置的产品默认均为 `gpt-5.6-sol`，数据库读取失败或存储值非法时安全回退 `gpt-5.4`。
+- 最终解析优先级为 API Key 显式映射 > 分组显式映射 > 全局目标 > 安全回退；Haiku 继续默认 `gpt-5.4-mini`，Fable 保持既有显式开关语义。
+- 管理端 settings API 和 UI 已增加全局下拉框；分组新建/重置的 Opus/Sonnet 默认改为空，表示继承全局。API Key 与分组提示文案均明确支持 5.4/5.6 和继承优先级。
+- 后端 `go test ./...`、`go test -tags=unit ./...`、相关 `-race`、embed 测试全部通过。前端 lint、typecheck、Vite production build 通过，本功能 37 项专项测试通过。
+- 前端完整 Vitest 为 649/661；12 个失败全部来自本任务未修改的旧测试/实现基线（AccountUsageCell mock 参数、EmailVerify affiliate mock、两个图表 fixture、page-size 隔离），不属于本功能回归。
+- 新 macOS 本地 binary sha256=`fda349677c4532e473eb04f6189538ecb2de82b45aa4a01d439e56e33d36dad1`。迁移 154 自动执行，settings GET/PUT 与非法值 400 校验均通过。
+- 在 API Key/分组 Opus/Sonnet 均为空时，全局 5.4 的 Opus/Sonnet usage 为 99/100；API 不重启切至 5.6 后 usage 101/102 分别保留 `max→xhigh` 与 `low→low`。分组覆盖与 Key 覆盖 usage 103/104 证明优先级正确。
+- 新代码真实 `cc2` PTY 会话 `09846024-f07a-4a6c-b379-6abb38255deb` 两轮分别返回 `TTY-GLOBAL56-ONE` 和 `42`；usage 105–107 全部为 `claude-opus-4-8→gpt-5.6-sol`、effort high、同一账号，debug/session 无 API Error。

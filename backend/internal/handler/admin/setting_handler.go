@@ -256,6 +256,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                   settings.OpenAICodexUserAgent,
+		OpenAIMessagesDispatchDefaultTarget:    settings.OpenAIMessagesDispatchDefaultTarget,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
@@ -577,13 +578,14 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification       *bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough          *bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                   *bool   `json:"enable_cch_signing"`
-	EnableAnthropicCacheTTL1hInjection *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl         *bool   `json:"rewrite_message_cache_control"`
-	AntigravityUserAgentVersion        *string `json:"antigravity_user_agent_version"`
-	OpenAICodexUserAgent               *string `json:"openai_codex_user_agent"`
+	EnableFingerprintUnification        *bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough           *bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                    *bool   `json:"enable_cch_signing"`
+	EnableAnthropicCacheTTL1hInjection  *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl          *bool   `json:"rewrite_message_cache_control"`
+	AntigravityUserAgentVersion         *string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                *string `json:"openai_codex_user_agent"`
+	OpenAIMessagesDispatchDefaultTarget *string `json:"openai_messages_dispatch_default_target"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -1447,6 +1449,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	if req.OpenAIMessagesDispatchDefaultTarget != nil {
+		normalized := strings.TrimSpace(*req.OpenAIMessagesDispatchDefaultTarget)
+		if !service.IsValidOpenAIMessagesDispatchTarget(normalized) {
+			response.Error(c, http.StatusBadRequest, "openai_messages_dispatch_default_target must be gpt-5.4 or gpt-5.6-sol")
+			return
+		}
+		normalized = service.NormalizeOpenAIMessagesDispatchTarget(normalized)
+		req.OpenAIMessagesDispatchDefaultTarget = &normalized
+	}
 
 	// 交叉验证：如果同时设置了最低和最高版本号，最高版本号必须 >= 最低版本号
 	if req.MinClaudeCodeVersion != "" && req.MaxClaudeCodeVersion != "" {
@@ -1654,6 +1665,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.OpenAICodexUserAgent
 			}
 			return previousSettings.OpenAICodexUserAgent
+		}(),
+		OpenAIMessagesDispatchDefaultTarget: func() string {
+			if req.OpenAIMessagesDispatchDefaultTarget != nil {
+				return *req.OpenAIMessagesDispatchDefaultTarget
+			}
+			return previousSettings.OpenAIMessagesDispatchDefaultTarget
 		}(),
 		PaymentVisibleMethodAlipaySource: func() string {
 			if req.PaymentVisibleMethodAlipaySource != nil {
@@ -2031,6 +2048,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                   updatedSettings.OpenAICodexUserAgent,
+		OpenAIMessagesDispatchDefaultTarget:    updatedSettings.OpenAIMessagesDispatchDefaultTarget,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
@@ -2499,6 +2517,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAICodexUserAgent != after.OpenAICodexUserAgent {
 		changed = append(changed, "openai_codex_user_agent")
+	}
+	if before.OpenAIMessagesDispatchDefaultTarget != after.OpenAIMessagesDispatchDefaultTarget {
+		changed = append(changed, "openai_messages_dispatch_default_target")
 	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")

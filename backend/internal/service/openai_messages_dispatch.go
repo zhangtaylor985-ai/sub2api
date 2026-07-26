@@ -7,6 +7,16 @@ const (
 	defaultOpenAIMessagesDispatchSonnetMappedModel = "gpt-5.4"
 	defaultOpenAIMessagesDispatchHaikuMappedModel  = "gpt-5.4-mini"
 
+	OpenAIMessagesDispatchTargetGPT54 = "gpt-5.4"
+	OpenAIMessagesDispatchTargetGPT56 = "gpt-5.6-sol"
+
+	// DefaultOpenAIMessagesDispatchTarget is the product default used when the
+	// global setting has not been persisted yet.
+	DefaultOpenAIMessagesDispatchTarget = OpenAIMessagesDispatchTargetGPT56
+	// SafeOpenAIMessagesDispatchTarget is used only when the settings backend
+	// is unavailable or contains an invalid value.
+	SafeOpenAIMessagesDispatchTarget = OpenAIMessagesDispatchTargetGPT54
+
 	OpenAIMessagesDispatchFableModel       = "claude-fable-5"
 	OpenAIMessagesDispatchFableTargetModel = "gpt-5.4"
 )
@@ -14,6 +24,23 @@ const (
 func normalizeOpenAIMessagesDispatchMappedModel(model string) string {
 	model = NormalizeOpenAICompatRequestedModel(strings.TrimSpace(model))
 	return strings.TrimSpace(model)
+}
+
+func IsValidOpenAIMessagesDispatchTarget(model string) bool {
+	switch strings.TrimSpace(model) {
+	case OpenAIMessagesDispatchTargetGPT54, OpenAIMessagesDispatchTargetGPT56:
+		return true
+	default:
+		return false
+	}
+}
+
+func NormalizeOpenAIMessagesDispatchTarget(model string) string {
+	model = strings.TrimSpace(model)
+	if IsValidOpenAIMessagesDispatchTarget(model) {
+		return model
+	}
+	return DefaultOpenAIMessagesDispatchTarget
 }
 
 func normalizeOpenAIMessagesDispatchModelConfig(cfg OpenAIMessagesDispatchModelConfig) OpenAIMessagesDispatchModelConfig {
@@ -67,11 +94,37 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 	return resolveOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig, requestedModel, true)
 }
 
+// ResolveMessagesDispatchModelOverride resolves only explicit group mappings.
+// Global and code defaults are deliberately excluded so callers can apply the
+// precedence API key > group > global > safe fallback.
+func (g *Group) ResolveMessagesDispatchModelOverride(requestedModel string) string {
+	if g == nil {
+		return ""
+	}
+	return resolveOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig, requestedModel, false)
+}
+
 func (k *APIKey) ResolveMessagesDispatchModel(requestedModel string) string {
 	if k == nil {
 		return ""
 	}
 	return resolveOpenAIMessagesDispatchModelConfig(k.MessagesDispatchModelConfig, requestedModel, false)
+}
+
+func ResolveOpenAIMessagesDispatchDefaultModel(requestedModel, target string) string {
+	switch claudeMessagesDispatchFamily(requestedModel) {
+	case "opus", "sonnet":
+		if !IsValidOpenAIMessagesDispatchTarget(target) {
+			target = SafeOpenAIMessagesDispatchTarget
+		}
+		return normalizeOpenAIMessagesDispatchMappedModel(target)
+	case "haiku":
+		return defaultOpenAIMessagesDispatchHaikuMappedModel
+	case "fable":
+		return OpenAIMessagesDispatchFableTargetModel
+	default:
+		return ""
+	}
 }
 
 func resolveOpenAIMessagesDispatchModelConfig(cfg OpenAIMessagesDispatchModelConfig, requestedModel string, includeDefaults bool) string {

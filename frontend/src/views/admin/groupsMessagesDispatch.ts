@@ -19,9 +19,9 @@ export const OPENAI_MESSAGES_DISPATCH_FABLE_TARGET_MODEL = "gpt-5.4";
 export function createDefaultMessagesDispatchFormState(): MessagesDispatchFormState {
   return {
     allow_messages_dispatch: false,
-    opus_mapped_model: "gpt-5.4",
-    sonnet_mapped_model: "gpt-5.4",
-    haiku_mapped_model: "gpt-5.4-mini",
+    opus_mapped_model: "",
+    sonnet_mapped_model: "",
+    haiku_mapped_model: "",
     exact_model_mappings: [],
   };
 }

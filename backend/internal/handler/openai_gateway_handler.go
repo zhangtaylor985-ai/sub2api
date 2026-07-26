@@ -37,9 +37,10 @@ type OpenAIGatewayHandler struct {
 	imageLimiter             *imageConcurrencyLimiter
 	maxAccountSwitches       int
 	cfg                      *config.Config
+	settingService           *service.SettingService
 }
 
-func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
+func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string, defaultTargets ...string) string {
 	if apiKey == nil {
 		return ""
 	}
@@ -49,7 +50,14 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 	if apiKey.Group == nil {
 		return ""
 	}
-	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
+	if mappedModel := strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModelOverride(requestedModel)); mappedModel != "" {
+		return mappedModel
+	}
+	defaultTarget := service.SafeOpenAIMessagesDispatchTarget
+	if len(defaultTargets) > 0 {
+		defaultTarget = defaultTargets[0]
+	}
+	return strings.TrimSpace(service.ResolveOpenAIMessagesDispatchDefaultModel(requestedModel, defaultTarget))
 }
 
 func isOpenAIMessagesDispatchFableEnabled(apiKey *service.APIKey) bool {
@@ -80,6 +88,7 @@ func NewOpenAIGatewayHandler(
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
 	cfg *config.Config,
+	settingService *service.SettingService,
 ) *OpenAIGatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 3
@@ -100,6 +109,7 @@ func NewOpenAIGatewayHandler(
 		imageLimiter:             &imageConcurrencyLimiter{},
 		maxAccountSwitches:       maxAccountSwitches,
 		cfg:                      cfg,
+		settingService:           settingService,
 	}
 }
 
@@ -650,7 +660,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
-	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
+	defaultTarget := service.SafeOpenAIMessagesDispatchTarget
+	if h.settingService != nil {
+		defaultTarget = h.settingService.GetOpenAIMessagesDispatchDefaultTarget(c.Request.Context())
+	}
+	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel, defaultTarget)
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))

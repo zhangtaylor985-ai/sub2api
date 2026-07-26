@@ -141,6 +141,15 @@ const openAICodexUserAgentCacheTTL = 60 * time.Second
 const openAICodexUserAgentErrorTTL = 5 * time.Second
 const openAICodexUserAgentDBTimeout = 5 * time.Second
 
+type cachedOpenAIMessagesDispatchTarget struct {
+	value     string
+	expiresAt int64 // unix nano
+}
+
+const openAIMessagesDispatchTargetCacheTTL = 60 * time.Second
+const openAIMessagesDispatchTargetErrorTTL = 5 * time.Second
+const openAIMessagesDispatchTargetDBTimeout = 5 * time.Second
+
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
@@ -152,17 +161,19 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo               SettingRepository
-	defaultSubGroupReader     DefaultSubscriptionGroupReader
-	proxyRepo                 ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                       *config.Config
-	onUpdate                  func() // Callback when settings are updated (for cache invalidation)
-	version                   string // Application version
-	webSearchManagerBuilder   WebSearchManagerBuilder
-	antigravityUAVersionCache atomic.Value // *cachedAntigravityUserAgentVersion
-	antigravityUAVersionSF    singleflight.Group
-	openAICodexUACache        atomic.Value // *cachedOpenAICodexUserAgent
-	openAICodexUASF           singleflight.Group
+	settingRepo                       SettingRepository
+	defaultSubGroupReader             DefaultSubscriptionGroupReader
+	proxyRepo                         ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                               *config.Config
+	onUpdate                          func() // Callback when settings are updated (for cache invalidation)
+	version                           string // Application version
+	webSearchManagerBuilder           WebSearchManagerBuilder
+	antigravityUAVersionCache         atomic.Value // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF            singleflight.Group
+	openAICodexUACache                atomic.Value // *cachedOpenAICodexUserAgent
+	openAICodexUASF                   singleflight.Group
+	openAIMessagesDispatchTargetCache atomic.Value // *cachedOpenAIMessagesDispatchTarget
+	openAIMessagesDispatchTargetSF    singleflight.Group
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
@@ -1015,6 +1026,59 @@ func (s *SettingService) GetOpenAICodexUserAgent(ctx context.Context) string {
 	return fallback
 }
 
+// GetOpenAIMessagesDispatchDefaultTarget returns the global Opus/Sonnet
+// dispatch target. A missing setting uses the product default; repository
+// failures or invalid stored values fail safely to GPT-5.4.
+func (s *SettingService) GetOpenAIMessagesDispatchDefaultTarget(ctx context.Context) string {
+	if s == nil || s.settingRepo == nil {
+		return SafeOpenAIMessagesDispatchTarget
+	}
+	if cached, ok := s.openAIMessagesDispatchTargetCache.Load().(*cachedOpenAIMessagesDispatchTarget); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+
+	result, _, _ := s.openAIMessagesDispatchTargetSF.Do(SettingKeyOpenAIMessagesDispatchDefaultTarget, func() (any, error) {
+		if cached, ok := s.openAIMessagesDispatchTargetCache.Load().(*cachedOpenAIMessagesDispatchTarget); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIMessagesDispatchTargetDBTimeout)
+		defer cancel()
+
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAIMessagesDispatchDefaultTarget)
+		target := SafeOpenAIMessagesDispatchTarget
+		ttl := openAIMessagesDispatchTargetErrorTTL
+		switch {
+		case err == nil && IsValidOpenAIMessagesDispatchTarget(value):
+			target = normalizeOpenAIMessagesDispatchMappedModel(value)
+			ttl = openAIMessagesDispatchTargetCacheTTL
+		case errors.Is(err, ErrSettingNotFound):
+			target = DefaultOpenAIMessagesDispatchTarget
+			ttl = openAIMessagesDispatchTargetCacheTTL
+		case err != nil:
+			slog.Warn("failed to get openai messages dispatch default target setting", "error", err)
+		default:
+			slog.Warn("invalid openai messages dispatch default target setting", "value", value)
+		}
+
+		s.openAIMessagesDispatchTargetCache.Store(&cachedOpenAIMessagesDispatchTarget{
+			value:     target,
+			expiresAt: time.Now().Add(ttl).UnixNano(),
+		})
+		return target, nil
+	})
+	if target, ok := result.(string); ok && IsValidOpenAIMessagesDispatchTarget(target) {
+		return normalizeOpenAIMessagesDispatchMappedModel(target)
+	}
+	return SafeOpenAIMessagesDispatchTarget
+}
+
 // SetOnUpdateCallback sets a callback function to be called when settings are updated
 // This is used for cache invalidation (e.g., HTML cache in frontend server)
 func (s *SettingService) SetOnUpdateCallback(callback func()) {
@@ -1816,6 +1880,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
+	updates[SettingKeyOpenAIMessagesDispatchDefaultTarget] = NormalizeOpenAIMessagesDispatchTarget(settings.OpenAIMessagesDispatchDefaultTarget)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -1959,6 +2024,11 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.openAICodexUACache.Store(&cachedOpenAICodexUserAgent{
 		value:     codexUA,
 		expiresAt: time.Now().Add(openAICodexUserAgentCacheTTL).UnixNano(),
+	})
+	s.openAIMessagesDispatchTargetSF.Forget(SettingKeyOpenAIMessagesDispatchDefaultTarget)
+	s.openAIMessagesDispatchTargetCache.Store(&cachedOpenAIMessagesDispatchTarget{
+		value:     NormalizeOpenAIMessagesDispatchTarget(settings.OpenAIMessagesDispatchDefaultTarget),
+		expiresAt: time.Now().Add(openAIMessagesDispatchTargetCacheTTL).UnixNano(),
 	})
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
@@ -2708,16 +2778,17 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyMaxClaudeCodeVersion: "",
 
 		// 分组隔离（默认不允许未分组 Key 调度）
-		SettingKeyAllowUngroupedKeyScheduling:        "false",
-		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
-		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
-		SettingKeyAntigravityUserAgentVersion:        "",
-		SettingKeyOpenAICodexUserAgent:               "",
-		SettingPaymentVisibleMethodAlipaySource:      "",
-		SettingPaymentVisibleMethodWxpaySource:       "",
-		SettingPaymentVisibleMethodAlipayEnabled:     "false",
-		SettingPaymentVisibleMethodWxpayEnabled:      "false",
-		openAIAdvancedSchedulerSettingKey:            "false",
+		SettingKeyAllowUngroupedKeyScheduling:         "false",
+		SettingKeyEnableAnthropicCacheTTL1hInjection:  "false",
+		SettingKeyRewriteMessageCacheControl:          strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyAntigravityUserAgentVersion:         "",
+		SettingKeyOpenAICodexUserAgent:                "",
+		SettingKeyOpenAIMessagesDispatchDefaultTarget: DefaultOpenAIMessagesDispatchTarget,
+		SettingPaymentVisibleMethodAlipaySource:       "",
+		SettingPaymentVisibleMethodWxpaySource:        "",
+		SettingPaymentVisibleMethodAlipayEnabled:      "false",
+		SettingPaymentVisibleMethodWxpayEnabled:       "false",
+		openAIAdvancedSchedulerSettingKey:             "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -3233,6 +3304,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
+	rawDispatchTarget, dispatchTargetExists := settings[SettingKeyOpenAIMessagesDispatchDefaultTarget]
+	switch {
+	case !dispatchTargetExists || strings.TrimSpace(rawDispatchTarget) == "":
+		result.OpenAIMessagesDispatchDefaultTarget = DefaultOpenAIMessagesDispatchTarget
+	case IsValidOpenAIMessagesDispatchTarget(rawDispatchTarget):
+		result.OpenAIMessagesDispatchDefaultTarget = normalizeOpenAIMessagesDispatchMappedModel(rawDispatchTarget)
+	default:
+		result.OpenAIMessagesDispatchDefaultTarget = SafeOpenAIMessagesDispatchTarget
+	}
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {

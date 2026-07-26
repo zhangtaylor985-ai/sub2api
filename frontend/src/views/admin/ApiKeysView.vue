@@ -308,15 +308,15 @@
             <div class="grid gap-3 md:grid-cols-3">
               <label class="space-y-1">
                 <span class="input-label">{{ t('admin.apiKeys.form.opusMappedModel') }}</span>
-                <input v-model="createForm.dispatch_opus_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+                <input v-model="createForm.dispatch_opus_mapped_model" type="text" class="input" placeholder="gpt-5.6-sol" />
               </label>
               <label class="space-y-1">
                 <span class="input-label">{{ t('admin.apiKeys.form.sonnetMappedModel') }}</span>
-                <input v-model="createForm.dispatch_sonnet_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+                <input v-model="createForm.dispatch_sonnet_mapped_model" type="text" class="input" placeholder="gpt-5.6-sol" />
               </label>
               <label class="space-y-1">
                 <span class="input-label">{{ t('admin.apiKeys.form.haikuMappedModel') }}</span>
-                <input v-model="createForm.dispatch_haiku_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+                <input v-model="createForm.dispatch_haiku_mapped_model" type="text" class="input" placeholder="gpt-5.4-mini" />
               </label>
             </div>
           </div>
@@ -444,15 +444,15 @@
             <div class="grid gap-3 md:grid-cols-3">
               <label class="space-y-1">
                 <span class="input-label">{{ t('admin.apiKeys.form.opusMappedModel') }}</span>
-                <input v-model="editForm.dispatch_opus_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+                <input v-model="editForm.dispatch_opus_mapped_model" type="text" class="input" placeholder="gpt-5.6-sol" />
               </label>
               <label class="space-y-1">
                 <span class="input-label">{{ t('admin.apiKeys.form.sonnetMappedModel') }}</span>
-                <input v-model="editForm.dispatch_sonnet_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+                <input v-model="editForm.dispatch_sonnet_mapped_model" type="text" class="input" placeholder="gpt-5.6-sol" />
               </label>
               <label class="space-y-1">
                 <span class="input-label">{{ t('admin.apiKeys.form.haikuMappedModel') }}</span>
-                <input v-model="editForm.dispatch_haiku_mapped_model" type="text" class="input" placeholder="gpt-5.4" />
+                <input v-model="editForm.dispatch_haiku_mapped_model" type="text" class="input" placeholder="gpt-5.4-mini" />
               </label>
             </div>
           </div>

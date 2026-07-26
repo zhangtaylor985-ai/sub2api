@@ -49,6 +49,38 @@ func TestGroupResolveMessagesDispatchModel_Sonnet5UsesGPT54Default(t *testing.T)
 	require.Equal(t, "gpt-5.4", group.ResolveMessagesDispatchModel("claude-sonnet-5-20260701"))
 }
 
+func TestGroupResolveMessagesDispatchModelOverride_DoesNotUseDefaults(t *testing.T) {
+	t.Parallel()
+
+	group := &Group{}
+	require.Empty(t, group.ResolveMessagesDispatchModelOverride("claude-opus-4-8"))
+	require.Empty(t, group.ResolveMessagesDispatchModelOverride("claude-sonnet-5"))
+
+	group.MessagesDispatchModelConfig.SonnetMappedModel = "gpt-5.6-sol"
+	require.Equal(t, "gpt-5.6-sol", group.ResolveMessagesDispatchModelOverride("claude-sonnet-5"))
+}
+
+func TestResolveOpenAIMessagesDispatchDefaultModel(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "gpt-5.6-sol", ResolveOpenAIMessagesDispatchDefaultModel("claude-opus-4-8", "gpt-5.6-sol"))
+	require.Equal(t, "gpt-5.4", ResolveOpenAIMessagesDispatchDefaultModel("claude-sonnet-5", "gpt-5.4"))
+	require.Equal(t, "gpt-5.4", ResolveOpenAIMessagesDispatchDefaultModel("claude-sonnet-5", "invalid"))
+	require.Equal(t, "gpt-5.4-mini", ResolveOpenAIMessagesDispatchDefaultModel("claude-haiku-4-5", "gpt-5.6-sol"))
+	require.Equal(t, OpenAIMessagesDispatchFableTargetModel, ResolveOpenAIMessagesDispatchDefaultModel("claude-fable-5", "gpt-5.6-sol"))
+	require.Empty(t, ResolveOpenAIMessagesDispatchDefaultModel("gpt-5.6-sol", "gpt-5.6-sol"))
+}
+
+func TestNormalizeOpenAIMessagesDispatchTarget(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, OpenAIMessagesDispatchTargetGPT54, NormalizeOpenAIMessagesDispatchTarget(" gpt-5.4 "))
+	require.Equal(t, OpenAIMessagesDispatchTargetGPT56, NormalizeOpenAIMessagesDispatchTarget(" gpt-5.6-sol "))
+	require.Equal(t, DefaultOpenAIMessagesDispatchTarget, NormalizeOpenAIMessagesDispatchTarget(""))
+	require.False(t, IsValidOpenAIMessagesDispatchTarget("gpt-5.4-high"))
+	require.False(t, IsValidOpenAIMessagesDispatchTarget("gpt-5.6-terra"))
+}
+
 func TestAPIKeyResolveMessagesDispatchModel_Sonnet5OverrideWins(t *testing.T) {
 	t.Parallel()
 

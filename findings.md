@@ -65,6 +65,28 @@
 - 全局 `internal/pkg/timezone` 已提供 `Today()`、`ParseInLocation()` 和 `Location()`，生产默认 `Asia/Shanghai`；提醒与日期校验直接复用，不另建时区实现。
 - 提醒服务使用 `TELEGRAM_BOT_TOKEN` 与独立 `TELEGRAM_SUBSCRIPTION_CHAT_ID`；任一为空时安全禁用并仅输出不含值的状态日志。
 
+## 2026-07-26 Telegram 频道绑定结果
+
+- 通过 Telegram Desktop 在目标频道发送带日期的明确探测消息后，Bot API 收到了对应 `channel_post`，确认目标类型为私有频道且标题精确为 `CC subscription`。
+- 使用旧项目 `.env` 中已存在的 Bot Token 直接向该频道发送了 `[Sub2API 测试]` 绑定确认消息，Bot API 返回成功；未在命令输出、文档或 Git 中记录 Token。
+- 生产环境使用独立 `TELEGRAM_SUBSCRIPTION_CHAT_ID`，没有改动或复用 `CC Alerts`、`CC Provider Alerts`、`CC Ops Alerts` 的频道配置。
+
+## 2026-07-26 测试与生产验收结果
+
+- 后端全量 `go test ./...` 通过；migration runner 的 PostgreSQL integration 测试通过，确认迁移可重复执行且 schema 与代码一致。
+- 前端金额工具 14 项 Vitest 通过；`typecheck`、`lint:check`、生产构建与 `git diff --check` 通过。构建仅保留项目既有的 dynamic import、chunk size 和 Browserslist 警告。
+- 隔离的本地 PostgreSQL 18 + Redis 环境完成真实 admin API CRUD；内置浏览器完成新增、编辑、筛选、汇总、软删除和空状态恢复，console 无 warning/error。
+- Git 提交 `46050f5a` 已推送到 `origin/codex/claude-gpt56-global`，并快进发布到 `origin/main`。
+- 生产运行 `/opt/sub2api/sub2api` 已切换到 commit `46050f5a`；`sub2api.service` 为 `active/running`，重启计数为 0，宿主机和公网 `/health` 均返回 ok。
+- migration `155_private_customer_subscriptions.sql` 已应用；独立表、字段、非负金额约束和 6 个索引存在，当前有效记录数为 0，未留下生产测试客户数据。
+- `PrivateSubscriptionReminder` 在生产启动日志中显示 `Started`，且没有 disabled/failed/panic/fatal 记录；Telegram 发送能力已用绑定测试消息单独验证。
+- 管理 API 未登录返回 401，管理页面返回 200；生产入口资源中可检出新路由，说明嵌入式前端已随二进制发布。
+- 上线前回滚点：
+  - PostgreSQL：`/opt/sub2api/backups/sub2api-pre-private-subscriptions-20260726T112959Z.dump`
+  - 二进制：`/opt/sub2api/backups/sub2api.pre-private-subscriptions.20260726T112959Z`
+  - 环境文件：`/etc/sub2api/sub2api.env.bak.private-subscriptions.20260726T112959Z`
+- PostgreSQL dump 已通过 `pg_restore --list` 检查，共 958 个 catalog entries。发布后根分区约剩余 1.3 GB；本次没有删除任何生产备份或清理服务器磁盘。
+
 ---
 
 # Sub2API Admin API Key 策略管理发现记录

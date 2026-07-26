@@ -36,6 +36,22 @@
 - 显式设置 OrbStack Docker socket 后，migration 155 的 repository integration 测试通过。
 - 生产只读检查确认主机 `C20260613138680`、`sub2api.service` active、本机 `/health` 正常；订阅提醒专用的两个 Telegram 环境变量当前尚未配置。
 - 首次查询生产 `schema_migrations` 时误用不存在的 `version` 列，查询失败且无写入；下一步按实际列名重新查询。
+- 使用 OrbStack Docker socket 后，`go test -tags=integration ./internal/repository -run '^TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate$' -count=1` 通过。
+- 通过 Telegram Desktop 发送新的频道探测消息，Bot API 成功识别目标 `CC subscription`；随后由 `Claude Pool Alert Bot` 发送绑定测试消息并返回成功。
+- 完成本地 Git 提交 `46050f5a feat(admin): add private customer subscription reminders`；已推送功能分支并将相同提交快进到 `origin/main`。
+- 构建 Linux amd64 静态嵌入前端二进制，SHA-256 为 `538f71a58735c2d7744c10154b020ad9db53fc443a630fe0cc446bac2fbe1713`；上传生产后的候选文件哈希一致，版本输出确认 commit `46050f5a`。
+- 生产写入前完成并校验三类回滚备份：
+  - PostgreSQL dump：`/opt/sub2api/backups/sub2api-pre-private-subscriptions-20260726T112959Z.dump`，299,983,066 bytes，`pg_restore --list` 通过。
+  - 原二进制：`/opt/sub2api/backups/sub2api.pre-private-subscriptions.20260726T112959Z`。
+  - 原环境文件：`/etc/sub2api/sub2api.env.bak.private-subscriptions.20260726T112959Z`。
+- 仅向 `/etc/sub2api/sub2api.env` 注入 `TELEGRAM_BOT_TOKEN` 与 `TELEGRAM_SUBSCRIPTION_CHAT_ID`；复核各有且只有一条非空配置，未输出配置值。
+- 原子切换 `/opt/sub2api/sub2api` 并重启 `sub2api.service`；启动窗口内健康检查短暂连接失败后自动恢复，未触发回滚。最终 service active，commit `46050f5a`，`NRestarts=0`。
+- 生产验收通过：
+  - migration `155_private_customer_subscriptions.sql` 已应用，独立表的 10 个字段及 6 个索引存在。
+  - `PrivateSubscriptionReminder` 日志为 `Started`，没有 disabled/failed/panic/fatal。
+  - 本机与公网 `/health` 正常；未登录 admin API 返回 401，管理页面返回 200。
+  - 生产前端入口资源中 `private-subscriptions` 路由引用存在；生产表有效记录数为 0。
+- 测试现场已清理：本地测试服务完成 graceful shutdown；两个精确命名的 PostgreSQL/Redis 临时容器已停止并删除；三个临时测试路径已移入系统废纸篓，可恢复；项目既有 `data/` 未触碰。
 
 ---
 

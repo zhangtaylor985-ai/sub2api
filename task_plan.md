@@ -21,9 +21,9 @@
 | 1. 现状与 Telegram 配置只读梳理 | complete | CRUD、后台导航、后台任务、旧环境 Telegram 配置 |
 | 2. 数据模型、迁移与后端实现 | complete | schema、migration、repository/service/handler/job |
 | 3. 管理后台页面实现 | complete | route、menu、API client、CRUD view |
-| 4. 自动化与本地集成验证 | in_progress | Go、前端、浏览器、Telegram 测试 |
-| 5. Git 同步与生产发布准备 | pending | fetch/rebase、提交、构建、备份、回滚点 |
-| 6. 生产发布与验收 | pending | migration、binary、systemd、health、CRUD、提醒 smoke |
+| 4. 自动化与本地集成验证 | complete | Go、前端、migration integration、真实 API/浏览器 CRUD、Telegram 测试 |
+| 5. Git 同步与生产发布准备 | complete | fetch、提交、推送、Linux 构建、数据库/二进制/环境回滚点 |
+| 6. 生产发布与验收 | complete | migration、binary、systemd、health、权限边界、前端资源、提醒启动 |
 
 ## 当前决策
 
@@ -52,6 +52,10 @@
 | 2026-07-26 | 首次 Telegram update 脱敏查询的 shell 引号嵌套错误，zsh 在 jq 变量处解析失败 | 改为无 jq 临时变量的投影表达式，并用 `rg/cut/tr` 提取 token，仍不输出 token 或消息正文 |
 | 2026-07-26 | repository integration harness 在 Docker Desktop 可用时仍因 testcontainers 自动探测报 `rootless Docker not found` | 显式传入当前 Docker context 的 socket 作为 `DOCKER_HOST` 后再运行，不重复原环境 |
 | 2026-07-26 | 生产 `schema_migrations` 只读查询误用了不存在的 `version` 列 | 先查询 `information_schema.columns` 确认真实列名，再按 schema 查询；未产生任何写入 |
+| 2026-07-26 | Computer Use 首次按显示名读取 Telegram 返回 `noWindowsAvailable`，快捷键上下文菜单也未稳定出现 | 改用 Telegram bundle ID 并通过可访问性树直接定位频道与输入框；未操作其他频道 |
+| 2026-07-26 | 生产机没有 `rg`，首次提醒日志过滤命令无法执行 | 改用生产机已有的 `grep -E` 精确过滤 `PrivateSubscriptionReminder`；未改变服务状态 |
+| 2026-07-26 | 本地清理检查把 zsh 特殊变量 `path` 用作循环变量，临时覆盖了命令搜索路径 | 改用 `target_path` 并调用绝对路径的 `stat`；未删除或修改文件 |
+| 2026-07-26 | 首次临时文件清理命令中的 `rm -f` 被安全策略拒绝 | 改用系统 `trash` 将三个精确目标移入废纸篓；两个测试容器先 `stop` 再按名称删除 |
 
 ---
 

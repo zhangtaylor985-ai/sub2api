@@ -384,6 +384,7 @@ export default {
     channels: 'Channels',
     availableChannels: 'Available Channels',
     subscriptions: 'Subscriptions',
+    privateSubscriptions: 'Customer Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
@@ -4433,6 +4434,94 @@ export default {
         used: 'Used',
         expired: 'Expired',
         disabled: 'Disabled'
+      }
+    },
+
+    // Private customer subscriptions
+    privateSubscriptions: {
+      title: 'Customer Subscriptions',
+      description: 'Track private customers, amounts, expiry dates, and reminders',
+      create: 'Add Customer Subscription',
+      edit: 'Edit Customer Subscription',
+      deleteTitle: 'Delete Customer Subscription',
+      deleteConfirm: 'Delete the subscription record for "{name}"? Expiry reminders will stop.',
+      summary: {
+        total: 'Total Customers',
+        activeDetail: '{count} active',
+        dueSoon: 'Due Soon',
+        dueSoonDetail: 'Within the next 7 days',
+        expired: 'Expired',
+        expiredDetail: 'Renewal follow-up needed',
+        amount: 'Recorded Amount',
+        amountDetail: 'Across all current records'
+      },
+      reminderBanner: {
+        title: 'Telegram Expiry Reminder',
+        description: 'A reminder is sent to CC subscription one day before expiry and recorded to prevent duplicates.'
+      },
+      filters: {
+        search: 'Search customers...',
+        type: 'Type, e.g. 5X',
+        allStatuses: 'All Statuses'
+      },
+      columns: {
+        name: 'Customer',
+        type: 'Subscription Type',
+        amount: 'Amount',
+        expiresOn: 'Expiry Date',
+        status: 'Status',
+        reminder: 'Telegram Reminder',
+        actions: 'Actions'
+      },
+      status: {
+        active: 'Active',
+        dueSoon: 'Due Soon',
+        expired: 'Expired'
+      },
+      remaining: {
+        expired: 'Expired {days} day(s) ago',
+        today: 'Expires today',
+        tomorrow: 'Expires tomorrow',
+        days: '{days} days left'
+      },
+      reminder: {
+        sent: 'Sent',
+        pending: 'Pending',
+        scheduled: 'One day before',
+        notSent: 'Not sent'
+      },
+      form: {
+        name: 'Customer Name',
+        namePlaceholder: 'Enter a name or private label',
+        type: 'Subscription Type',
+        typePlaceholder: 'For example, 5X or 20X',
+        typeHint: 'Use a preset or enter a custom subscription type.',
+        amount: 'Amount (CNY)',
+        amountHint: 'Up to two decimal places.',
+        expiresOn: 'Expiry Date',
+        expiresOnHint: 'Calculated by calendar date in Asia/Shanghai.',
+        reminderHint: 'When the expiry date is tomorrow, one reminder is sent to CC subscription. Changing the date schedules a new reminder.'
+      },
+      validation: {
+        nameRequired: 'Enter a customer name',
+        typeRequired: 'Enter a subscription type',
+        amountInvalid: 'Enter an amount from 0 to 999,999,999.99 with up to two decimals',
+        expiryRequired: 'Select a valid expiry date'
+      },
+      success: {
+        created: 'Customer subscription created',
+        updated: 'Customer subscription updated',
+        deleted: 'Customer subscription deleted'
+      },
+      errors: {
+        failedToLoad: 'Failed to load customer subscriptions',
+        failedToCreate: 'Failed to create customer subscription',
+        failedToUpdate: 'Failed to update customer subscription',
+        failedToDelete: 'Failed to delete customer subscription'
+      },
+      empty: {
+        title: 'No customer subscriptions yet',
+        description: 'Add your first private customer to track the amount and expiry date.'
       }
     },
 

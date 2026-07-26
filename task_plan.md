@@ -1,3 +1,60 @@
+# 私下客户订阅管理与 Telegram 到期提醒计划
+
+## 当前目标
+
+在现有 Sub2API 管理后台新增一个与用户、API Key、分组、计费和调度完全隔离的“订阅管理”模块，用于记录私下客户的名称、订阅类型、金额和到期日期，并在到期前一天向 Telegram `CC subscription` 频道发送一次提醒。
+
+## 当前范围
+
+- 新增独立的私下客户订阅数据表与 admin-only CRUD API。
+- 业务字段：名称、订阅类型、金额（人民币元）、到期日期。
+- 管理页面支持新增、编辑、软删除、搜索、状态筛选和到期状态展示。
+- 到期状态按 `Asia/Shanghai` 自然日计算。
+- 到期前一天向 Telegram 频道发送提醒，并记录幂等状态，避免重复推送。
+- Telegram 密钥只从运行环境读取，不写入数据库、日志、文档或 Git。
+- 完成本地后端、前端、浏览器和提醒集成测试后发布生产。
+
+## 当前阶段
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 现状与 Telegram 配置只读梳理 | complete | CRUD、后台导航、后台任务、旧环境 Telegram 配置 |
+| 2. 数据模型、迁移与后端实现 | complete | schema、migration、repository/service/handler/job |
+| 3. 管理后台页面实现 | complete | route、menu、API client、CRUD view |
+| 4. 自动化与本地集成验证 | in_progress | Go、前端、浏览器、Telegram 测试 |
+| 5. Git 同步与生产发布准备 | pending | fetch/rebase、提交、构建、备份、回滚点 |
+| 6. 生产发布与验收 | pending | migration、binary、systemd、health、CRUD、提醒 smoke |
+
+## 当前决策
+
+- 新模块使用独立表，不复用现有支付域的 `subscription_plans` / `user_subscriptions`。
+- 金额按人民币元输入和展示，数据库使用精确十进制/最小货币单位，禁止浮点误差。
+- 订阅类型预置 `5X`、`20X`，数据层保留扩展为其他文本类型的能力。
+- 业务到期日使用 PostgreSQL `DATE`，不让 UTC/时区转换改变日历日期。
+- 提醒条件是北京时间“明天到期”；同一订阅同一到期日最多成功发送一次，修改到期日后可对新日期再次提醒。
+- 删除使用软删除；软删除记录不参与提醒。
+- Telegram 频道和 Bot Token 通过生产环境变量注入。
+
+## 风险与回滚
+
+- 数据库：上线前执行 `pg_dump -Fc --no-owner --no-acl`；新增表不修改现有业务表。
+- 应用：替换前备份 `/opt/sub2api/sub2api`；异常时恢复备份并重启 `sub2api.service`。
+- Telegram：测试消息会明确标注为测试；发送失败只记录脱敏错误并重试，不影响主服务健康。
+- 密钥：任何命令输出、规划文件、提交和最终报告都不得包含 Bot Token 或其他凭据。
+
+## 当前错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-07-26 | `planning-with-files` 的 session catchup 不支持解析 Codex 原生 session | 已改用 Git 状态与现有 planning 文件恢复上下文 |
+| 2026-07-26 | `go generate ./cmd/server` 命中 `main.go` 中未带 `-mod=mod` 的 Wire 指令，因 `github.com/google/subcommands` 缺少 go.sum 条目失败 | 改用生成文件声明的项目兼容命令 `go run -mod=mod github.com/google/wire/cmd/wire`，不重复原失败命令 |
+| 2026-07-26 | 新增 cleanup 依赖后 `cmd/server/wire_gen_test.go` 的直接调用参数少一项，导致 cmd/server 编译失败 | 更新现有 lifecycle 测试，注入可停止的 `PrivateSubscriptionReminderService` stub 并验证清理 |
+| 2026-07-26 | 首次 Telegram update 脱敏查询的 shell 引号嵌套错误，zsh 在 jq 变量处解析失败 | 改为无 jq 临时变量的投影表达式，并用 `rg/cut/tr` 提取 token，仍不输出 token 或消息正文 |
+| 2026-07-26 | repository integration harness 在 Docker Desktop 可用时仍因 testcontainers 自动探测报 `rootless Docker not found` | 显式传入当前 Docker context 的 socket 作为 `DOCKER_HOST` 后再运行，不重复原环境 |
+| 2026-07-26 | 生产 `schema_migrations` 只读查询误用了不存在的 `version` 列 | 先查询 `information_schema.columns` 确认真实列名，再按 schema 查询；未产生任何写入 |
+
+---
+
 # Sub2API Admin API Key 策略管理与 CLIProxyAPI 回迁计划
 
 ## 当前目标

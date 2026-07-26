@@ -489,6 +489,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/private-subscriptions',
+    name: 'AdminPrivateSubscriptions',
+    component: () => import('@/views/admin/PrivateSubscriptionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Private Customer Subscriptions',
+      titleKey: 'admin.privateSubscriptions.title',
+      descriptionKey: 'admin.privateSubscriptions.description'
+    }
+  },
+  {
     path: '/admin/accounts',
     name: 'AdminAccounts',
     component: () => import('@/views/admin/AccountsView.vue'),
@@ -842,6 +854,7 @@ router.beforeEach(async (to, _from, next) => {
     const restrictedPaths = [
       '/admin/groups',
       '/admin/subscriptions',
+      '/admin/private-subscriptions',
       '/admin/redeem',
       '/subscriptions',
       '/redeem'

@@ -384,6 +384,7 @@ export default {
     channels: '渠道管理',
     availableChannels: '可用渠道',
     subscriptions: '订阅管理',
+    privateSubscriptions: '客户订阅',
     accounts: '账号管理',
     proxies: 'IP管理',
     redeemCodes: '兑换码',
@@ -4590,6 +4591,94 @@ export default {
       failedToGenerate: '生成兑换码失败',
       failedToUpdate: '更新兑换码失败',
       failedToDelete: '删除兑换码失败'
+    },
+
+    // Private customer subscriptions
+    privateSubscriptions: {
+      title: '客户订阅',
+      description: '记录私下客户的订阅、金额与到期提醒',
+      create: '新增客户订阅',
+      edit: '编辑客户订阅',
+      deleteTitle: '删除客户订阅',
+      deleteConfirm: '确定删除“{name}”的订阅记录吗？删除后将不再发送到期提醒。',
+      summary: {
+        total: '客户总数',
+        activeDetail: '正常 {count} 个',
+        dueSoon: '即将到期',
+        dueSoonDetail: '未来 7 天内',
+        expired: '已过期',
+        expiredDetail: '需要跟进续费',
+        amount: '登记金额',
+        amountDetail: '当前全部记录合计'
+      },
+      reminderBanner: {
+        title: 'Telegram 到期提醒',
+        description: '客户到期前 1 天会自动提醒到 CC subscription；发送成功后会记录状态，避免重复通知。'
+      },
+      filters: {
+        search: '搜索客户名称...',
+        type: '类型，如 5X',
+        allStatuses: '全部状态'
+      },
+      columns: {
+        name: '客户',
+        type: '订阅类型',
+        amount: '金额',
+        expiresOn: '到期日期',
+        status: '状态',
+        reminder: 'Telegram 提醒',
+        actions: '操作'
+      },
+      status: {
+        active: '正常',
+        dueSoon: '即将到期',
+        expired: '已过期'
+      },
+      remaining: {
+        expired: '已过期 {days} 天',
+        today: '今天到期',
+        tomorrow: '明天到期',
+        days: '还有 {days} 天'
+      },
+      reminder: {
+        sent: '已提醒',
+        pending: '待发送',
+        scheduled: '到期前 1 天',
+        notSent: '未发送'
+      },
+      form: {
+        name: '客户名称',
+        namePlaceholder: '输入客户姓名或备注名',
+        type: '订阅类型',
+        typePlaceholder: '例如 5X、20X',
+        typeHint: '可使用快捷类型，也可以输入自定义类型。',
+        amount: '金额（人民币元）',
+        amountHint: '最多保留两位小数。',
+        expiresOn: '到期日期',
+        expiresOnHint: '按北京时间自然日计算。',
+        reminderHint: '若到期日是明天，系统会向 CC subscription 发送一次提醒；修改到期日后会按新日期重新安排。'
+      },
+      validation: {
+        nameRequired: '请输入客户名称',
+        typeRequired: '请输入订阅类型',
+        amountInvalid: '请输入 0 至 999,999,999.99 之间的金额，最多两位小数',
+        expiryRequired: '请选择有效的到期日期'
+      },
+      success: {
+        created: '客户订阅已创建',
+        updated: '客户订阅已更新',
+        deleted: '客户订阅已删除'
+      },
+      errors: {
+        failedToLoad: '加载客户订阅失败',
+        failedToCreate: '创建客户订阅失败',
+        failedToUpdate: '更新客户订阅失败',
+        failedToDelete: '删除客户订阅失败'
+      },
+      empty: {
+        title: '还没有客户订阅',
+        description: '添加第一位私下客户，开始记录金额和到期日期。'
+      }
     },
 
     // Announcements

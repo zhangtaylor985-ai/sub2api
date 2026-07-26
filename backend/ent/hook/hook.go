@@ -237,6 +237,18 @@ func (f PendingAuthSessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PendingAuthSessionMutation", m)
 }
 
+// The PrivateCustomerSubscriptionFunc type is an adapter to allow the use of ordinary
+// function as PrivateCustomerSubscription mutator.
+type PrivateCustomerSubscriptionFunc func(context.Context, *ent.PrivateCustomerSubscriptionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PrivateCustomerSubscriptionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PrivateCustomerSubscriptionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PrivateCustomerSubscriptionMutation", m)
+}
+
 // The PromoCodeFunc type is an adapter to allow the use of ordinary
 // function as PromoCode mutator.
 type PromoCodeFunc func(context.Context, *ent.PromoCodeMutation) (ent.Value, error)

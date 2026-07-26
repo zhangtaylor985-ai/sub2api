@@ -1,3 +1,44 @@
+# 私下客户订阅管理与 Telegram 提醒进度
+
+## 2026-07-26
+
+- 用户确认整体方案并授权开始开发、测试和生产发布。
+- 范围增加金额字段和 Telegram 到期前一天提醒。
+- 已说明数据库迁移、生产环境变量、systemd 重启、Telegram 测试消息及潜在影响。
+- 已读取并启用 `planning-with-files`、`sub2api-deploy`、`sub2api-production-regression` 流程。
+- 已确认当前 Git 工作区没有已跟踪文件改动；保留既有未跟踪 `data/` 目录。
+- 已建立本任务阶段、决策、风险和密钥保护约束。
+- 已脱敏检查旧项目 Telegram 环境变量，并通过 Telegram Bot API 确认 Bot 身份与三个既有告警频道。
+- 首次 `getUpdates` 没有返回新频道消息；该结果不阻塞代码开发，频道 ID 将通过后续新消息长轮询或其他安全方式识别。
+- 已确认现有付费订阅到期 worker 的启动、停止和提醒模式；决定新增隔离的私下客户 reminder service，不修改现有付费订阅链路。
+- 已确定新实体使用 Ent 软删除、PostgreSQL `DATE`、`amount_cents BIGINT` 和成功后标记的 Telegram 幂等策略。
+- 已读取 `frontend-design` 与 Browser skill；确定新页面沿用现有管理后台组件，新增运营汇总和清晰的到期风险视觉层级。
+- 已完成 Wire、后台生命周期、时区和 migration runner 梳理；新迁移编号确定为 `155`。
+- 阶段 1 完成，开始实现独立数据模型、admin CRUD 与 Telegram reminder service。
+- 已新增 `155_private_customer_subscriptions.sql` 与 Ent schema，并成功运行 `go generate ./ent`；生成实体名称和软删除字段符合预期。
+- 已实现 private subscription service/repository、汇总统计、状态过滤、到期日变更提醒重置和 Telegram reminder worker。
+- 第一轮后端验证通过：`go test ./internal/service ./internal/repository`。
+- Wire 首次生成命令因项目现有 `main.go` 指令未带 `-mod=mod` 而失败；已记录，下一步使用项目生成文件声明的兼容命令。
+- 使用 `go run -mod=mod github.com/google/wire/cmd/wire` 成功重新生成 `cmd/server/wire_gen.go`。
+- handler 与 routes 包测试通过；`cmd/server` 测试暴露 cleanup 参数新增后测试夹具未同步，已定位到 `wire_gen_test.go`，下一步修正夹具。
+- 已同步 `wire_gen_test.go` 的 cleanup 夹具；`go test ./internal/handler/admin ./internal/server/routes ./cmd/server` 全部通过。
+- 已补 service/reminder/Telegram sender 单元测试，覆盖字段校验、日期边界、修改到期日重置提醒、发送成功后标记、发送失败不标记、JSON 请求体和错误脱敏；定向测试通过。
+- 后端数据模型、迁移、CRUD、汇总统计、Telegram worker 与 Wire 生命周期已完成，进入管理后台页面实现。
+- 已完成 `/admin/private-subscriptions` 页面、API client、admin-only 路由、侧边栏“客户订阅”入口和中英文文案。
+- 页面已实现客户/金额/到期汇总、搜索与状态/类型筛选、服务端排序分页、CRUD、到期剩余天数和 Telegram 提醒状态。
+- 金额工具 14 项 Vitest 测试通过；`npm run typecheck` 与 `npm run lint:check` 通过。
+- 后端 `go test ./...` 全量通过；前端 `npm run build` 生产构建通过，仅出现项目既有的动态导入/chunk 警告。
+- 已使用隔离的本机 PostgreSQL 18、Redis 8 和 `127.0.0.1:18080` 启动当前 embed 构建，migration 155 自动执行且健康检查通过。
+- 本地 admin API 真实 CRUD 通过：创建明天到期记录、搜索/状态筛选、更新金额/类型/日期、汇总统计、软删除和删除后 404 均符合预期。
+- 内置浏览器完成登录、侧边栏入口、空状态、新增、20X 快捷类型、金额显示、明天到期/待发送状态、编辑为 5X、汇总刷新、删除确认与恢复空状态验证；浏览器 console 无 warning/error。
+- 首次重新轮询 Telegram update 的脱敏 shell 因引号嵌套解析失败，未发出 API 请求、未读取任何消息；已改用更简单的安全投影命令。
+- migration integration 首次启动 testcontainers 时因 Docker host 自动探测误判 rootless 环境而失败；Docker 本身和手工隔离环境正常，下一次将显式使用当前 Docker context socket。
+- 显式设置 OrbStack Docker socket 后，migration 155 的 repository integration 测试通过。
+- 生产只读检查确认主机 `C20260613138680`、`sub2api.service` active、本机 `/health` 正常；订阅提醒专用的两个 Telegram 环境变量当前尚未配置。
+- 首次查询生产 `schema_migrations` 时误用不存在的 `version` 列，查询失败且无写入；下一步按实际列名重新查询。
+
+---
+
 # Sub2API Claude -> GPT Web Search 兼容进度
 
 ## 2026-05-27

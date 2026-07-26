@@ -161,6 +161,20 @@ func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, se
 	return svc
 }
 
+// ProvidePrivateSubscriptionReminderService creates and starts the isolated
+// Telegram reminder worker for manually managed private customer records.
+func ProvidePrivateSubscriptionReminderService(
+	repo PrivateSubscriptionRepository,
+) *PrivateSubscriptionReminderService {
+	svc := NewPrivateSubscriptionReminderService(
+		repo,
+		NewPrivateSubscriptionTelegramSenderFromEnvironment(),
+		30*time.Minute,
+	)
+	svc.Start()
+	return svc
+}
+
 // ProvideTimingWheelService creates and starts TimingWheelService
 func ProvideTimingWheelService() (*TimingWheelService, error) {
 	svc, err := NewTimingWheelService()
@@ -456,6 +470,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingService,
 	ProvideBillingCacheService,
 	NewAnnouncementService,
+	NewPrivateSubscriptionService,
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
@@ -503,6 +518,7 @@ var ProviderSet = wire.NewSet(
 	ProvideTokenRefreshService,
 	ProvideAccountExpiryService,
 	ProvideSubscriptionExpiryService,
+	ProvidePrivateSubscriptionReminderService,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
 	ProvideUsageCleanupService,

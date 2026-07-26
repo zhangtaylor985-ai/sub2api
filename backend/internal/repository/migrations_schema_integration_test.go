@@ -104,6 +104,34 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	// user_subscriptions: deleted_at for soft delete support (migration 012)
 	requireColumn(t, tx, "user_subscriptions", "deleted_at", "timestamp with time zone", 0, true)
 
+	// private_customer_subscriptions: isolated operator-maintained records (migration 155)
+	var privateSubscriptionsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(
+		context.Background(),
+		"SELECT to_regclass('public.private_customer_subscriptions')",
+	).Scan(&privateSubscriptionsRegclass))
+	require.True(t, privateSubscriptionsRegclass.Valid, "expected private_customer_subscriptions table to exist")
+	requireColumn(t, tx, "private_customer_subscriptions", "name", "character varying", 120, false)
+	requireColumn(t, tx, "private_customer_subscriptions", "subscription_type", "character varying", 50, false)
+	requireColumn(t, tx, "private_customer_subscriptions", "amount_cents", "bigint", 0, false)
+	requireColumn(t, tx, "private_customer_subscriptions", "expires_on", "date", 0, false)
+	requireColumn(t, tx, "private_customer_subscriptions", "reminder_sent_for_expiry", "date", 0, true)
+	requireColumn(t, tx, "private_customer_subscriptions", "reminder_sent_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "private_customer_subscriptions", "deleted_at", "timestamp with time zone", 0, true)
+	requireConstraintDefinitionContains(
+		t,
+		tx,
+		"private_customer_subscriptions",
+		"private_customer_subscriptions_amount_nonnegative",
+		"amount_cents >= 0",
+	)
+	requireIndex(
+		t,
+		tx,
+		"private_customer_subscriptions",
+		"private_customer_subscriptions_reminder_due_idx",
+	)
+
 	// orphan_allowed_groups_audit table should exist (migration 013)
 	var orphanAuditRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.orphan_allowed_groups_audit')").Scan(&orphanAuditRegclass))

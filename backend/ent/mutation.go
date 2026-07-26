@@ -32,6 +32,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/privatecustomersubscription"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
@@ -79,6 +80,7 @@ const (
 	TypePaymentOrder                  = "PaymentOrder"
 	TypePaymentProviderInstance       = "PaymentProviderInstance"
 	TypePendingAuthSession            = "PendingAuthSession"
+	TypePrivateCustomerSubscription   = "PrivateCustomerSubscription"
 	TypePromoCode                     = "PromoCode"
 	TypePromoCodeUsage                = "PromoCodeUsage"
 	TypeProxy                         = "Proxy"
@@ -26662,6 +26664,860 @@ func (m *PendingAuthSessionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown PendingAuthSession edge %s", name)
+}
+
+// PrivateCustomerSubscriptionMutation represents an operation that mutates the PrivateCustomerSubscription nodes in the graph.
+type PrivateCustomerSubscriptionMutation struct {
+	config
+	op                       Op
+	typ                      string
+	id                       *int64
+	created_at               *time.Time
+	updated_at               *time.Time
+	deleted_at               *time.Time
+	name                     *string
+	subscription_type        *string
+	amount_cents             *int64
+	addamount_cents          *int64
+	expires_on               *time.Time
+	reminder_sent_for_expiry *time.Time
+	reminder_sent_at         *time.Time
+	clearedFields            map[string]struct{}
+	done                     bool
+	oldValue                 func(context.Context) (*PrivateCustomerSubscription, error)
+	predicates               []predicate.PrivateCustomerSubscription
+}
+
+var _ ent.Mutation = (*PrivateCustomerSubscriptionMutation)(nil)
+
+// privatecustomersubscriptionOption allows management of the mutation configuration using functional options.
+type privatecustomersubscriptionOption func(*PrivateCustomerSubscriptionMutation)
+
+// newPrivateCustomerSubscriptionMutation creates new mutation for the PrivateCustomerSubscription entity.
+func newPrivateCustomerSubscriptionMutation(c config, op Op, opts ...privatecustomersubscriptionOption) *PrivateCustomerSubscriptionMutation {
+	m := &PrivateCustomerSubscriptionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePrivateCustomerSubscription,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPrivateCustomerSubscriptionID sets the ID field of the mutation.
+func withPrivateCustomerSubscriptionID(id int64) privatecustomersubscriptionOption {
+	return func(m *PrivateCustomerSubscriptionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PrivateCustomerSubscription
+		)
+		m.oldValue = func(ctx context.Context) (*PrivateCustomerSubscription, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PrivateCustomerSubscription.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPrivateCustomerSubscription sets the old PrivateCustomerSubscription of the mutation.
+func withPrivateCustomerSubscription(node *PrivateCustomerSubscription) privatecustomersubscriptionOption {
+	return func(m *PrivateCustomerSubscriptionMutation) {
+		m.oldValue = func(context.Context) (*PrivateCustomerSubscription, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PrivateCustomerSubscriptionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PrivateCustomerSubscriptionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PrivateCustomerSubscriptionMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PrivateCustomerSubscriptionMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PrivateCustomerSubscription.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PrivateCustomerSubscriptionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PrivateCustomerSubscriptionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PrivateCustomerSubscription entity.
+// If the PrivateCustomerSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PrivateCustomerSubscriptionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PrivateCustomerSubscriptionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *PrivateCustomerSubscriptionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *PrivateCustomerSubscriptionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the PrivateCustomerSubscription entity.
+// If the PrivateCustomerSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PrivateCustomerSubscriptionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *PrivateCustomerSubscriptionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *PrivateCustomerSubscriptionMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *PrivateCustomerSubscriptionMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the PrivateCustomerSubscription entity.
+// If the PrivateCustomerSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PrivateCustomerSubscriptionMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *PrivateCustomerSubscriptionMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[privatecustomersubscription.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[privatecustomersubscription.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *PrivateCustomerSubscriptionMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, privatecustomersubscription.FieldDeletedAt)
+}
+
+// SetName sets the "name" field.
+func (m *PrivateCustomerSubscriptionMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *PrivateCustomerSubscriptionMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the PrivateCustomerSubscription entity.
+// If the PrivateCustomerSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PrivateCustomerSubscriptionMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *PrivateCustomerSubscriptionMutation) ResetName() {
+	m.name = nil
+}
+
+// SetSubscriptionType sets the "subscription_type" field.
+func (m *PrivateCustomerSubscriptionMutation) SetSubscriptionType(s string) {
+	m.subscription_type = &s
+}
+
+// SubscriptionType returns the value of the "subscription_type" field in the mutation.
+func (m *PrivateCustomerSubscriptionMutation) SubscriptionType() (r string, exists bool) {
+	v := m.subscription_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubscriptionType returns the old "subscription_type" field's value of the PrivateCustomerSubscription entity.
+// If the PrivateCustomerSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PrivateCustomerSubscriptionMutation) OldSubscriptionType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubscriptionType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubscriptionType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubscriptionType: %w", err)
+	}
+	return oldValue.SubscriptionType, nil
+}
+
+// ResetSubscriptionType resets all changes to the "subscription_type" field.
+func (m *PrivateCustomerSubscriptionMutation) ResetSubscriptionType() {
+	m.subscription_type = nil
+}
+
+// SetAmountCents sets the "amount_cents" field.
+func (m *PrivateCustomerSubscriptionMutation) SetAmountCents(i int64) {
+	m.amount_cents = &i
+	m.addamount_cents = nil
+}
+
+// AmountCents returns the value of the "amount_cents" field in the mutation.
+func (m *PrivateCustomerSubscriptionMutation) AmountCents() (r int64, exists bool) {
+	v := m.amount_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAmountCents returns the old "amount_cents" field's value of the PrivateCustomerSubscription entity.
+// If the PrivateCustomerSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PrivateCustomerSubscriptionMutation) OldAmountCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAmountCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAmountCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAmountCents: %w", err)
+	}
+	return oldValue.AmountCents, nil
+}
+
+// AddAmountCents adds i to the "amount_cents" field.
+func (m *PrivateCustomerSubscriptionMutation) AddAmountCents(i int64) {
+	if m.addamount_cents != nil {
+		*m.addamount_cents += i
+	} else {
+		m.addamount_cents = &i
+	}
+}
+
+// AddedAmountCents returns the value that was added to the "amount_cents" field in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) AddedAmountCents() (r int64, exists bool) {
+	v := m.addamount_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAmountCents resets all changes to the "amount_cents" field.
+func (m *PrivateCustomerSubscriptionMutation) ResetAmountCents() {
+	m.amount_cents = nil
+	m.addamount_cents = nil
+}
+
+// SetExpiresOn sets the "expires_on" field.
+func (m *PrivateCustomerSubscriptionMutation) SetExpiresOn(t time.Time) {
+	m.expires_on = &t
+}
+
+// ExpiresOn returns the value of the "expires_on" field in the mutation.
+func (m *PrivateCustomerSubscriptionMutation) ExpiresOn() (r time.Time, exists bool) {
+	v := m.expires_on
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresOn returns the old "expires_on" field's value of the PrivateCustomerSubscription entity.
+// If the PrivateCustomerSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PrivateCustomerSubscriptionMutation) OldExpiresOn(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresOn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresOn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresOn: %w", err)
+	}
+	return oldValue.ExpiresOn, nil
+}
+
+// ResetExpiresOn resets all changes to the "expires_on" field.
+func (m *PrivateCustomerSubscriptionMutation) ResetExpiresOn() {
+	m.expires_on = nil
+}
+
+// SetReminderSentForExpiry sets the "reminder_sent_for_expiry" field.
+func (m *PrivateCustomerSubscriptionMutation) SetReminderSentForExpiry(t time.Time) {
+	m.reminder_sent_for_expiry = &t
+}
+
+// ReminderSentForExpiry returns the value of the "reminder_sent_for_expiry" field in the mutation.
+func (m *PrivateCustomerSubscriptionMutation) ReminderSentForExpiry() (r time.Time, exists bool) {
+	v := m.reminder_sent_for_expiry
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReminderSentForExpiry returns the old "reminder_sent_for_expiry" field's value of the PrivateCustomerSubscription entity.
+// If the PrivateCustomerSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PrivateCustomerSubscriptionMutation) OldReminderSentForExpiry(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReminderSentForExpiry is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReminderSentForExpiry requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReminderSentForExpiry: %w", err)
+	}
+	return oldValue.ReminderSentForExpiry, nil
+}
+
+// ClearReminderSentForExpiry clears the value of the "reminder_sent_for_expiry" field.
+func (m *PrivateCustomerSubscriptionMutation) ClearReminderSentForExpiry() {
+	m.reminder_sent_for_expiry = nil
+	m.clearedFields[privatecustomersubscription.FieldReminderSentForExpiry] = struct{}{}
+}
+
+// ReminderSentForExpiryCleared returns if the "reminder_sent_for_expiry" field was cleared in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) ReminderSentForExpiryCleared() bool {
+	_, ok := m.clearedFields[privatecustomersubscription.FieldReminderSentForExpiry]
+	return ok
+}
+
+// ResetReminderSentForExpiry resets all changes to the "reminder_sent_for_expiry" field.
+func (m *PrivateCustomerSubscriptionMutation) ResetReminderSentForExpiry() {
+	m.reminder_sent_for_expiry = nil
+	delete(m.clearedFields, privatecustomersubscription.FieldReminderSentForExpiry)
+}
+
+// SetReminderSentAt sets the "reminder_sent_at" field.
+func (m *PrivateCustomerSubscriptionMutation) SetReminderSentAt(t time.Time) {
+	m.reminder_sent_at = &t
+}
+
+// ReminderSentAt returns the value of the "reminder_sent_at" field in the mutation.
+func (m *PrivateCustomerSubscriptionMutation) ReminderSentAt() (r time.Time, exists bool) {
+	v := m.reminder_sent_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReminderSentAt returns the old "reminder_sent_at" field's value of the PrivateCustomerSubscription entity.
+// If the PrivateCustomerSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PrivateCustomerSubscriptionMutation) OldReminderSentAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReminderSentAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReminderSentAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReminderSentAt: %w", err)
+	}
+	return oldValue.ReminderSentAt, nil
+}
+
+// ClearReminderSentAt clears the value of the "reminder_sent_at" field.
+func (m *PrivateCustomerSubscriptionMutation) ClearReminderSentAt() {
+	m.reminder_sent_at = nil
+	m.clearedFields[privatecustomersubscription.FieldReminderSentAt] = struct{}{}
+}
+
+// ReminderSentAtCleared returns if the "reminder_sent_at" field was cleared in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) ReminderSentAtCleared() bool {
+	_, ok := m.clearedFields[privatecustomersubscription.FieldReminderSentAt]
+	return ok
+}
+
+// ResetReminderSentAt resets all changes to the "reminder_sent_at" field.
+func (m *PrivateCustomerSubscriptionMutation) ResetReminderSentAt() {
+	m.reminder_sent_at = nil
+	delete(m.clearedFields, privatecustomersubscription.FieldReminderSentAt)
+}
+
+// Where appends a list predicates to the PrivateCustomerSubscriptionMutation builder.
+func (m *PrivateCustomerSubscriptionMutation) Where(ps ...predicate.PrivateCustomerSubscription) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PrivateCustomerSubscriptionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PrivateCustomerSubscriptionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PrivateCustomerSubscription, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PrivateCustomerSubscriptionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PrivateCustomerSubscriptionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PrivateCustomerSubscription).
+func (m *PrivateCustomerSubscriptionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PrivateCustomerSubscriptionMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.created_at != nil {
+		fields = append(fields, privatecustomersubscription.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, privatecustomersubscription.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, privatecustomersubscription.FieldDeletedAt)
+	}
+	if m.name != nil {
+		fields = append(fields, privatecustomersubscription.FieldName)
+	}
+	if m.subscription_type != nil {
+		fields = append(fields, privatecustomersubscription.FieldSubscriptionType)
+	}
+	if m.amount_cents != nil {
+		fields = append(fields, privatecustomersubscription.FieldAmountCents)
+	}
+	if m.expires_on != nil {
+		fields = append(fields, privatecustomersubscription.FieldExpiresOn)
+	}
+	if m.reminder_sent_for_expiry != nil {
+		fields = append(fields, privatecustomersubscription.FieldReminderSentForExpiry)
+	}
+	if m.reminder_sent_at != nil {
+		fields = append(fields, privatecustomersubscription.FieldReminderSentAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PrivateCustomerSubscriptionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case privatecustomersubscription.FieldCreatedAt:
+		return m.CreatedAt()
+	case privatecustomersubscription.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case privatecustomersubscription.FieldDeletedAt:
+		return m.DeletedAt()
+	case privatecustomersubscription.FieldName:
+		return m.Name()
+	case privatecustomersubscription.FieldSubscriptionType:
+		return m.SubscriptionType()
+	case privatecustomersubscription.FieldAmountCents:
+		return m.AmountCents()
+	case privatecustomersubscription.FieldExpiresOn:
+		return m.ExpiresOn()
+	case privatecustomersubscription.FieldReminderSentForExpiry:
+		return m.ReminderSentForExpiry()
+	case privatecustomersubscription.FieldReminderSentAt:
+		return m.ReminderSentAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PrivateCustomerSubscriptionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case privatecustomersubscription.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case privatecustomersubscription.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case privatecustomersubscription.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case privatecustomersubscription.FieldName:
+		return m.OldName(ctx)
+	case privatecustomersubscription.FieldSubscriptionType:
+		return m.OldSubscriptionType(ctx)
+	case privatecustomersubscription.FieldAmountCents:
+		return m.OldAmountCents(ctx)
+	case privatecustomersubscription.FieldExpiresOn:
+		return m.OldExpiresOn(ctx)
+	case privatecustomersubscription.FieldReminderSentForExpiry:
+		return m.OldReminderSentForExpiry(ctx)
+	case privatecustomersubscription.FieldReminderSentAt:
+		return m.OldReminderSentAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown PrivateCustomerSubscription field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PrivateCustomerSubscriptionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case privatecustomersubscription.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case privatecustomersubscription.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case privatecustomersubscription.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case privatecustomersubscription.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case privatecustomersubscription.FieldSubscriptionType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubscriptionType(v)
+		return nil
+	case privatecustomersubscription.FieldAmountCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAmountCents(v)
+		return nil
+	case privatecustomersubscription.FieldExpiresOn:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresOn(v)
+		return nil
+	case privatecustomersubscription.FieldReminderSentForExpiry:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReminderSentForExpiry(v)
+		return nil
+	case privatecustomersubscription.FieldReminderSentAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReminderSentAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PrivateCustomerSubscription field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PrivateCustomerSubscriptionMutation) AddedFields() []string {
+	var fields []string
+	if m.addamount_cents != nil {
+		fields = append(fields, privatecustomersubscription.FieldAmountCents)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PrivateCustomerSubscriptionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case privatecustomersubscription.FieldAmountCents:
+		return m.AddedAmountCents()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PrivateCustomerSubscriptionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case privatecustomersubscription.FieldAmountCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAmountCents(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PrivateCustomerSubscription numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PrivateCustomerSubscriptionMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(privatecustomersubscription.FieldDeletedAt) {
+		fields = append(fields, privatecustomersubscription.FieldDeletedAt)
+	}
+	if m.FieldCleared(privatecustomersubscription.FieldReminderSentForExpiry) {
+		fields = append(fields, privatecustomersubscription.FieldReminderSentForExpiry)
+	}
+	if m.FieldCleared(privatecustomersubscription.FieldReminderSentAt) {
+		fields = append(fields, privatecustomersubscription.FieldReminderSentAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PrivateCustomerSubscriptionMutation) ClearField(name string) error {
+	switch name {
+	case privatecustomersubscription.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case privatecustomersubscription.FieldReminderSentForExpiry:
+		m.ClearReminderSentForExpiry()
+		return nil
+	case privatecustomersubscription.FieldReminderSentAt:
+		m.ClearReminderSentAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PrivateCustomerSubscription nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PrivateCustomerSubscriptionMutation) ResetField(name string) error {
+	switch name {
+	case privatecustomersubscription.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case privatecustomersubscription.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case privatecustomersubscription.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case privatecustomersubscription.FieldName:
+		m.ResetName()
+		return nil
+	case privatecustomersubscription.FieldSubscriptionType:
+		m.ResetSubscriptionType()
+		return nil
+	case privatecustomersubscription.FieldAmountCents:
+		m.ResetAmountCents()
+		return nil
+	case privatecustomersubscription.FieldExpiresOn:
+		m.ResetExpiresOn()
+		return nil
+	case privatecustomersubscription.FieldReminderSentForExpiry:
+		m.ResetReminderSentForExpiry()
+		return nil
+	case privatecustomersubscription.FieldReminderSentAt:
+		m.ResetReminderSentAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PrivateCustomerSubscription field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PrivateCustomerSubscriptionMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PrivateCustomerSubscriptionMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown PrivateCustomerSubscription unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PrivateCustomerSubscriptionMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown PrivateCustomerSubscription edge %s", name)
 }
 
 // PromoCodeMutation represents an operation that mutates the PromoCode nodes in the graph.

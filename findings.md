@@ -1,3 +1,72 @@
+# 私下客户订阅管理与 Telegram 提醒发现记录
+
+## 2026-07-26 已确认需求
+
+- 用户确认开始开发，并新增“金额”字段。
+- 用户要求到期前一天向 Telegram 频道提醒。
+- 目标频道名称为 `CC subscription`。
+- 用户已将 `Claude Pool Alert Bot` 作为管理员加入频道，并在频道发送 `/start` 与 `/start probe`，可用于 Bot API 的 update 记录识别频道。
+- 新模块与现有 Sub2API 用户、API Key、分组、额度、订单和支付订阅无业务关系。
+- 用户明确授权只读检查 `/Users/taylor/code/tools/CLIProxyAPI-ori/.env` 中现有 Telegram 配置；检查过程不得输出或记录实际密钥。
+
+## 2026-07-26 初步代码库事实
+
+- 当前仓库已有支付域 `subscription_plans` / `user_subscriptions` 和 `/admin/subscriptions`，新模块必须使用不同的内部命名和路由，避免误接现有计费逻辑。
+- 后端使用 Go、Gin、Ent 和顺序 SQL migration。
+- 前端使用 Vue、TypeScript、Pinia/Vue Router，并已有 admin-only 路由与侧边栏模式可复用。
+- 生产运行在 `172.247.109.38:41012`，应用由 `sub2api.service` 管理，PostgreSQL 18 和 Redis 为宿主机服务。
+- 当前 Git 分支为 `codex/claude-gpt56-global`，已跟踪文件无改动；现有未跟踪 `data/` 目录属于历史现场，必须保留且不得提交。
+
+## 2026-07-26 Telegram 配置只读核验
+
+- 旧项目 `.env` 中存在且非空：`TELEGRAM_BOT_TOKEN`、`TELEGRAM_ERROR_LOG_CHAT_ID`、`TELEGRAM_PROVIDER_CHAT_ID`、`TELEGRAM_OPS_CHAT_ID`；只记录变量名和是否存在，未输出实际值。
+- Bot API `getMe` 确认该 token 对应 `Claude Pool Alert Bot`（`@cc_pool_alert_bot`）。
+- 三个既有 Chat ID 分别对应 `CC Alerts`、`CC Provider Alerts`、`CC Ops Alerts`，都不是新建的 `CC subscription`。
+- Bot 当前没有 webhook，`getUpdates` 调用成功但返回 0 条 pending update，因此暂未从之前的频道消息解析出新频道 ID。
+- 新模块应使用独立变量 `TELEGRAM_SUBSCRIPTION_CHAT_ID`，不复用原有三类告警频道。
+
+## 2026-07-26 后台任务架构
+
+- 项目已有 `SubscriptionExpiryService`，它服务于现有付费订阅，周期扫描到期状态并发送 7/3/1 天邮件提醒；新私下客户模块不能复用其数据模型或邮件语义。
+- 该服务的生命周期由 Wire 注入，在应用启动时 `Start()`、清理时 `Stop()`，适合为私下客户新增同样可控的独立 reminder service。
+- 项目同时具备 ticker 和 robfig/cron 两类任务范式。私下客户提醒适合使用短周期 ticker + 数据库幂等认领，能够覆盖重启、错过固定时刻和多次扫描。
+- 现有服务使用标准日志；新 Telegram 发送错误必须脱敏，日志不得包含 Bot Token 或完整 Telegram API URL。
+- 现有管理后台已经占用 `/admin/subscriptions` 表示支付域订阅，因此新页面和 API 应采用 `/admin/private-subscriptions`，用户可见菜单仍显示“订阅管理”或更明确的“客户订阅”。
+
+## 2026-07-26 数据与 CRUD 实现约定
+
+- Ent 已提供 `TimeMixin` 与 `SoftDeleteMixin`；新实体可直接获得 `created_at`、`updated_at`、`deleted_at`，默认查询自动过滤软删除记录。
+- PostgreSQL `DATE` 已有 Ent schema 范式，可用于 `expires_on` 和 `reminder_sent_for_expiry`。
+- 金额采用 `amount_cents BIGINT`，API 和前端以整数分传输，展示时格式化为人民币元，从根源避免浮点精度问题。
+- 列表 API 将复用现有分页结构，支持 `search`、`status`、`subscription_type` 和安全排序字段。
+- 服务层负责名称、类型、金额和 `YYYY-MM-DD` 到期日校验；handler 仅负责绑定、ID/分页参数和统一响应。
+- 提醒查询条件：未软删除、`expires_on` 等于北京时间明天、且 `reminder_sent_for_expiry` 与当前到期日不同；发送成功后才标记，失败时保留下一轮重试机会。
+- 本地真实 API 验证确认：`2026-07-27` 相对当前北京时间 `2026-07-26` 返回 `due_soon`、`days_remaining=1`；更新到 `2026-08-26` 后返回 `active`，金额和汇总均按整数分保持准确。
+
+## 2026-07-26 前端实现约定
+
+- 管理端页面统一使用 `AppLayout`、`TablePageLayout`、`DataTable`、`Pagination`、`BaseDialog`、`ConfirmDialog`、`Select` 和全局 toast。
+- 新路由定为 `/admin/private-subscriptions`，避免和现有 `/admin/subscriptions` 支付订阅页面冲突。
+- 侧边栏现有“订阅管理”指向支付域；新入口使用更清晰的“客户订阅”，紧邻原订阅入口，并使用独立图标。
+- 页面采用精炼的运营台风格：顶部汇总当前客户数、即将到期数、已到期数和记录金额；主表突出到期状态及剩余天数，保持与现有暗色/亮色主题一致。
+- CRUD 交互复用公告管理页面的服务端分页、请求取消、编辑弹窗和软删除确认范式。
+- 金额输入框显示“元”，提交前严格解析为整数分；列表统一显示 `¥1,234.56`。
+- 现有通用 `Icon` 组件已具备 `users`、`calendar`、`bell`、`dollar`、`clock`、`edit`、`trash` 等图标，可直接复用，无需引入新的图标依赖。
+- 页面已采用独立菜单名“客户订阅”，并明确展示 Telegram 提醒目标是 `CC subscription`，避免与支付域“订阅管理”混淆。
+- 状态口径在前后端保持一致：超过 7 天为正常、今天至未来 7 天为即将到期、早于今天为已过期。
+- 金额前端解析不使用 `parseFloat`；通过字符串拆分生成整数分，并与后端 `99_999_999_999` 分上限保持一致。
+- 内置浏览器实测暗色桌面布局清晰：汇总卡片、提醒说明、筛选区和表格在一个视口内完整呈现，未见溢出或遮挡。
+
+## 2026-07-26 依赖注入与迁移约定
+
+- 后台服务由 `internal/service/wire.go` provider 构造并启动，`cmd/server/wire.go` 统一停止；新增 reminder service 必须同时接入启动、清理和生成后的 `wire_gen.go`。
+- repository 和 handler 分别通过各自 `ProviderSet` 注入；新增 `PrivateSubscription` repository、service、handler 后运行 Ent 与 Wire 生成器，不手改生成文件。
+- 项目启动时自动执行嵌入式 SQL migration，并用 checksum 和 PostgreSQL advisory lock 保证不可变与串行；当前最高迁移前缀为 `154`，新迁移使用 `155_private_customer_subscriptions.sql`。
+- 全局 `internal/pkg/timezone` 已提供 `Today()`、`ParseInLocation()` 和 `Location()`，生产默认 `Asia/Shanghai`；提醒与日期校验直接复用，不另建时区实现。
+- 提醒服务使用 `TELEGRAM_BOT_TOKEN` 与独立 `TELEGRAM_SUBSCRIPTION_CHAT_ID`；任一为空时安全禁用并仅输出不含值的状态日志。
+
+---
+
 # Sub2API Admin API Key 策略管理发现记录
 
 ## 2026-05-28 当前任务事实

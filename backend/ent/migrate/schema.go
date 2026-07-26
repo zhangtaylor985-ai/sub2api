@@ -1028,6 +1028,52 @@ var (
 			},
 		},
 	}
+	// PrivateCustomerSubscriptionsColumns holds the columns for the "private_customer_subscriptions" table.
+	PrivateCustomerSubscriptionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 120},
+		{Name: "subscription_type", Type: field.TypeString, Size: 50},
+		{Name: "amount_cents", Type: field.TypeInt64},
+		{Name: "expires_on", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "reminder_sent_for_expiry", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "reminder_sent_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// PrivateCustomerSubscriptionsTable holds the schema information for the "private_customer_subscriptions" table.
+	PrivateCustomerSubscriptionsTable = &schema.Table{
+		Name:       "private_customer_subscriptions",
+		Columns:    PrivateCustomerSubscriptionsColumns,
+		PrimaryKey: []*schema.Column{PrivateCustomerSubscriptionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "privatecustomersubscription_name",
+				Unique:  false,
+				Columns: []*schema.Column{PrivateCustomerSubscriptionsColumns[4]},
+			},
+			{
+				Name:    "privatecustomersubscription_subscription_type",
+				Unique:  false,
+				Columns: []*schema.Column{PrivateCustomerSubscriptionsColumns[5]},
+			},
+			{
+				Name:    "privatecustomersubscription_expires_on",
+				Unique:  false,
+				Columns: []*schema.Column{PrivateCustomerSubscriptionsColumns[7]},
+			},
+			{
+				Name:    "privatecustomersubscription_expires_on_reminder_sent_for_expiry",
+				Unique:  false,
+				Columns: []*schema.Column{PrivateCustomerSubscriptionsColumns[7], PrivateCustomerSubscriptionsColumns[8]},
+			},
+			{
+				Name:    "privatecustomersubscription_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{PrivateCustomerSubscriptionsColumns[3]},
+			},
+		},
+	}
 	// PromoCodesColumns holds the columns for the "promo_codes" table.
 	PromoCodesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1783,6 +1829,7 @@ var (
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
 		PendingAuthSessionsTable,
+		PrivateCustomerSubscriptionsTable,
 		PromoCodesTable,
 		PromoCodeUsagesTable,
 		ProxiesTable,
@@ -1875,6 +1922,9 @@ func init() {
 	PendingAuthSessionsTable.ForeignKeys[0].RefTable = UsersTable
 	PendingAuthSessionsTable.Annotation = &entsql.Annotation{
 		Table: "pending_auth_sessions",
+	}
+	PrivateCustomerSubscriptionsTable.Annotation = &entsql.Annotation{
+		Table: "private_customer_subscriptions",
 	}
 	PromoCodesTable.Annotation = &entsql.Annotation{
 		Table: "promo_codes",

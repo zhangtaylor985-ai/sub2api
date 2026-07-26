@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
+	"github.com/Wei-Shaw/sub2api/ent/privatecustomersubscription"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
@@ -1253,6 +1254,65 @@ func init() {
 	pendingauthsessionDescCompletionCodeHash := pendingauthsessionFields[12].Descriptor()
 	// pendingauthsession.DefaultCompletionCodeHash holds the default value on creation for the completion_code_hash field.
 	pendingauthsession.DefaultCompletionCodeHash = pendingauthsessionDescCompletionCodeHash.Default.(string)
+	privatecustomersubscriptionMixin := schema.PrivateCustomerSubscription{}.Mixin()
+	privatecustomersubscriptionMixinHooks1 := privatecustomersubscriptionMixin[1].Hooks()
+	privatecustomersubscription.Hooks[0] = privatecustomersubscriptionMixinHooks1[0]
+	privatecustomersubscriptionMixinInters1 := privatecustomersubscriptionMixin[1].Interceptors()
+	privatecustomersubscription.Interceptors[0] = privatecustomersubscriptionMixinInters1[0]
+	privatecustomersubscriptionMixinFields0 := privatecustomersubscriptionMixin[0].Fields()
+	_ = privatecustomersubscriptionMixinFields0
+	privatecustomersubscriptionFields := schema.PrivateCustomerSubscription{}.Fields()
+	_ = privatecustomersubscriptionFields
+	// privatecustomersubscriptionDescCreatedAt is the schema descriptor for created_at field.
+	privatecustomersubscriptionDescCreatedAt := privatecustomersubscriptionMixinFields0[0].Descriptor()
+	// privatecustomersubscription.DefaultCreatedAt holds the default value on creation for the created_at field.
+	privatecustomersubscription.DefaultCreatedAt = privatecustomersubscriptionDescCreatedAt.Default.(func() time.Time)
+	// privatecustomersubscriptionDescUpdatedAt is the schema descriptor for updated_at field.
+	privatecustomersubscriptionDescUpdatedAt := privatecustomersubscriptionMixinFields0[1].Descriptor()
+	// privatecustomersubscription.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	privatecustomersubscription.DefaultUpdatedAt = privatecustomersubscriptionDescUpdatedAt.Default.(func() time.Time)
+	// privatecustomersubscription.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	privatecustomersubscription.UpdateDefaultUpdatedAt = privatecustomersubscriptionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// privatecustomersubscriptionDescName is the schema descriptor for name field.
+	privatecustomersubscriptionDescName := privatecustomersubscriptionFields[0].Descriptor()
+	// privatecustomersubscription.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	privatecustomersubscription.NameValidator = func() func(string) error {
+		validators := privatecustomersubscriptionDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// privatecustomersubscriptionDescSubscriptionType is the schema descriptor for subscription_type field.
+	privatecustomersubscriptionDescSubscriptionType := privatecustomersubscriptionFields[1].Descriptor()
+	// privatecustomersubscription.SubscriptionTypeValidator is a validator for the "subscription_type" field. It is called by the builders before save.
+	privatecustomersubscription.SubscriptionTypeValidator = func() func(string) error {
+		validators := privatecustomersubscriptionDescSubscriptionType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(subscription_type string) error {
+			for _, fn := range fns {
+				if err := fn(subscription_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// privatecustomersubscriptionDescAmountCents is the schema descriptor for amount_cents field.
+	privatecustomersubscriptionDescAmountCents := privatecustomersubscriptionFields[2].Descriptor()
+	// privatecustomersubscription.AmountCentsValidator is a validator for the "amount_cents" field. It is called by the builders before save.
+	privatecustomersubscription.AmountCentsValidator = privatecustomersubscriptionDescAmountCents.Validators[0].(func(int64) error)
 	promocodeFields := schema.PromoCode{}.Fields()
 	_ = promocodeFields
 	// promocodeDescCode is the schema descriptor for code field.

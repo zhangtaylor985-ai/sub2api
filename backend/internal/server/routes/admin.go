@@ -68,6 +68,9 @@ func RegisterAdminRoutes(
 		// 订阅管理
 		registerSubscriptionRoutes(admin, h)
 
+		// 私下客户订阅管理（与现有计费订阅隔离）
+		registerPrivateSubscriptionRoutes(admin, h)
+
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
 
@@ -97,6 +100,18 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerPrivateSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	subscriptions := admin.Group("/private-subscriptions")
+	{
+		subscriptions.GET("", h.Admin.PrivateSubscription.List)
+		subscriptions.GET("/summary", h.Admin.PrivateSubscription.Summary)
+		subscriptions.GET("/:id", h.Admin.PrivateSubscription.GetByID)
+		subscriptions.POST("", h.Admin.PrivateSubscription.Create)
+		subscriptions.PUT("/:id", h.Admin.PrivateSubscription.Update)
+		subscriptions.DELETE("/:id", h.Admin.PrivateSubscription.Delete)
 	}
 }
 

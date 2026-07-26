@@ -14,6 +14,7 @@ import announcementsAPI from './announcements'
 import settingsAPI from './settings'
 import systemAPI from './system'
 import subscriptionsAPI from './subscriptions'
+import privateSubscriptionsAPI from './privateSubscriptions'
 import usageAPI from './usage'
 import geminiAPI from './gemini'
 import antigravityAPI from './antigravity'
@@ -47,6 +48,7 @@ export const adminAPI = {
   settings: settingsAPI,
   system: systemAPI,
   subscriptions: subscriptionsAPI,
+  privateSubscriptions: privateSubscriptionsAPI,
   usage: usageAPI,
   gemini: geminiAPI,
   antigravity: antigravityAPI,
@@ -78,6 +80,7 @@ export {
   settingsAPI,
   systemAPI,
   subscriptionsAPI,
+  privateSubscriptionsAPI,
   usageAPI,
   geminiAPI,
   antigravityAPI,
@@ -105,3 +108,9 @@ export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from 
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { TLSFingerprintProfile, CreateProfileRequest, UpdateProfileRequest } from './tlsFingerprintProfile'
 export type { ContentModerationConfig, ContentModerationLog, ModerationMode } from './riskControl'
+export type {
+  PrivateSubscription,
+  PrivateSubscriptionPayload,
+  PrivateSubscriptionStatus,
+  PrivateSubscriptionSummary
+} from './privateSubscriptions'

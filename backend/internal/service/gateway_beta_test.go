@@ -242,3 +242,49 @@ func TestIsCountTokensUnsupported404(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultBetaPolicyContext1MSonnet5Only(t *testing.T) {
+	settings := DefaultBetaPolicySettings()
+
+	var rule *BetaPolicyRule
+	for i := range settings.Rules {
+		if settings.Rules[i].BetaToken == "context-1m-2025-08-07" {
+			rule = &settings.Rules[i]
+			break
+		}
+	}
+	require.NotNil(t, rule)
+	require.Equal(t, BetaPolicyActionPass, rule.Action)
+	require.Equal(t, BetaPolicyActionFilter, rule.FallbackAction)
+
+	tests := []struct {
+		model string
+		want  string
+	}{
+		{model: "claude-sonnet-5", want: BetaPolicyActionPass},
+		{model: "claude-sonnet-5-20260701", want: BetaPolicyActionPass},
+		{model: "claude-sonnet-5-thinking", want: BetaPolicyActionPass},
+		{model: "claude-sonnet-5@20260701", want: BetaPolicyActionPass},
+		{model: "us.anthropic.claude-sonnet-5-v1", want: BetaPolicyActionPass},
+		{model: "eu.anthropic.claude-sonnet-5-20260701-v1:0", want: BetaPolicyActionPass},
+		{model: "apac.anthropic.claude-sonnet-5-v1", want: BetaPolicyActionPass},
+		{model: "jp.anthropic.claude-sonnet-5-v1", want: BetaPolicyActionPass},
+		{model: "au.anthropic.claude-sonnet-5-v1", want: BetaPolicyActionPass},
+		{model: "us-gov.anthropic.claude-sonnet-5-v1", want: BetaPolicyActionPass},
+		{model: "global.anthropic.claude-sonnet-5-v1", want: BetaPolicyActionPass},
+		{model: "anthropic.claude-sonnet-5-v1", want: BetaPolicyActionPass},
+		{model: "claude-sonnet-4-6", want: BetaPolicyActionFilter},
+		{model: "claude-opus-4-8", want: BetaPolicyActionFilter},
+		{model: "claude-haiku-4-5", want: BetaPolicyActionFilter},
+		{model: "claude-sonnet-50", want: BetaPolicyActionFilter},
+		{model: "claude-sonnet-5.1", want: BetaPolicyActionFilter},
+		{model: "us.anthropic.claude-sonnet-50-v1", want: BetaPolicyActionFilter},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			action, _ := resolveRuleAction(*rule, tt.model)
+			require.Equal(t, tt.want, action)
+		})
+	}
+}

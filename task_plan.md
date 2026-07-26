@@ -113,6 +113,10 @@
 | 42. 2026-06-26 生产 API Key 日限额时区排查 | complete | 只读确认 app 环境为 `TZ=Asia/Shanghai`，但 API Key rate-limit DB 更新仍用 PostgreSQL UTC `date_trunc('day', NOW())` 写入日窗口；该 key 北京时间当天确有 `/v1/messages` 用量入账，截图中环形日限额与明细日表口径不一致 |
 | 43. 2026-06-26 新机 SOCKS5 入口 | complete | 已复用现有 Xray 服务新增认证 SOCKS5 入站 `172.247.109.38:26812`，并切换本机 `.codex_td/.env` 代理目标；带认证 smoke 通过，无认证被拒绝 |
 | 44. 2026-07-02 Claude Fable 5 支持 | complete | 已上线 `claude-fable-5`：OpenAI dispatch 内部路由到 `gpt-5.4`，usage 保持请求模型并按 Fable 官方价计费；生产 smoke HTTP 200，`model_mapping_chain=claude-fable-5→gpt-5.4` |
+| 45. 2026-07-06 关闭 Claude Fable 5 支持 | complete | 已移除 Fable 模型列表、dispatch family、专用计费 override 和生产 exact mapping；当前线上 binary `f9d4f750...`，`/v1/models` 不含 Fable，Fable 请求不再产生成功 usage，Opus smoke 正常 |
+| 46. 2026-07-06 Claude Fable 5 显式开关 | complete | 本地已实现默认关闭、单 API Key 和 OpenAI 分组级 Fable 5 UI 开关；底层复用 `exact_model_mappings.claude-fable-5=gpt-5.4`，不新增 schema，不恢复默认 family 放行；已通过后端全量测试和前端 typecheck/build |
+| 47. 2026-07-06 Claude Fable 5 单 Key 生产开启 | complete | 已通过本地二进制 patch 上线显式开关与 body/计费修复；当前线上 binary `c6f16bc9...`，仅 `api_key_id=110` 有 Fable exact mapping，group 全局为 0；生产 smoke 与 Fable 动态价 usage 均通过 |
+| 48. 2026-07-07 Claude -> GPT 用户侧模型黑盒 | complete | 已上线 binary `b0239cc6...`；OpenAI `/v1/messages` 上游仍走 `gpt-5.4`，但用户侧非流式/流式响应模型保持原始 Claude 模型；Fable 最新 usage 已恢复按 Fable 动态价计费 |
 
 ## 决策记录
 
@@ -147,6 +151,10 @@
 - 2026-06-18：生产 Claude -> GPT 默认映射按用户要求收敛到分组层：Opus family default 与 `claude-opus-4-6/4-7/4-8` exact mapping 均为 `gpt-5.4`，Sonnet family default 保持 `gpt-5.3-codex`；API Key 级覆盖仍高于分组默认。
 - 2026-06-26：API Key rate-limit 的 `usage_1d/window_1d_start` 不能继续依赖 DB session `date_trunc('day', NOW())`，否则生产 PostgreSQL 为 UTC 时会与应用 `TZ=Asia/Shanghai`、用户侧 `/v1/usage` 明细日期口径错位。
 - 2026-07-02：`claude-fable-5` 对外应保持 Claude 请求模型，OpenAI dispatch 内部路由按 Opus family 走 `gpt-5.4`；计费必须按 Claude Fable 5 官方 API 价格，不按内部 `gpt-5.4` 成本价。
+- 2026-07-06：Fable 5 后续采用“默认关闭、显式 exact mapping 开启”的策略。单 key 开关写 `api_keys.messages_dispatch_model_config.exact_model_mappings.claude-fable-5=gpt-5.4`；分组/全局开关写 OpenAI dispatch 分组同名 exact mapping；不再把 Fable 加入全局 `DefaultModels` 或 Claude family 默认路由。
+- 2026-07-06：Fable 5 单 key 生产开启以 API Key exact mapping 为准，不批量写 group 或其它 key；即使请求体为上游兼容改写成 `gpt-5.4`，计费仍必须优先使用 `requested_model=claude-fable-5` 的动态价格。
+- 2026-07-07：OpenAI `/v1/messages` dispatch 允许在上游请求体中改写为内部 GPT/Codex 模型，但 Anthropic 响应体和流式 `message_start.message.model` 必须保持原始 Claude 请求模型；内部 GPT 模型只出现在后台 usage/log 的 `upstream_model` / mapping 证据中。
+- 2026-07-07：Claude Code 恢复失败会回退 `claude-fable-5`，因此 OpenAI dispatch 的 Claude family 黑盒策略必须默认覆盖 Fable；现有 OpenAI dispatch 分组统一补 `claude-fable-5 -> gpt-5.4`，代码默认也将 Fable 映射到 `gpt-5.4`，避免新分组/新 key 再出现同类漏配。
 
 ## 错误记录
 
@@ -185,3 +193,172 @@
 | 2026-07-02 | 生产 Fable 热配置后 smoke 仍把 `claude-fable-5` 发到上游 Codex，返回不支持该 Claude 模型 | 分组/API Key exact mapping 已写入并清 Redis，但线上旧二进制不识别 Fable family；改为发布代码修复 |
 | 2026-07-02 | 首版 Fable 二进制上线后路由正确，但 usage 费用按 `gpt-5.4` 价计费 | 补 `OpenAI /v1/messages` dispatch 的 Fable 计费优先使用请求模型，新增单测并二次上线 |
 | 2026-07-02 | 新机 SSH 上传大文件极慢，远端 2G 内存无 swap 导致远端 Go 构建被 OOM 杀掉 | 改用本地 Linux 构建；首版通过 `.zst` 上传，二次修复用 `zstd --patch-from` 基于上一版二进制生成 2.4M patch |
+| 2026-07-06 | 生产 Fable 关闭前确认当前线上 binary 已不是 7 月 2 日版本，不能直接回滚旧备份 | 基于当前线上 sha256 `427066...` 构建关闭版并用 `zstd --patch-from` 生成 2.5M patch，避免覆盖 7 月 4 日后续功能 |
+| 2026-07-06 | Fable 单 key 首轮上线后，调度映射已选 `gpt-5.4`，但 `/v1/messages` 转发 body 仍保留 `claude-fable-5`，上游 Codex/ChatGPT 账号拒绝 | 补 `buildOpenAIMessagesForwardBody`，无渠道级 mapping 时把 dispatch 默认映射写入 body；补单测并二次 binary patch 上线 |
+| 2026-07-06 | Fable body 改写后生产 smoke 成功，但 usage 成本按 `gpt-5.4` 价而非 Fable API 价计算 | 补 usage 计费候选优先级：`requested_model=claude-fable-5` 且结果模型已改写时优先按 Fable 动态价；补单测并三次 binary patch 上线 |
+| 2026-07-07 | Claude Code 报 `Session model gpt-5.4 could not be restored` | 根因是 Fable/Opus dispatch 的 body 预改写让服务层把用户侧响应模型也当成 `gpt-5.4`；新增 `ForwardAsAnthropicWithDisplayModel`，handler 传原始 `reqModel` 作为 display model，非流式和流式响应均不再暴露 GPT 模型 |
+| 2026-07-07 | 第一版 display-model hotfix 修复用户侧模型后，Fable smoke usage 又按 `gpt-5.4` 价计费 | 原因是计费 helper 只看 `result.Model != requested`；display model 修复后 `result.Model=claude-fable-5`，需改为同时看 `upstream_model=gpt-5.4`。已发布第二版 `display-model-billing`，最新 Fable usage 按 Fable 动态价 |
+| 2026-07-07 | 实时复线发现 `api_key_id=494` 的 `claude-fable-5` 仍 502 | 原因是 7 月 6 日显式开关策略下该 key 和分组都没有 Fable exact mapping，Claude Code 恢复失败回退 Fable 后会直接打到 ChatGPT/Codex 上游；已给 8 个 OpenAI dispatch 分组补 `claude-fable-5=gpt-5.4` 并上线代码默认映射，key 494 新建和 resume smoke 均通过 |
+
+---
+
+# 2026-07-08 API Key 纯流量包 `quota_exhausted` 修复
+
+## 目标
+
+修复 `token_package_required=true` 的 API Key 仍被传统 `quota/quota_used/status=quota_exhausted` 拦截的问题，并上线到新机 systemd 生产环境；不执行单独数据库恢复。
+
+## 阶段
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 只读定位 | complete | 已确认目标 key 有 token package 剩余但传统 quota 超限 |
+| 2. 代码修复 | complete | 认证和后扣口径改为纯流量包优先 |
+| 3. 本地回归 | complete | targeted Go、后端全量、前端 build、嵌入式构建均通过 |
+| 4. 生产发布 | complete | 已上线 systemd binary `4ede9ae8...`，目标 key smoke 通过 |
+
+---
+
+# 2026-07-10 GPT/Codex 5.6 支持
+
+## 目标
+
+支持 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` 的 Codex/OpenAI 请求、模型清单与准确计费；完成本地和生产 canary 回归后上线，并确保 Claude `/v1/messages`、模型列表和用户侧模型黑盒不受影响。
+
+## 阶段
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 原版与生产只读核验 | complete | 已定位原版 `6cea1c35` 和后续 manifest `13e773ef`；确认生产价格源与账号白名单现状 |
+| 2. 代码实现与单元测试 | complete | 三款精确模型、独立定价、Codex manifest、账号排除与 OAuth 策略保留均已实现；bare 5.6 不兜底 |
+| 3. 本地生产级回归 | complete | Go 全量、unit tag、定向 race、前端 lint/typecheck/Vitest/build、embedded build 全部通过 |
+| 4. 远端 canary | complete | 三款 Responses、OpenCode、SSE、manifest、Claude Opus/Fable、真实 `claude2`、usage/计费均通过 |
+| 5. 生产发布 | complete | 已发布 sha256 `11125e55...`；health、Claude 黑盒、费用与稳定性复核通过，回滚备份已保留 |
+
+---
+
+# 2026-07-14 Claude Sonnet 5 完整支持与默认映射收敛
+
+## 目标
+
+在不覆盖当前 dirty worktree 和已上线 GPT/Codex 5.6 能力的前提下，补齐 `claude-sonnet-5` 的模型发现、管理界面、Bedrock 映射和 1M context beta 策略；将 OpenAI `/v1/messages` Sonnet family 的代码、UI 和生产有效配置收敛到 `gpt-5.4`，完成生产级回归、canary 和上线。
+
+## 范围与决策
+
+- 参考上游 `db041423 feat: 适配 sonnet5`，仅移植与当前 fork 相容的 Sonnet 5 增量，不直接 cherry-pick。
+- 保留已有 `claude-sonnet-5` 后端默认模型和 Sonnet family `gpt-5.4` 代码默认，补齐前端默认、模型 whitelist/preset、Bedrock 映射和 1M beta 白名单。
+- OpenAI dispatch 计费继续使用实际上游 `gpt-5.4` 价格；本次不改变计费语义。
+- 生产仅移除值恰好为旧 UI 默认 `gpt-5.3-codex` 的 key 级 `sonnet_mapped_model` 覆盖，使其继承分组 `gpt-5.4`；保留其他显式自定义。
+- 发布继续使用当前已确认的本地 Linux amd64 binary + 远端 systemd 流程，不把已有未提交改动混成本次 Git commit。
+
+## 阶段
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 现状与上游对比 | complete | 已确认代码/前端/生产配置缺口及上游参考提交 |
+| 2. 代码与测试实现 | complete | 已补齐 Sonnet 5 Bedrock/1M beta/前端和 UI 默认 5.4，定向回归通过 |
+| 3. 本地生产级回归 | complete | Go/frontend/embed 全量门禁通过；本地模型清单与失败黑盒无内部模型泄漏 |
+| 4. 远程 canary | complete | `127.0.0.1:18080` health、API、真实 `claude2` TTY 双轮、usage 与计费均通过 |
+| 5. 生产配置收敛与发布 | complete | 完整 DB/配置备份；84 个旧 key 覆盖改为继承；systemd binary 切换成功 |
+| 6. 发布后验收 | complete | 公网 API、1M beta、正式 `claude2`、usage/计费、日志、清理与回滚记录均完成 |
+
+## 错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-07-14 | 生产 `usage_logs` 不存在 `status` 列 | 先查 `information_schema.columns`，改用实际存在的 usage 字段完成只读统计 |
+| 2026-07-14 | zsh 对不存在的根目录 `docker-compose*.yml` glob 直接报 `no matches found` | 未影响任何状态；改用 `rg --files` 和明确的 `deploy/docker-compose.*.yml` 路径 |
+| 2026-07-14 | 本地首次清 auth cache 时对包含换行的临时 key 文件直接做 sha256，未命中实际 cache key | 对脱除 CR/LF 的 token 字节计算 sha256，成功删除 1 条 snapshot 并验证 Claude-only 模型列表 |
+| 2026-07-14 | 首次真实 TTY 启动带 `--dangerously-skip-permissions`，进入首次使用确认后选择退出 | 未发起模型请求；改用不需要工具权限的普通 TTY 会话，同一会话连续两轮成功 |
+| 2026-07-14 | 发布后清理核验命令中的远端 `awk` 转义错误 | 停止与端口检查已完成；单独重跑 SHA 与服务状态核验，正式 binary 和 service 均正确 |
+
+---
+
+# 2026-07-21 生产 Codex `/responses` 流式断连排查
+
+## 目标
+
+定位 `CODEX_HOME=$HOME/.codex_capi codex` 使用 `base_url = "https://cc.claudepool.com"` 时，请求 `/responses` 在流完成前断开的原因；先只读检查新生产机、反代、应用与上游错误，不做重启、配置修改或发布。
+
+## 阶段
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 现象与基线确认 | complete | 公网/内网 health、systemd/Caddy 正常，应用无重启 |
+| 2. 错误与请求链路定位 | complete | 截图请求精确命中账号 4 与代理 11，133.9 秒后 TCP timeout/502 |
+| 3. 独立复现与归因 | complete | 新生产机到坏代理不可达，另一代理可达；成功与失败账号分片一致 |
+| 4. 结论与处置建议 | complete | 根因为账号 4/9 所绑 SOCKS5 从生产机不可达；尚未执行修复 |
+
+## 安全边界
+
+- 仅连接新生产机 `172.247.109.38:41012`，不混用旧机回滚环境。
+- 不读取或回显 API Key、OAuth token、代理密码、数据库/Redis 密码。
+- 未经用户确认，不重启服务、不改数据库/Redis/Caddy/环境变量、不替换 binary。
+
+## 结论
+
+- `cc.claudepool.com`、Caddy 和 Sub2API 整体健康，故障不是域名/TLS/反代或进程宕机。
+- `account_id=4/9` 仍 active+schedulable，但共同绑定的 `proxy_id=11` (`54.176.138.113:10808`) 从新生产机 TCP 不可达；请求被调度到这两个账号时约 2 分钟后 502，Codex 表现为流断开并重连。
+- 其余直连账号和 `proxy_id=10` (`54.241.144.215:10808`) 可用，因此故障呈间歇性。
+- 本轮只读排查已完成；修复需用户确认后执行，可先下线账号 4/9 的调度以止血，或将其迁移到可用代理/修复 proxy 11 网络策略。
+
+## 2026-07-21 用户确认后的代理下线
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 变更前复核与回滚设计 | complete | 确认 proxy 11 当前仅绑定账号 4/9；使用现有备份表保存最小回滚字段 |
+| 2. 清除账号代理与刷新调度 | complete | 账号 4/9 `proxy_id=NULL`；outbox 水位已越过本次事件 |
+| 3. 生产 Codex smoke | complete | 公网 SSE 200；账号 4/9 均有成功 usage；坏代理无新连接；本机 Clash 下真实 CLI 仍有客户端 SSE 断流 caveat |
+
+## 本次错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-07-21 | 只读查询 `scheduler_outbox.processed_at`，但生产表不存在该列 | 未产生写入；按真实字段查询，使用事件被 worker 删除作为消费证据 |
+| 2026-07-21 | 本机公网 curl 首版命令包含临时目录清理，被执行安全规则拒绝 | 请求未执行；改为全内存解析响应，不创建文件 |
+| 2026-07-21 | Codex CLI 经本机 Clash HTTP/SOCKS 代理仍显示 stream disconnected | 服务器实际收到重试并全部返回 200；公网 curl SSE 完整，定位为本机代理传输 caveat，不继续改线上 |
+
+---
+
+# 2026-07-26 Claude → GPT-5.6 全局策略与真实本地 TTY
+
+## 目标
+
+- 用真实 `cc2`/Claude Code TTY 在本地 Sub2API 沙盒对照验证 Claude → GPT-5.4 与 Claude → GPT-5.6 Sol。
+- 客户端传入的 Claude 模型、`output_config.effort`、streaming、tools 与多轮上下文按既有兼容语义传递；内部 GPT 模型继续对客户端黑盒。
+- 仅在 GPT-5.6 Sol 达到 GPT-5.4 稳定性门禁后，增加全局默认目标设置、API Key/分组继承与 UI，并把生产全局默认切到 GPT-5.6 Sol。
+- 完成可回滚的生产发布与发布后验收。
+
+## 策略
+
+- GPT-5.6 目标使用生产已支持的精确模型 `gpt-5.6-sol`，不使用无效的裸 `gpt-5.6`。
+- effort 映射：`low/medium/high` 原样传递，`max` 映射为 OpenAI `xhigh`；客户端未传时保持当前 GPT-5.4 兼容基线 `medium`。
+- 解析优先级：API Key 精确/系列覆盖 > 分组精确/系列覆盖 > 全局默认 > 代码安全兜底 GPT-5.4。
+- 本地 OAuth 测试只复制短时 access token；不复制或使用生产 refresh token，并禁用本地自动刷新，避免影响生产账号。
+- 如果临时 access token 无法完成测试，停止并请用户在本地完成 Codex OAuth 登录。
+
+## 阶段
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 当前源码/生产基线保护 | in_progress | 分支、dirty patch、未跟踪文件快照、生产 binary 对应关系 |
+| 2. TTY Skills 与本地凭据沙盒 | pending | 安全 OAuth 导入流程、本地 PG/Redis/backend、脱敏证据 |
+| 3. GPT-5.4 / GPT-5.6 Sol A/B | pending | Opus/Sonnet、effort、常识、代码、tools、WebSearch、SSE、真实 TTY |
+| 4. 全局设置与继承实现 | pending | 后端 setting/resolver、API Key/分组/UI、迁移逻辑 |
+| 5. 全量回归与本地 TTY 复验 | pending | Go、frontend、embed、真实 PTY |
+| 6. Git、canary 与生产发布 | pending | commit/push、DB/binary 备份、canary、正式切换 |
+| 7. 发布后观察与清理 | pending | usage/effort/mapping 证据、回滚点、临时凭据清理 |
+
+## 门禁
+
+- 同账号、同请求的 5.4/5.6 测试不得出现可复现的模型不支持、参数不支持、SSE 未完成、工具协议错误或客户端模型泄漏。
+- `usage_logs.reasoning_effort` 与请求 effort 一致；`max` 在上游记录为 `xhigh`。
+- 非流式、流式、WebSearch、tool_use 和真实 TTY 连续多轮均完成。
+- 如果 5.6 失败且换第二个已授权账号仍可复现，不开发或切换全局默认，保留 5.4 并提交失败报告。
+
+## 错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-07-26 | 只读 usage 统计误用不存在的 `usage_logs.status` 列 | 查询 `information_schema.columns` 后按真实字段重跑；未产生写入 |
+| 2026-07-26 | zsh 对不存在的 `backend/config*` glob 报 `no matches found` | 改用明确目录和 `rg`；未产生写入 |

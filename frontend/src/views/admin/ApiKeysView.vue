@@ -298,6 +298,13 @@
               <span class="input-label">{{ t('admin.apiKeys.form.dispatchOverride') }}</span>
               <div class="input-hint">{{ t('admin.apiKeys.form.dispatchOverrideHint') }}</div>
             </div>
+            <label class="block">
+              <span class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-dark-200">
+                <input v-model="createFableEnabled" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>{{ t('admin.apiKeys.form.allowFable5') }}</span>
+              </span>
+              <span class="input-hint">{{ t('admin.apiKeys.form.allowFable5Hint') }}</span>
+            </label>
             <div class="grid gap-3 md:grid-cols-3">
               <label class="space-y-1">
                 <span class="input-label">{{ t('admin.apiKeys.form.opusMappedModel') }}</span>
@@ -427,6 +434,13 @@
               <span class="input-label">{{ t('admin.apiKeys.form.dispatchOverride') }}</span>
               <div class="input-hint">{{ t('admin.apiKeys.form.dispatchOverrideHint') }}</div>
             </div>
+            <label class="block">
+              <span class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-dark-200">
+                <input v-model="editFableEnabled" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>{{ t('admin.apiKeys.form.allowFable5') }}</span>
+              </span>
+              <span class="input-hint">{{ t('admin.apiKeys.form.allowFable5Hint') }}</span>
+            </label>
             <div class="grid gap-3 md:grid-cols-3">
               <label class="space-y-1">
                 <span class="input-label">{{ t('admin.apiKeys.form.opusMappedModel') }}</span>
@@ -586,6 +600,10 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
+import {
+  OPENAI_MESSAGES_DISPATCH_FABLE_MODEL,
+  OPENAI_MESSAGES_DISPATCH_FABLE_TARGET_MODEL
+} from './groupsMessagesDispatch'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -667,6 +685,34 @@ const editForm = reactive({
   clear_expires_at: false,
   reset_quota: false,
   reset_rate_limit_usage: false
+})
+
+const hasFableDispatchMapping = (mappings?: Record<string, string>) =>
+  Boolean(mappings?.[OPENAI_MESSAGES_DISPATCH_FABLE_MODEL]?.trim())
+
+const setFableDispatchMapping = (
+  form: { dispatch_exact_model_mappings?: Record<string, string> },
+  enabled: boolean
+) => {
+  const mappings = { ...(form.dispatch_exact_model_mappings || {}) }
+  if (enabled) {
+    mappings[OPENAI_MESSAGES_DISPATCH_FABLE_MODEL] =
+      mappings[OPENAI_MESSAGES_DISPATCH_FABLE_MODEL]?.trim() ||
+      OPENAI_MESSAGES_DISPATCH_FABLE_TARGET_MODEL
+  } else {
+    delete mappings[OPENAI_MESSAGES_DISPATCH_FABLE_MODEL]
+  }
+  form.dispatch_exact_model_mappings = mappings
+}
+
+const createFableEnabled = computed({
+  get: () => hasFableDispatchMapping(createForm.dispatch_exact_model_mappings),
+  set: (enabled: boolean) => setFableDispatchMapping(createForm, enabled)
+})
+
+const editFableEnabled = computed({
+  get: () => hasFableDispatchMapping(editForm.dispatch_exact_model_mappings),
+  set: (enabled: boolean) => setFableDispatchMapping(editForm, enabled)
 })
 
 const tokenPackageForm = reactive({
@@ -841,6 +887,9 @@ const formatModelAccess = (key: ApiKey) => {
   if (key.allow_claude_family) parts.push(t('admin.apiKeys.modelAccessClaude'))
   if (key.allow_gpt_family) parts.push(t('admin.apiKeys.modelAccessGPT'))
   if (key.allow_image_generation !== false) parts.push(t('admin.apiKeys.modelAccessImage'))
+  if (hasFableDispatchMapping(key.messages_dispatch_model_config?.exact_model_mappings)) {
+    parts.push(t('admin.apiKeys.modelAccessFable'))
+  }
   const base = parts.length > 0 ? parts.join(' / ') : t('admin.apiKeys.modelAccessNone')
   const override = formatDispatchOverride(key.messages_dispatch_model_config)
   return override ? `${base} · ${override}` : base

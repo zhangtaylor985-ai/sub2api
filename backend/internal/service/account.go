@@ -443,6 +443,55 @@ func stringMappingFromRaw(raw any) map[string]string {
 	}
 }
 
+func modelExclusionsFromRaw(raw any) []string {
+	var values []any
+	switch exclusions := raw.(type) {
+	case []any:
+		values = exclusions
+	case []string:
+		values = make([]any, len(exclusions))
+		for i, exclusion := range exclusions {
+			values[i] = exclusion
+		}
+	default:
+		return nil
+	}
+
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		pattern, ok := value.(string)
+		if !ok {
+			continue
+		}
+		pattern = strings.TrimSpace(pattern)
+		if pattern != "" {
+			result = append(result, pattern)
+		}
+	}
+	return result
+}
+
+func (a *Account) isModelExcluded(requestedModel string) bool {
+	if a == nil || a.Credentials == nil {
+		return false
+	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	candidates := []string{requestedModel}
+	if a.IsOpenAI() {
+		if normalized := normalizeKnownOpenAICodexModel(requestedModel); normalized != "" && normalized != requestedModel {
+			candidates = append(candidates, normalized)
+		}
+	}
+	for _, pattern := range modelExclusionsFromRaw(a.Credentials["model_exclusions"]) {
+		for _, candidate := range candidates {
+			if matchWildcard(pattern, candidate) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (a *Account) GetModelMapping() map[string]string {
 	credentialsPtr := mapPtr(a.Credentials)
 	rawMapping, _ := a.Credentials["model_mapping"].(map[string]any)
@@ -611,6 +660,9 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
 // 如果未配置 mapping，返回 true（允许所有模型）
 func (a *Account) IsModelSupported(requestedModel string) bool {
+	if a.isModelExcluded(requestedModel) {
+		return false
+	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
 		return true // 无映射 = 允许所有

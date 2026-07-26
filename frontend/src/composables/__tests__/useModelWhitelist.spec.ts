@@ -4,7 +4,12 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import {
+  buildModelMappingObject,
+  getModelsByPlatform,
+  getPresetMappingsByPlatform,
+  splitModelMappingObject
+} from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
@@ -16,6 +21,23 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('codex-auto-review')
   })
 
+  it('openai 模型列表和预设映射包含 GPT-5.6 完整型号但不包含裸型号', () => {
+    const modelIDs = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
+    const models = getModelsByPlatform('openai')
+    const presets = getPresetMappingsByPlatform('openai')
+
+    for (const modelID of modelIDs) {
+      expect(models).toContain(modelID)
+      expect(presets).toEqual(expect.arrayContaining([
+        expect.objectContaining({ from: modelID, to: modelID })
+      ]))
+    }
+    expect(models).not.toContain('gpt-5.6')
+    expect(presets).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'gpt-5.6' })
+    ]))
+  })
+
   it('openai 模型列表不再暴露已下线的 ChatGPT 登录 Codex 模型', () => {
     const models = getModelsByPlatform('openai')
 
@@ -25,6 +47,20 @@ describe('useModelWhitelist', () => {
     expect(models).not.toContain('gpt-5.1-codex-max')
     expect(models).not.toContain('gpt-5.1-codex-mini')
     expect(models).not.toContain('gpt-5.2-codex')
+  })
+
+  it('anthropic and bedrock presets include Claude Sonnet 5', () => {
+    const models = getModelsByPlatform('anthropic')
+    const anthropicPresets = getPresetMappingsByPlatform('anthropic')
+    const bedrockPresets = getPresetMappingsByPlatform('bedrock')
+
+    expect(models).toContain('claude-sonnet-5')
+    expect(anthropicPresets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'claude-sonnet-5', to: 'claude-sonnet-5' })
+    ]))
+    expect(bedrockPresets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'claude-sonnet-5', to: 'us.anthropic.claude-sonnet-5-v1' })
+    ]))
   })
 
   it('antigravity 模型列表包含图片模型兼容项', () => {

@@ -545,3 +545,151 @@
   - 二次构建计费修正版 sha256=`eda55842f08cdcbd10c935a3b0baf5bc9e3cc35b42f4a36b9740d5ab81570f7e`；为避免慢链路全量上传，使用 `zstd --patch-from` 基于首版二进制生成 2.4M patch，远端还原后校验一致。
   - 二次上线备份 `/opt/sub2api/sub2api.bak.20260702T0654Z-before-fable5-billing-fix`，当前 `/opt/sub2api/sub2api` sha256=`eda55842f08cdcbd10c935a3b0baf5bc9e3cc35b42f4a36b9740d5ab81570f7e`；本地和公网 `/health` 均返回 ok。
   - 最终生产 smoke：`claude-fable-5` `/v1/messages` HTTP 200，返回 `FABLE_SMOKE_OK`；usage 最新行 `requested_model=model=claude-fable-5`、`upstream_model=gpt-5.4`、`model_mapping_chain=claude-fable-5→gpt-5.4`，input/output 费用分别为 `0.0012000000/0.0009500000`，已按 Fable 官方 `$10/$50 MTok` 计费。
+- 2026-07-06：完成 Claude Fable 5 支持关闭：
+  - 用户要求暂时不支持 Fable，并把开启/关闭流程沉淀到临时 binary deploy Skill，便于后续快速开关。
+  - 只读确认关闭前生产 binary sha256=`4270663a398e8dc04bf868872095d69821d24ba718ba0ea7f07711be3360e37e`，已包含 7 月 4 日 token package 后续功能；因此不能直接回滚 7 月 2 日 Fable 前备份。
+  - 本地关闭点：移除模型列表 `claude-fable-5`、移除 `fable -> opus` dispatch family、移除 Fable fallback price、移除 OpenAI messages dispatch Fable requested-model 计费 override；保留历史 usage/pricing 识别。
+  - 已更新 `.codex/skills/sub2api-local-binary-deploy/SKILL.md`，新增 Claude Fable 5 开关速查，记录代码点、生产 DB exact mapping、auth cache、smoke 和 usage 验证。
+  - 本地验证通过：相关 handler/service 组合测试、`go test ./internal/pkg/apicompat ./internal/service ./internal/handler -run ...`、`go test ./...`、Skill validator 和 `git diff --check`。
+  - 本地构建关闭版 Linux amd64 binary `backend/bin/sub2api-linux-amd64-20260706T042353Z-disable-fable`，sha256=`f9d4f750210ce12cbf960d70ae4b119e2bd2bad790dfb27eec8b4326260db259`；基于当前线上 `427066...` 生成 2.5M zstd patch，sha256=`f8772dc41958daacb4cbe40ab904968b1e0f6afd28aefd64e7293c4b28decee0`。
+  - 生产通过 patch 还原 release `/opt/sub2api/releases/sub2api-linux-amd64-20260706T042353Z-disable-fable` 并校验 sha256；备份当前 binary 到 `/opt/sub2api/sub2api.bak.20260706T0425Z-before-disable-fable` 后替换并重启 `sub2api.service`。
+  - 生产 DB 备份：`/root/cliapp/sub2api/ops_backups/groups_messages_dispatch_before_disable_fable_20260706T042900Z.psv`、`/root/cliapp/sub2api/ops_backups/api_keys_messages_dispatch_before_disable_fable_20260706T042900Z.psv`。
+  - 已移除 active OpenAI dispatch 分组和 active dispatch API Key 的 `exact_model_mappings.claude-fable-5`；复核分组 exact 为 `0/8`、key exact 为 `0/103`；清理并广播 103 个 auth cache，Redis `apikey:auth:*` 剩余 0。
+  - 验证通过：`/v1/models` 不含 `claude-fable-5`；Fable smoke HTTP 502 且关闭后 Fable 成功 usage 为 0；`claude-opus-4-8` smoke HTTP 200 返回 `OPUS_OK`；本机和公网 `/health` 均 ok；无残留 rsync/go build/zstd 进程。
+- 2026-07-06：完成 Claude Fable 5 显式开关本地实现：
+  - 用户希望 Fable 默认关闭，但可以针对单个 API Key 开启，也可以在更全局的分组层开启；本轮未部署生产，未写生产 DB，未记录 raw API key。
+  - 后端策略调整为 exact mapping 显式支持：`claude-fable-5` 不恢复为默认模型，也不作为 Claude family 默认命中；仅当 API Key 或 OpenAI dispatch 分组解析出 `claude-fable-5 -> gpt-5.4` 时才允许路由并在 `/v1/models` 暴露。
+  - Admin API Key 页面新增 `允许 Claude Fable 5` 开关；开启/关闭会增删该 key 的 `messages_dispatch_model_config.exact_model_mappings.claude-fable-5`，列表能力列会显示 `Fable 5`。
+  - Admin Groups 页面新增 OpenAI Messages dispatch 的 `分组开启 Claude Fable 5` 开关；适合作为分组级/全局默认开启入口。
+  - 计费维持动态 pricing 优先：新增回归覆盖 Fable requested model 可按动态 Fable 价格计费，同时不恢复硬编码 fallback price。
+  - Skill 已同步更新为当前 UI 优先、DB 备用方案。
+  - 验证通过：targeted Go 测试、`go test ./internal/pkg/apicompat ./internal/service ./internal/handler -run ...`、`go test ./...`、`./node_modules/.bin/vue-tsc --noEmit`、targeted eslint、`./node_modules/.bin/vite build`、Skill validator、`git diff --check`。
+- 2026-07-06：完成 Claude Fable 5 显式开关生产上线，并仅开启目标 API Key：
+  - 先按临时本地二进制方案构建 `backend/bin/sub2api-linux-amd64-20260706T070139Z-fable-explicit-switch`，sha256=`299fcc77faeec57082c58d044d9a2c9f04a02ae035327cf8d1f4dfe24fb0835a`，基于生产关闭版 `f9d4f750...` 生成 2.5M patch；生产备份 `/opt/sub2api/sub2api.bak.20260706T0705Z-before-fable-explicit-switch`。
+  - 已备份目标 API Key 修改前映射到 `/root/cliapp/sub2api/ops_backups/api_key_messages_dispatch_before_enable_fable_single_20260706T0706Z.psv`；仅 `api_key_id=110` 写入 `exact_model_mappings.claude-fable-5=gpt-5.4`，并清理该 key 的 Redis auth cache。
+  - 首轮生产 smoke 发现调度使用了 `gpt-5.4`，但转发请求体仍为 `claude-fable-5`，上游 ChatGPT/Codex 账号返回不支持该 Claude 模型；本地补 `buildOpenAIMessagesForwardBody`，无渠道 mapping 时把 dispatch 默认映射写入 body，并补混合 key `/v1/models` Fable 展示。
+  - 二次构建 `backend/bin/sub2api-linux-amd64-20260706T071140Z-fable-body-map`，sha256=`49e260464e0d4b655c60200243d8b7c2d3146ddcdd5ebf25b4eff7c895337a82`，基于 `299fcc7...` 生成 2.1M patch；生产备份 `/opt/sub2api/sub2api.bak.20260706T0712Z-before-fable-body-map`。
+  - 二次 smoke HTTP 200 后发现 usage 成本按 `gpt-5.4` 价落账；本地补 OpenAI usage 计费候选优先级：当 `requested_model=claude-fable-5` 且转发结果模型已改写为 `gpt-5.4` 时，费用优先按 Fable 动态 pricing 计算。
+  - 三次构建 `backend/bin/sub2api-linux-amd64-20260706T071823Z-fable-body-billing`，sha256=`c6f16bc9d0a0e67e833fb81c99d0991bf5aeb471d97ecd5d60e8aa01fcdcbcc7`，基于 `49e2604...` 生成 1.4M patch；生产备份 `/opt/sub2api/sub2api.bak.20260706T0719Z-before-fable-billing`，当前线上 binary sha256 为 `c6f16bc9d0a0e67e833fb81c99d0991bf5aeb471d97ecd5d60e8aa01fcdcbcc7`。
+  - 最终复核：`groups_with_fable=0`、`active_keys_with_fable=1`、`target_key_with_fable=1`、`non_target_keys_with_fable=0`，即未开启全局分组，只有目标 `api_key_id=110` 支持 Fable 5。
+  - 最终生产 smoke：目标 key `/v1/models` HTTP 200 且包含 `claude-fable-5`；`claude-fable-5` `/v1/messages` HTTP 200 返回 `OK`，响应模型为 `gpt-5.4`；usage 最新行 `requested_model=claude-fable-5`、`model=gpt-5.4`、`model_mapping_chain=claude-fable-5→gpt-5.4`。
+  - 最终计费证据：最新 smoke usage `input_tokens=117`、`output_tokens=5`，`input_cost=0.0011700000`、`output_cost=0.0002500000`、`total_cost=0.0014200000`，符合 Fable 动态价 `$10/$50 MTok`；公网和本机 `/health` 均 ok，近 10 分钟无 panic/fatal/migration/record_usage_failed。
+- 2026-07-07：推进 Claude -> GPT 用户侧模型黑盒修复：
+  - 用户反馈 Claude Code 报 `Session model gpt-5.4 could not be restored (not a model this version of Claude Code recognizes)`，要求 API key 请求 Claude Opus/Fable 时用户侧完全黑盒，不能暴露内部 GPT 模型。
+  - 根因定位：7 月 6 日为了让 `claude-fable-5` 上游可用，handler 在调用 `ForwardAsAnthropic` 前把 `/v1/messages` body 的 `model` 改成 `gpt-5.4`；服务层随后把这个已改写模型当作 `originalModel` 写回 Anthropic 响应，导致 Claude Code 把 `gpt-5.4` 当作 session model 恢复并报错。
+  - 本地修复：新增 `ForwardAsAnthropicWithDisplayModel`，handler 继续用改写后的 body 发上游，但额外传入原始 `reqModel` 作为客户端 display model；服务层非流式 Anthropic response 和流式 `message_start` 均使用 display model，`UpstreamModel` 仍记录内部 GPT。
+  - 新增回归：`TestForwardAsAnthropicWithDisplayModel_HidesMappedNonStreamingModel` 与 `TestForwardAsAnthropicWithDisplayModel_HidesMappedStreamingModel`，覆盖 body 已经是 `gpt-5.4` 但客户端响应必须保持 `claude-fable-5` / `claude-opus-4-8` 的场景。
+  - 本地验证通过：targeted service/handler 测试、`go test ./internal/pkg/apicompat`、service 组合测试、`go test ./...`、`git diff --check`、`./node_modules/.bin/vue-tsc --noEmit`、`./node_modules/.bin/vite build`。
+  - `pnpm --dir frontend run typecheck/build` 在当前 pnpm 版本下触发无 TTY 依赖目录 purge 确认并中止；未允许其清理依赖，改用现有 `node_modules/.bin` 直接验证通过。
+  - 第一版本地构建 `backend/bin/sub2api-linux-amd64-20260707T083100Z-display-model-blackbox`，sha256=`4271f78755539ec87381a44da77fcdb9a3b59b5c38c7b17d05ed76a4a994d484`；基于线上 `c6f16bc9...` 生成 3.5M patch，sha256=`62adb61b9f5ca9b26a72f3bebe7354d53efdefdca98f5428cc999c0105abdbfa`。
+  - 第一版生产备份 `/opt/sub2api/sub2api.bak.20260707T0832Z-before-display-model-blackbox`，上线后 health 正常；用 `api_key_id=111` smoke 确认 `claude-fable-5` 与 `claude-opus-4-8` HTTP 200，响应 `model` 保持 Claude，响应体不含 `gpt-`。
+  - 第一版 smoke 暴露 Fable 计费回归：usage `2589366` 中 `model=claude-fable-5`、`upstream_model=gpt-5.4` 已正确，但费用仍按 `gpt-5.4` 价。原因是计费 helper 仍依赖 `result.Model != requested` 判断 body 改写；display model 修复后该条件不再成立。
+  - 本地补计费修复：`shouldPreferOpenAIMessagesDispatchRequestedBillingModel` 同时检查 `upstream_model`，只要 requested 是 `claude-fable-5` 且 upstream 为内部模型，就优先按 Fable requested model 计费；单测更新为 display model 形态。
+  - 计费修复后验证通过：`go test ./internal/service -run 'TestOpenAIGatewayServiceRecordUsage_PrefersFableDynamicPricing|TestForwardAsAnthropicWithDisplayModel'`、service/handler/apicompat 组合测试、`go test ./...`、`git diff --check`。
+  - 第二版本地构建 `backend/bin/sub2api-linux-amd64-20260707T083924Z-display-model-billing`，sha256=`b0239cc6eb366fbc7257fe978bf0763777eef3ab900f80aa36af669c7ea83a69`；基于第一版线上 `4271f787...` 生成 1.5M patch，sha256=`03b4533691de9848c03a9a009bfe7d5c6ac897b828ff570761012bd93b274bc2`。
+  - 第二版生产备份 `/opt/sub2api/sub2api.bak.20260707T0840Z-before-display-model-billing`；当前 `/opt/sub2api/sub2api` sha256=`b0239cc6eb366fbc7257fe978bf0763777eef3ab900f80aa36af669c7ea83a69`，本机和公网 `/health` 均 ok。
+  - 最终生产 smoke：`api_key_id=111` 请求 `claude-fable-5` 与 `claude-opus-4-8` 均 HTTP 200，响应模型分别为原始 Claude 模型，响应体不含 `gpt-`；流式 Opus smoke 的 `message_start.model=claude-opus-4-8`，SSE 不含 `gpt-`。
+  - 最终 usage 证据：Fable 最新行 `2589430` 为 `model=claude-fable-5`、`requested_model=claude-fable-5`、`upstream_model=gpt-5.4`、`model_mapping_chain=claude-fable-5→gpt-5.4`，input/output tokens 为 `120/17`，费用 `0.0012000000/0.0008500000`，已按 Fable 动态价；Opus 最新行保持 `claude-opus-4-8→gpt-5.4`。
+  - 发布后近 15 分钟日志未见 panic/fatal/migration failed/record_usage_failed；本地和远端无残留 rsync/go build/zstd patch 进程。
+- 2026-07-07：完成 Claude Code `claude -r` 实时复线与 Fable 默认映射止血：
+  - 用户补充线上用户是第一次遇到 `Session model gpt-5.4 could not be restored`，因此重新按实时线上路径排查，而不是只按旧 session 污染处理。
+  - 使用临时 `CLAUDE_CONFIG_DIR` + 生产 `https://cc.claudepool.com` + `api_key_id=111` 复现新建/恢复，非交互和真实 TTY 均未再写入 `gpt-5.4`，session JSONL 中 response `model` 保持 `claude-opus-4-8` 或 `claude-fable-5`。
+  - 查询生产近 2 小时 usage：Claude 请求的 `model` 均保持 Claude；但发现 `api_key_id=494` 在 `claude-fable-5` 上连续 502，服务端日志显示上游拒绝 `claude-fable-5`，原因是 key 级无 Fable exact mapping，分组也没有默认 Fable mapping。
+  - 生产配置热修：备份分组映射到 `/root/cliapp/sub2api/ops_backups/groups_messages_dispatch_before_fable_default_20260707T143845Z.psv`，备份 API Key 映射到 `/root/cliapp/sub2api/ops_backups/api_keys_messages_dispatch_before_fable_default_20260707T143845Z.psv`；给 8 个 OpenAI dispatch 分组补 `exact_model_mappings.claude-fable-5=gpt-5.4`，清理 6 条 Redis auth cache。
+  - 热修后 `api_key_id=494` 的 `claude-fable-5` `/v1/messages` 从 HTTP 502 变为 HTTP 200，客户端响应 `model=claude-fable-5`，响应体不含 GPT/ChatGPT/Codex；usage `2593331` 为 `claude-fable-5→gpt-5.4`。
+  - 本地长期修复：`claudeMessagesDispatchFamily` 将 Fable 作为默认 dispatch family 映射到 `gpt-5.4`；模型列表测试同步为 OpenAI dispatch Claude-only key 默认展示 `claude-fable-5` 但仍不展示 GPT/Codex 内部模型。
+  - 本地验证通过：`go test ./internal/service -run ...`、`go test ./internal/handler -run ...`、组合回归 `go test ./internal/pkg/apicompat ./internal/service ./internal/handler -run 'OpenAI|Messages|Gateway|Billing|Pricing|ForwardAsAnthropic|ResolveMessagesDispatch' -count=1`、`git diff --check`。
+  - 构建并上线 Linux amd64 binary `backend/bin/sub2api-linux-amd64-20260707T144120Z-fable-default-blackbox`，sha256=`86ca0a2805bce5d6dca0983574337713c100133d5603c70b726151b537bb53b5`；生产备份 `/opt/sub2api/sub2api.bak.20260707T144210Z-before-fable-default-blackbox`，当前线上 sha256 同为 `86ca0a2805bce5d6dca0983574337713c100133d5603c70b726151b537bb53b5`。
+  - 发布后 health 正常；`api_key_id=494` Claude CLI 新建 + `--resume` 均成功，session JSONL response `model=claude-fable-5`，精确搜索无 `Session model` / `could not be restored` / `gpt-5.4`；usage `2593343`、`2593346` 均为后台 `claude-fable-5→gpt-5.4` 映射。
+- 2026-07-08：开始修复 API Key 纯流量包 `quota_exhausted`：
+  - 按生产只读流程确认 `api_key_id=147` 仍有 token package 剩余，但传统 quota 已超限并把 status 置为 `quota_exhausted`。
+  - 用户明确不做单独 DB 恢复，只做代码修复并上线。
+  - 已修改认证中间件：`token_package_required=true` 时不再因传统 `quota_exhausted` 状态、`quota_used>=quota` 或钱包余额为 0 提前拒绝。
+  - 已修改后扣命令构造：纯流量包 key 不再写 `APIKeyQuotaCost`，只继续写 token package/rate-limit ledger。
+- 2026-07-08：完成 API Key 纯流量包 `quota_exhausted` 上线：
+  - 本地验证通过：`go test -tags unit ./internal/server/middleware -run 'TestDedicatedUnlimitedBypassesQuotaExhaustedBillingGate' -count=1`、`go test -tags unit ./internal/service -run 'TestBuildUsageBillingCommand_TokenPackageOnly|TestBuildUsageBillingCommand_DedicatedUnlimited' -count=1`、`git diff --check`、`go test ./internal/pkg/apicompat`、`go test ./internal/service -run 'TestForwardAsAnthropic|TestNormalizeOpenAIMessagesDispatchModelConfig|TestResolveOpenAIForwardModel|TestOpenAI|TestBuildUsageBillingCommand_TokenPackageOnly'`、`go test ./internal/handler -run 'OpenAIGateway|Messages|Gateway'`、`go test ./...`。
+  - 前端和嵌入式验证通过：`./node_modules/.bin/vue-tsc --noEmit`、`./node_modules/.bin/vite build`、`go test -tags embed ./internal/web -count=1`。
+  - 本地构建 Linux amd64 binary `backend/bin/sub2api-linux-amd64-20260708T050224Z-token-package-quota`，sha256=`4ede9ae80a924d11f6396f71d922a0837af948f3d96d1b9368f624c55ef75bf4`；本机直接执行该 Linux binary 出现 `exec format error`，判定为 macOS 平台不匹配，不影响产物。
+  - 基于线上旧 binary sha256 `86ca0a2805bce5d6dca0983574337713c100133d5603c70b726151b537bb53b5` 生成 patch `backend/bin/sub2api-linux-amd64-20260708T050224Z-token-package-quota-from-86ca0a2.zst`，sha256=`37c5622fcf670e6d198697c5e9ed45b0951527ff1e467b7a4af248a14358d78e`。
+  - 远端 release `/opt/sub2api/releases/sub2api-linux-amd64-20260708T050224Z-token-package-quota` 校验 sha256 与本地一致；生产备份 `/opt/sub2api/sub2api.bak.20260708T0506Z-before-token-package-quota`。
+  - 已替换 `/opt/sub2api/sub2api` 并重启 `sub2api.service`；当前线上 binary sha256=`4ede9ae80a924d11f6396f71d922a0837af948f3d96d1b9368f624c55ef75bf4`，本机和公网 `/health` 均 ok。
+  - 目标 key smoke：`/v1/models` HTTP 200 且无 quota 错误；`claude-haiku-4-5-20251001` `/v1/messages` HTTP 200，响应模型保持 Claude，usage `2599956` 为 `billing_mode=token`、`upstream_model=gpt-5.4-mini`、`actual_cost=0.0002025000`。
+  - 账本验证：`api_keys.id=147` 仍为 `status=quota_exhausted` 且 `quota_used=1404.29324415` 未继续增加；token package usage 新增 `10190`，流量包剩余 `1562.06190285`。
+  - 发布后日志未见 panic/fatal/migration failed/record_usage_failed/ERROR；本地和远端无残留 rsync/go build/zstd patch 进程。
+- 2026-07-10：开始 GPT/Codex 5.6 支持与生产发布：
+  - 用户确认完整方案：支持三款精确 5.6、加入 Codex 在线 manifest、保持 Claude 链路黑盒，完成本地与 canary 门禁后发布生产。
+  - 已只读对比 `/Users/taylor/sdk/sub2api-origin`，确认核心参考提交 `6cea1c35` 和 manifest 提交 `13e773ef`；未直接 cherry-pick，避免覆盖当前 fork 与既有 dirty 改动。
+  - 已核验生产动态价格源 main `e23618b20e6cba83e2528e365e5c7349ae8a03dc`：三款均为 400K input / 128K output，Sol/Terra/Luna 使用独立价格。
+  - 已只读确认生产服务 active、health ok、当前 binary sha256=`4ede9ae80a924d11f6396f71d922a0837af948f3d96d1b9368f624c55ef75bf4`；生产动态价格文件已有三款 5.6。
+  - 前端已加入三款 whitelist、preset 和 OpenCode 400K/128K 配置；定向 Vitest 2 文件 13 tests 通过。
+  - Codex manifest 已完成定向实现，额外保护 Claude-only key；service/handler/routes 定向测试通过。后端核心模型归一与三档计费测试仍在进行。
+- 2026-07-10：完成 GPT/Codex 5.6 生产上线：
+  - 代码完成三个精确模型、别名归一、bare/near-miss 拒绝、三档普通/priority/长上下文价格、400K/128K context、在线 manifest、API Key family 隔离、账号 exclusions、scheduler metadata roundtrip 与 OAuth 重新授权策略合并。
+  - 生产 entitlement 矩阵：Pro 账号 `3/4/9/14/15` 三款均可用；free 账号 `6/8` 不可用，已写 `model_exclusions=["gpt-5.6-*"]`；账号 `14/15` 写三个 identity mapping。配置通过 scheduler outbox 重建后生效，重新授权回归确认策略不会丢失。
+  - 发布中两次主动回滚：第一次发现 scheduler metadata 未携带 `model_exclusions`；第二次发现直接 SQL 更新没有生成 scheduler outbox，缓存未重建。两次均在门禁内恢复旧 binary/config/health/Claude 链路后再修复，未把已知问题留在线上。
+  - 基线候选 `backend/bin/sub2api-linux-amd64-20260710T034054Z-gpt56-production` sha256=`43009b024401688561698c1426c6fbb5efc3220923f9e595352f0abb5fab4b2a` 于 `04:06 UTC` 上线并完成三款模型、Claude、计费与回滚验证；完整 DB 备份 `/opt/sub2api/backups/sub2api-before-gpt56-20260710T031500Z.dump` 已通过 `pg_restore --list`。
+  - 深入 OpenCode 门禁发现 GPT-5.6 要求 Codex 身份；第一版专用 `0.125.0` 被上游拒绝。进一步复审发现 OAuth WS 连接池和同会话切模要求所有 OAuth WS 握手预先具备 5.6 能力，改为统一 version floor，同时只对精确 5.6 HTTP 生效。
+  - 上游在本次发布期间将最低版本提高到 `0.144.x`；`npm view @openai/codex` 确认 stable=`0.144.1`，直接 HTTP 与真实 WS 请求均通过。实现采用 `0.144.1` floor，严格解析并保留更高 `codex_cli_rs` 版本，拒绝复合/畸形 UA 伪造高版本。
+  - 本地最终门禁通过：`go test ./...`、`go test -tags=unit ./...`、相关 `-race`、`go test -tags=embed ./cmd/server ./internal/web`、前端 lint/typecheck、13 个定向 Vitest、Vite production build、`git diff --check`。仓库未提供 `tools/secret_scan.py`，因此该可选命令无法执行，未作为发布成功证据。
+  - 最终候选 `backend/bin/sub2api-linux-amd64-20260710T045402Z-gpt56-stable-01441` sha256=`11125e55a14aaa0a8423011c23170cc4f6034c9a2a978ada44a377bd60ace9db`；基于线上 `43009b...` 的 patch sha256=`df1a28ab6871a14b56532ffe67f08f84baba17861de1b020d71cdd18c6463333`，远端重建 SHA 完全一致。
+  - 隔离 canary 仅监听远端 `127.0.0.1:18080`。首次 transient unit 因 `EnvironmentFile` 覆盖端口参数而尝试绑定已占用的 8080 后自行退出，未替换正式服务；改为进程末层覆盖 `SERVER_PORT=18080` 后 health 正常。
+  - canary 通过 `/v1/models` 三档、OpenCode/generic Luna、官方 Sol/Terra/Luna、5.4 非回归、Luna SSE、Claude Opus/Fable、Claude-only manifest 404、真实 `claude2` 与 usage/计费。生产账号 WS 模式均为 off，未改共享配置；直接上游 WS Luna 以 `0.144.1` completed。
+  - 正式发布前停止 canary并确认 18080 无监听。备份 `/opt/sub2api/sub2api.bak.20260710T050538Z-before-gpt56-stable-01441` 后仅替换 binary 并重启 `sub2api.service`；自动回滚门禁未触发。当前线上 sha256=`11125e55a14aaa0a8423011c23170cc4f6034c9a2a978ada44a377bd60ace9db`。
+  - 发布后公网验收通过：三款 5.6 non-stream、Luna SSE、在线 manifest 三款、Claude Opus/Fable 黑盒；真实 `claude2 2.1.174` 返回 `CLAUDE2_PROD_01441_OK`，debug-file `/tmp/sub2api-cc1-gpt56-production-20260710/prod-01441-debug.log` 证实命中 `/v1/messages` 并收到 stream first chunk。
+  - 生产计费验收：usage `2634987/2634988/2634989/2634998/2634999` 的档位价格逐条准确，SQL mismatch=0，账号 `6/8` 命中为 0；Claude usage 继续为既有 `claude-opus-4-7/claude-fable-5→gpt-5.4`，用户侧无内部模型泄漏。
+  - 发布后 `sub2api.service` active、`NRestarts=0`，内网/公网 health 均 ok；日志无 panic/fatal/migration/record_usage_failed，无残留 canary 端口、rsync、go build 或 zstd patch 进程。
+- 2026-07-14：开始 Claude Sonnet 5 完整支持与默认映射收敛：
+  - 用户已确认完整方案：补齐 Sonnet 5 产品能力，Sonnet family 默认 dispatch 到 `gpt-5.4`，完成生产级回归后 canary 与正式上线。
+  - 已完整阅读 `planning-with-files`、`sub2api-production-regression`、`sub2api-cc1-tty-blackbox-testing`、`sub2api-production-inspection`、`sub2api-deploy` 和 `sub2api-local-binary-deploy` skills。
+  - 已检查 dirty worktree；本次必须基于当前已上线 GPT/Codex 5.6 源码快照增量实现，不覆盖或整理无关改动。
+  - 已对比上游 `db041423`，定位本地缺口为前端 whitelist/preset、Bedrock 映射、Sonnet 5 1M beta 白名单以及 UI 旧默认。
+  - 已只读核对生产 service/health/binary、分组与 key 映射、Sonnet 5 usage；未修改生产 DB、Redis 或服务。
+  - 只读 usage 查询首次误用不存在的 `status` 列；查询 schema 后已改用存在字段，未引发任何写操作。
+  - 已实现：`DefaultBedrockModelMapping` 增加 `claude-sonnet-5 -> us.anthropic.claude-sonnet-5-v1`；`context-1m-2025-08-07` 仅对 Sonnet 5 合法直连/Vertex/Bedrock 形态放行，其他模型 filter。
+  - 已实现：前端 Anthropic whitelist/preset 和 Bedrock preset 增加 Sonnet 5，OpenAI messages dispatch 新建/重置默认 Sonnet 从 `gpt-5.3-codex` 改为 `gpt-5.4`。
+  - 已增加回归：Sonnet 5 group default `gpt-5.4`、key 级旧覆盖优先级、handler family 解析、Bedrock region 重写、1M beta 边界（包括拒绝 `sonnet-50`/`sonnet-5.1`）、前端模型与 preset。
+  - 定向验证通过：service Go 定向测试、handler OpenAI dispatch/model 测试、前端 2 个 Vitest 文件共 16 tests。
+  - 生产级静态门禁通过：协议组合 Go tests、`go test ./...`、`go test -tags=unit ./...`、Sonnet 5/dispatch/Bedrock/beta 相关 `-race`、frontend lint/typecheck/Vite build、`go test -tags=embed ./cmd/server ./internal/web`。
+  - 本地 fallback sandbox 已启动：`sub2api-postgres-local` 为 `127.0.0.1:5433`，`sub2api-redis-local` 为 `127.0.0.1:6380`，当前源码 `backend/bin/server` 监听 `127.0.0.1:8080`，health ok；数据目录为 `deploy/data_local_host`。
+  - 本地 `Local Codex GPT` Sonnet 配置已从旧 `gpt-5.3-codex` 更新为 `gpt-5.4`；`Local Claude GPT Blackbox` 调整为 Claude-only 并正确清理 auth cache。
+  - 本地 `/v1/models` HTTP 200，包含 `claude-sonnet-5` 与 `claude-fable-5`，不包含内部 `gpt-5.4`。
+  - 本地唯一 OpenAI OAuth 测试账号已过期且为 `error + unschedulable`；Sonnet 5 `/v1/messages` 因无可用账号返回 HTTP 503，用户侧仅见 `Service temporarily unavailable`，无 GPT/Codex 泄漏。不导入生产凭据，实际上游生成、usage 和 cc1 转到隔离远端 canary 验证。
+  - 构建候选 `/Users/taylor/sdk/sub2api/backend/bin/sub2api-linux-amd64-20260714T094101Z-sonnet5-gpt54`，sha256=`27efc96830124c393a3caf839270bf613cc2b79b3b31e0eac328561fcf34eeab`；通过 zstd patch 在远端重建并校验一致。
+  - 隔离 systemd canary `sub2api-sonnet5-canary.service` 仅监听远端 `127.0.0.1:18080`；`/v1/models`、Sonnet 5 非流式/SSE、Claude Code 非交互均通过且无内部模型泄漏。
+  - 真实 `claude2 2.1.174` TTY 同一会话连续两轮返回 `TTY_SONNET5_ONE` / `TTY_SONNET5_TWO`；debug-file 记录 3 次 `/v1/messages`，未出现 API error、恢复警告或 GPT 模型名。首次带危险权限参数的 onboarding 会话主动退出，未发起模型请求。
+  - canary 的 7 条 usage 全部为 `claude-sonnet-5→gpt-5.4`，外部模型保持 Claude，计费按实际 GPT-5.4 上游成本记录。
+  - 发布前完成 PG 完整 dump `/opt/sub2api/backups/sub2api-before-sonnet5-gpt54-20260714T095120Z.dump`，sha256=`7d4094d6b3cce73752de1cf82bcd4ef5327a74f9e9417d0e5c3de525ad44bc06`，大小 264358622 字节并通过 `pg_restore -l`；另备份 groups/api_keys 配置 CSV。
+  - 生产配置迁移精确移除 84 个旧 `gpt-5.3-codex` key 级 Sonnet 覆盖并失效相同数量 auth cache；迁移后 108 个未删除 key 全部继承，8/8 个 OpenAI dispatch 组均为 Sonnet→`gpt-5.4`。
+  - 停止 canary 并确认 18080 无监听后，备份旧 binary `/opt/sub2api/sub2api.bak.20260714T095346Z-before-sonnet5-gpt54`，切换正式 binary 并重启；健康门禁通过，自动回滚未触发。
+  - 正式公网验收通过：模型清单包含 Sonnet 5 且隐藏 GPT-5.4，非流式返回 `SONNET5_PROD_OK`，SSE 返回 `SONNET5_PROD_STREAM_OK`，1M beta 返回 `SONNET5_CONTEXT1M_OK`，全新 Claude Code 配置返回 `SONNET5_CC1_PROD_OK`。
+  - 发布后 4 条 usage 全部为 `requested_model/model=claude-sonnet-5`、`upstream_model=gpt-5.4`、映射链正确，总成本等于实际成本；service active/running、`NRestarts=0`、内外 health 正常、硬错误计数 0。
+  - 启动时远程价格 hash 获取出现一次 DNS timeout，但本地价格数据和实际计费正常；远端 canary、SSH 隧道、本地服务与本次启动的本地 Postgres/Redis 容器均已停止。
+- 2026-07-21：开始排查生产 Codex `/responses` 流式断连：
+  - 已检查用户截图，确认客户端为 Codex CLI `0.144.6`、模型 `gpt-5.6-sol high`，目标 URL 为 `https://cc.claudepool.com/responses`。
+  - 已完整阅读 `sub2api-production-inspection` 与 `planning-with-files` skills。
+  - 已检查工作区；存在大量既有未提交源码和文档改动，本次只读排查不覆盖或整理这些改动。
+  - 当前仅授权只读生产检查，未对生产服务、Caddy、数据库、Redis 或配置执行修改。
+  - 第一轮基线确认公网/内网 health 正常，systemd 相关服务均 active，Sub2API 无重启；排除整体服务宕机。
+  - 日志发现 `54.176.138.113:10808` SOCKS5 TCP connect timeout，多个 `/responses` 请求约 140 秒后 502；同时账号 3 存在成功 200 样本，初步指向账号代理分片故障。
+  - 已关联截图对应请求 id `58da64ff-3d5d-4db1-96cd-e31bbaf048e0`，下一步查询其终态、ops_error_logs 与账号/代理关系。
+  - 精确请求在 133.9 秒后由 `account_id=4` 返回 502，根错误为绑定 SOCKS5 `54.176.138.113:10808` TCP connect timeout。
+  - 账号 4/9 均绑定该代理且仍 active+schedulable；目标 group 14 还绑定 3/6/8（DIRECT）与 15（可达代理）。
+  - 新生产机 TCP 探测确认坏代理不可达、另一代理可达；本机到两者均可达，指向生产机到 proxy 11 的路径/源 IP 网络策略问题。
+  - 近 60 分钟账号 4/9 各有 60/52 条 5xx；账号 3 同期持续成功并包含 11 条 `gpt-5.6-sol`。
+  - 只读排查完成，未重启服务、未修改数据库/Redis/Caddy/账号/代理配置；等待用户决定是否止血或迁移代理。
+  - 用户确认将坏代理下线，并要求所有使用该代理的账号改为直连。
+  - 已确认代码运行时语义：`proxy_id=0`/数据库 `NULL` 表示直连；账号批量变更需写 `account_bulk_changed` scheduler outbox 才能刷新调度快照。
+  - 已确认可复用 `ops_proxy_rebalance_backup`，本次只保存账号 ID、原 proxy_id、updated_at，不复制账号 credentials。
+  - 只读检查 outbox 时误查不存在的 `processed_at` 列，查询失败且没有写入；后续按实际表结构验证事件消费。
+  - 已于 01:49:50 UTC 原子备份并清除 proxy 11 的全部账号绑定；影响账号 4/9，回滚 tag=`proxy11_to_direct_20260721T014950Z`。
+  - 已写 scheduler outbox id=272174；Redis watermark=272187，调度快照已刷新；未重启服务。
+  - 四次内部 `/responses` SSE 均命中账号 4 并在 1.1–2.2 秒完成；公网使用用户提供测试 key 的 SSE smoke HTTP 200 + completed。
+  - 真实流量确认账号 4/9 变更后分别有 35/42 条成功 usage；01:52 UTC 后未再出现 `54.176.138.113:10808` 日志。
+  - `sub2api.service` active/running、`NRestarts=0`，公网 health 正常，proxy 11 当前绑定账号数为 0。
+  - `.codex_capi` 真实 CLI 在本机 Clash HTTP/SOCKS 代理下仍发生客户端 SSE 断流，但服务器对应重试均返回 200；已隔离为本机代理传输 caveat，不影响线上账号代理恢复结论。
+- 2026-07-26：开始 Claude → GPT-5.6 全局策略与真实本地 TTY：
+  - 用户已确认完整方案，授权修改项目级 Skills、在本地启动独立沙盒，并从生产安全复制 1–2 个 OpenAI/Codex OAuth 账号用于真实 TTY。
+  - 已完整阅读 `planning-with-files`、`sub2api-production-regression`、`sub2api-cc1-tty-blackbox-testing`、`sub2api-production-inspection` 与 `sub2api-deploy`。
+  - 已检查 dirty worktree；当前生产仍运行 2026-07-14 构建的 binary，后续必须先保护并核对当前源码基线，不能从干净 HEAD 发布。
+  - 已只读确认生产分组/key 映射、账号 5.6 eligibility、近 7 天 GPT-5.6 usage/error、服务状态和 `cc2` 实际配置；未修改生产 DB、Redis、服务或配置。
+  - 已确定本地凭据安全边界：只使用短时 access token，不导入生产 refresh token；本地禁用 token refresh。若 token 无法完成测试，停止并请用户本地登录授权。

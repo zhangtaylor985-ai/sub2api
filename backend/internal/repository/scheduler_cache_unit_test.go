@@ -3,11 +3,43 @@
 package repository
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBuildSchedulerMetadataAccount_KeepsModelExclusions(t *testing.T) {
+	account := service.Account{
+		ID:       42,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-5.4":     "gpt-5.4",
+				"gpt-5.6-sol": "gpt-5.6-sol",
+			},
+			"model_exclusions": []string{"gpt-5.6-*"},
+			"access_token":     "drop-me",
+			"refresh_token":    "drop-me",
+		},
+	}
+
+	metadata := buildSchedulerMetadataAccount(account)
+	require.Equal(t, []string{"gpt-5.6-*"}, metadata.Credentials["model_exclusions"])
+	require.NotContains(t, metadata.Credentials, "access_token")
+	require.NotContains(t, metadata.Credentials, "refresh_token")
+
+	payload, err := json.Marshal(metadata)
+	require.NoError(t, err)
+
+	var cached service.Account
+	require.NoError(t, json.Unmarshal(payload, &cached))
+	require.False(t, cached.IsModelSupported("gpt-5.6-sol"))
+	require.False(t, cached.IsModelSupported("openai/gpt5.6sol-high"))
+	require.True(t, cached.IsModelSupported("gpt-5.4"))
+}
 
 func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 	account := service.Account{

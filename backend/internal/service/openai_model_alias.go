@@ -37,6 +37,9 @@ func canonicalizeOpenAIModelAliasSpelling(model string) string {
 		from string
 		to   string
 	}{
+		{"gpt-5.6sol", "gpt-5.6-sol"},
+		{"gpt-5.6terra", "gpt-5.6-terra"},
+		{"gpt-5.6luna", "gpt-5.6-luna"},
 		{"gpt-5.4mini", "gpt-5.4-mini"},
 		{"gpt-5.4nano", "gpt-5.4-nano"},
 		{"gpt-5.3-codexspark", "gpt-5.3-codex-spark"},
@@ -47,6 +50,29 @@ func canonicalizeOpenAIModelAliasSpelling(model string) string {
 		normalized = strings.ReplaceAll(normalized, replacement.from, replacement.to)
 	}
 	return normalized
+}
+
+func normalizeKnownGPT56Model(model string) string {
+	for _, base := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		if model == base {
+			return base
+		}
+		suffix, ok := strings.CutPrefix(model, base+"-")
+		if !ok {
+			continue
+		}
+		if suffix == "openai-compact" || isKnownCodexModelSuffix(suffix) {
+			return base
+		}
+		if beforeCompact, ok := strings.CutSuffix(suffix, "-openai-compact"); ok && isKnownCodexModelSuffix(beforeCompact) {
+			return base
+		}
+	}
+	return ""
+}
+
+func hasGPT56ModelPrefix(model string) bool {
+	return strings.HasPrefix(model, "gpt-5.6")
 }
 
 func normalizeKnownOpenAICodexModel(model string) string {
@@ -62,6 +88,14 @@ func normalizeKnownOpenAICodexModel(model string) string {
 		if mapped := getNormalizedCodexModel(strings.TrimSuffix(normalized, "-openai-compact")); mapped != "" {
 			return mapped
 		}
+	}
+	if mapped := normalizeKnownGPT56Model(normalized); mapped != "" {
+		return mapped
+	}
+	// GPT-5.6 is a named-tier family. Bare or near-miss IDs must not inherit
+	// the generic GPT-5 -> GPT-5.4 compatibility fallback.
+	if hasGPT56ModelPrefix(normalized) {
+		return ""
 	}
 
 	switch {

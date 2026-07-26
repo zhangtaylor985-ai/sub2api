@@ -828,7 +828,7 @@ func (s *APIKeyService) CheckAPIKeyQuotaAndExpiry(apiKey *APIKey) error {
 	}
 
 	// Check quota
-	if apiKey.IsQuotaExhausted() {
+	if !apiKey.TokenPackageRequired && apiKey.IsQuotaExhausted() {
 		return ErrAPIKeyQuotaExhausted
 	}
 

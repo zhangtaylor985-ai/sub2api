@@ -147,6 +147,11 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	// 否则用 flat 字段覆盖 BasePricing
 	if resolved.BasePricing == nil {
 		resolved.BasePricing = &ModelPricing{}
+	} else {
+		// BasePricing may point into BillingService.fallbackPrices. Channel
+		// overrides are request-scoped, so never mutate that shared object.
+		cloned := *resolved.BasePricing
+		resolved.BasePricing = &cloned
 	}
 
 	if chPricing.InputPrice != nil {
@@ -159,6 +164,7 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	}
 	if chPricing.CacheWritePrice != nil {
 		resolved.BasePricing.CacheCreationPricePerToken = *chPricing.CacheWritePrice
+		resolved.BasePricing.CacheCreationPricePerTokenPriority = *chPricing.CacheWritePrice
 		resolved.BasePricing.CacheCreation5mPrice = *chPricing.CacheWritePrice
 		resolved.BasePricing.CacheCreation1hPrice = *chPricing.CacheWritePrice
 	}
@@ -223,6 +229,7 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool) *M
 	}
 	if iv.CacheWritePrice != nil {
 		pricing.CacheCreationPricePerToken = *iv.CacheWritePrice
+		pricing.CacheCreationPricePerTokenPriority = *iv.CacheWritePrice
 		pricing.CacheCreation5mPrice = *iv.CacheWritePrice
 		pricing.CacheCreation1hPrice = *iv.CacheWritePrice
 	}

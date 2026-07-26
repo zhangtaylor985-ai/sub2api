@@ -91,6 +91,50 @@ func TestUpdateAccount_ExplicitNewTokenOverwrites(t *testing.T) {
 	require.Equal(t, "sk-old", repo.account.Credentials["api_key"])
 }
 
+func TestUpdateAccount_ReauthorizationPreservesAccountPolicy(t *testing.T) {
+	accountID := int64(205)
+	repo := &updateAccountCredsRepoStub{
+		account: &Account{
+			ID:       accountID,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Status:   StatusActive,
+			Credentials: map[string]any{
+				"access_token":     "at-old",
+				"refresh_token":    "rt-old",
+				"account_id":       "account-old",
+				"model_mapping":    map[string]any{"gpt-5.4": "gpt-5.4"},
+				"model_exclusions": []any{"gpt-5.6-*"},
+				"compact_model_mapping": map[string]any{
+					"gpt-5.4": "gpt-5.4-openai-compact",
+				},
+			},
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	incoming := map[string]any{
+		"access_token":  "at-new",
+		"refresh_token": "rt-new",
+		"account_id":    "account-new",
+	}
+	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Type:                        AccountTypeOAuth,
+		Credentials:                 incoming,
+		PreserveExistingCredentials: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.Equal(t, "at-new", repo.account.Credentials["access_token"])
+	require.Equal(t, "rt-new", repo.account.Credentials["refresh_token"])
+	require.Equal(t, "account-new", repo.account.Credentials["account_id"])
+	require.Equal(t, map[string]any{"gpt-5.4": "gpt-5.4"}, repo.account.Credentials["model_mapping"])
+	require.Equal(t, []any{"gpt-5.6-*"}, repo.account.Credentials["model_exclusions"])
+	require.Equal(t, map[string]any{"gpt-5.4": "gpt-5.4-openai-compact"}, repo.account.Credentials["compact_model_mapping"])
+	require.NotContains(t, incoming, "model_exclusions", "service must not mutate the caller's credential map")
+}
+
 func TestUpdateAccount_EmptyCredentialsSkipsUpdate(t *testing.T) {
 	accountID := int64(204)
 	repo := &updateAccountCredsRepoStub{

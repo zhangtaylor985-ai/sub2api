@@ -1139,57 +1139,6 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedOverridesBillingModelWhenM
 	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
 }
 
-func TestOpenAIGatewayServiceRecordUsage_OpenAIMessagesDispatchFableBillsRequestedModel(t *testing.T) {
-	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
-	userRepo := &openAIRecordUsageUserRepoStub{}
-	subRepo := &openAIRecordUsageSubRepoStub{}
-	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
-	usage := OpenAIUsage{InputTokens: 120, OutputTokens: 20}
-
-	expectedCost, err := svc.billingService.CalculateCost("claude-fable-5", UsageTokens{
-		InputTokens:  120,
-		OutputTokens: 20,
-	}, 1.1)
-	require.NoError(t, err)
-	gptCost, err := svc.billingService.CalculateCost("gpt-5.4", UsageTokens{
-		InputTokens:  120,
-		OutputTokens: 20,
-	}, 1.1)
-	require.NoError(t, err)
-	require.Greater(t, expectedCost.ActualCost, gptCost.ActualCost)
-
-	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
-		Result: &OpenAIForwardResult{
-			RequestID:     "resp_messages_fable_billing",
-			Model:         "claude-fable-5",
-			UpstreamModel: "gpt-5.4",
-			Usage:         usage,
-			Duration:      time.Second,
-		},
-		APIKey:  &APIKey{ID: 10},
-		User:    &User{ID: 20},
-		Account: &Account{ID: 30},
-		ChannelUsageFields: ChannelUsageFields{
-			ChannelID:          1,
-			OriginalModel:      "claude-fable-5",
-			ChannelMappedModel: "gpt-5.4",
-			BillingModelSource: BillingModelSourceChannelMapped,
-			ModelMappingChain:  "claude-fable-5→gpt-5.4",
-		},
-		InboundEndpoint: "/v1/messages",
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, usageRepo.lastLog)
-	require.Equal(t, "claude-fable-5", usageRepo.lastLog.RequestedModel)
-	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
-	require.Equal(t, "gpt-5.4", *usageRepo.lastLog.UpstreamModel)
-	require.NotNil(t, usageRepo.lastLog.ModelMappingChain)
-	require.Equal(t, "claude-fable-5→gpt-5.4", *usageRepo.lastLog.ModelMappingChain)
-	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
-	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
-}
-
 func TestOpenAIGatewayServiceRecordUsage_BillsCompactOpenAIModelAlias(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
@@ -1257,6 +1206,59 @@ func TestOpenAIGatewayServiceRecordUsage_FallsBackToUpstreamModelWhenPrimaryUnpr
 	require.NotNil(t, usageRepo.lastLog)
 	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
 	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
+	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_PrefersFableDynamicPricing(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	svc.billingService = NewBillingService(svc.cfg, &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"fable-5": {
+				InputCostPerToken:           9e-6,
+				OutputCostPerToken:          45e-6,
+				CacheCreationInputTokenCost: 11e-6,
+				CacheReadInputTokenCost:     1e-6,
+			},
+		},
+	})
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
+
+	expectedCost, err := svc.billingService.CalculateCost(OpenAIMessagesDispatchFableModel, UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+	}, 1.1)
+	require.NoError(t, err)
+
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_fable_dynamic_pricing",
+			Model:         OpenAIMessagesDispatchFableModel,
+			UpstreamModel: OpenAIMessagesDispatchFableTargetModel,
+			Usage:         usage,
+			Duration:      time.Second,
+		},
+		APIKey:  &APIKey{ID: 10},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      OpenAIMessagesDispatchFableModel,
+			ChannelMappedModel: OpenAIMessagesDispatchFableModel,
+			ModelMappingChain:  OpenAIMessagesDispatchFableModel + "→" + OpenAIMessagesDispatchFableTargetModel,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, OpenAIMessagesDispatchFableModel, usageRepo.lastLog.Model)
+	require.Equal(t, OpenAIMessagesDispatchFableModel, usageRepo.lastLog.RequestedModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, OpenAIMessagesDispatchFableTargetModel, *usageRepo.lastLog.UpstreamModel)
+	require.NotNil(t, usageRepo.lastLog.ModelMappingChain)
+	require.Equal(t, OpenAIMessagesDispatchFableModel+"→"+OpenAIMessagesDispatchFableTargetModel, *usageRepo.lastLog.ModelMappingChain)
+	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
 	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
 }
 

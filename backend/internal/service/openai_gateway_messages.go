@@ -34,6 +34,30 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	return s.forwardAsAnthropic(ctx, c, account, body, promptCacheKey, defaultMappedModel, "")
+}
+
+func (s *OpenAIGatewayService) ForwardAsAnthropicWithDisplayModel(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	promptCacheKey string,
+	defaultMappedModel string,
+	displayModel string,
+) (*OpenAIForwardResult, error) {
+	return s.forwardAsAnthropic(ctx, c, account, body, promptCacheKey, defaultMappedModel, displayModel)
+}
+
+func (s *OpenAIGatewayService) forwardAsAnthropic(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	promptCacheKey string,
+	defaultMappedModel string,
+	displayModel string,
+) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 
 	// 1. Parse Anthropic request
@@ -43,6 +67,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	anthropicDigestReq := cloneAnthropicRequestForDigest(&anthropicReq)
 	originalModel := anthropicReq.Model
+	if trimmedDisplayModel := strings.TrimSpace(displayModel); trimmedDisplayModel != "" {
+		originalModel = trimmedDisplayModel
+	}
 	applyOpenAICompatModelNormalization(&anthropicReq)
 	normalizedModel := anthropicReq.Model
 	clientStream := anthropicReq.Stream // client's original stream preference
@@ -319,7 +346,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 				zap.String("previous_response_id", truncateOpenAIWSLogValue(previousResponseID, openAIWSIDValueMaxLen)),
 				zap.String("upstream_model", upstreamModel),
 			)
-			return s.ForwardAsAnthropic(ctx, c, account, body, promptCacheKey, defaultMappedModel)
+			return s.forwardAsAnthropic(ctx, c, account, body, promptCacheKey, defaultMappedModel, originalModel)
 		}
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 			upstreamDetail := ""

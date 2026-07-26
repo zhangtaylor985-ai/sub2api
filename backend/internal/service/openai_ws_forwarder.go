@@ -1176,6 +1176,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if account != nil && account.Type == AccountTypeOAuth && !openai.IsCodexCLIRequest(headers.Get("user-agent")) {
 		headers.Set("user-agent", codexCLIUserAgent)
 	}
+	// Every OAuth WebSocket handshake must remain GPT-5.6 capable because
+	// pooled connections and downstream WS sessions can switch models later.
+	applyOpenAIOAuthUpstreamCodexIdentityFloor(headers, account)
 
 	return headers, sessionResolution
 }

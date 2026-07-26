@@ -160,7 +160,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// Key 状态检查
 			switch apiKey.Status {
 			case service.StatusAPIKeyQuotaExhausted:
-				if !isDedicatedUnlimited {
+				if !isDedicatedUnlimited && !apiKey.TokenPackageRequired {
 					AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
 					return
 				}
@@ -174,7 +174,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				AbortWithError(c, 403, "API_KEY_EXPIRED", "API key has expired")
 				return
 			}
-			if !isDedicatedUnlimited && apiKey.IsQuotaExhausted() {
+			if !isDedicatedUnlimited && !apiKey.TokenPackageRequired && apiKey.IsQuotaExhausted() {
 				AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
 				return
 			}
@@ -202,7 +202,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				}
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
-				if !isDedicatedUnlimited && apiKey.User.Balance <= 0 {
+				if !isDedicatedUnlimited && !apiKey.TokenPackageRequired && apiKey.User.Balance <= 0 {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 				}

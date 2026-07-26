@@ -57,6 +57,9 @@ const (
 	openAIWSRetryJitterRatioDefault    = 0.2
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
 	codexCLIVersion                    = "0.125.0"
+	// GPT-5.6 named tiers require the current stable Codex identity or newer.
+	openAIGPT56CodexVersion   = "0.144.1"
+	openAIGPT56CodexUserAgent = "codex_cli_rs/" + openAIGPT56CodexVersion
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 )
@@ -3322,6 +3325,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
 	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
 	s.overrideBrowserUserAgent(ctx, account, req)
+	applyOpenAIGPT56OAuthUpstreamIdentity(req.Header, account, gjson.GetBytes(body, "model").String())
 
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
@@ -4038,6 +4042,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
 	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
 	s.overrideBrowserUserAgent(ctx, account, req)
+	applyOpenAIGPT56OAuthUpstreamIdentity(req.Header, account, gjson.GetBytes(body, "model").String())
 
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {
@@ -4045,6 +4050,91 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 
 	return req, nil
+}
+
+func applyOpenAIGPT56OAuthUpstreamIdentity(headers http.Header, account *Account, model string) {
+	switch normalizeKnownOpenAICodexModel(model) {
+	case "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
+		applyOpenAIOAuthUpstreamCodexIdentityFloor(headers, account)
+	}
+}
+
+func applyOpenAIOAuthUpstreamCodexIdentityFloor(headers http.Header, account *Account) {
+	if headers == nil || account == nil || account.Type != AccountTypeOAuth {
+		return
+	}
+
+	effectiveVersion := openAIGPT56CodexVersion
+	userAgentVersion, officialCodexCLI := strictOpenAICodexCLIUserAgentVersion(headers.Get("user-agent"))
+	if officialCodexCLI {
+		if CompareVersions(userAgentVersion, effectiveVersion) > 0 {
+			effectiveVersion = userAgentVersion
+		}
+		if headerVersion, ok := strictOpenAISemver(headers.Get("version")); ok && CompareVersions(headerVersion, effectiveVersion) > 0 {
+			effectiveVersion = headerVersion
+		}
+	}
+
+	headers.Set("user-agent", "codex_cli_rs/"+effectiveVersion)
+	headers.Set("originator", "codex_cli_rs")
+	headers.Set("version", effectiveVersion)
+}
+
+func strictOpenAICodexCLIUserAgentVersion(userAgent string) (string, bool) {
+	const marker = "codex_cli_rs/"
+	lower := strings.ToLower(strings.TrimSpace(userAgent))
+	if !strings.HasPrefix(lower, marker) {
+		return "", false
+	}
+
+	versionStart := len(marker)
+	versionEnd := versionStart
+	for versionEnd < len(lower) {
+		ch := lower[versionEnd]
+		if (ch < '0' || ch > '9') && ch != '.' {
+			break
+		}
+		versionEnd++
+	}
+	if versionEnd < len(lower) {
+		boundary := lower[versionEnd]
+		if boundary != ' ' && boundary != '\t' && boundary != '(' {
+			return "", false
+		}
+	}
+	return strictOpenAISemver(lower[versionStart:versionEnd])
+}
+
+func strictOpenAISemver(value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", false
+	}
+	if trimmed[0] == 'v' || trimmed[0] == 'V' {
+		trimmed = trimmed[1:]
+	}
+	parts := strings.Split(trimmed, ".")
+	if len(parts) != 3 {
+		return "", false
+	}
+
+	normalized := make([]string, len(parts))
+	for i, part := range parts {
+		if part == "" {
+			return "", false
+		}
+		for _, ch := range part {
+			if ch < '0' || ch > '9' {
+				return "", false
+			}
+		}
+		parsed, err := strconv.Atoi(part)
+		if err != nil || parsed < 0 {
+			return "", false
+		}
+		normalized[i] = strconv.Itoa(parsed)
+	}
+	return strings.Join(normalized, "."), true
 }
 
 // overrideBrowserUserAgent 检查请求的最终 user-agent，若为浏览器 UA 则替换为后台配置的 Codex UA。
@@ -5515,7 +5605,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 	}
-	if shouldBillOpenAIMessagesDispatchFableAsRequested(input, result) {
+	if shouldPreferOpenAIMessagesDispatchRequestedBillingModel(input.OriginalModel, result.Model, result.UpstreamModel) {
 		billingModel = input.OriginalModel
 	}
 	billingModels := usageBillingModelCandidates(
@@ -5680,22 +5770,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	return nil
 }
 
-func shouldBillOpenAIMessagesDispatchFableAsRequested(input *OpenAIRecordUsageInput, result *OpenAIForwardResult) bool {
-	if input == nil || result == nil {
-		return false
-	}
-	originalModel := strings.ToLower(strings.TrimSpace(input.OriginalModel))
-	if !strings.Contains(originalModel, "claude") || !strings.Contains(originalModel, "fable") {
-		return false
-	}
-	upstreamModel := strings.TrimSpace(result.UpstreamModel)
-	if upstreamModel == "" || strings.EqualFold(upstreamModel, input.OriginalModel) {
-		return false
-	}
-	endpoint := strings.ToLower(strings.TrimSpace(input.InboundEndpoint))
-	return strings.Contains(endpoint, "messages")
-}
-
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	ctx context.Context,
 	result *OpenAIForwardResult,
@@ -5729,6 +5803,19 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		lastErr = errors.New("no non-empty billing model candidates")
 	}
 	return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
+}
+
+func shouldPreferOpenAIMessagesDispatchRequestedBillingModel(originalModel, resultModel, upstreamModel string) bool {
+	originalModel = strings.TrimSpace(originalModel)
+	resultModel = strings.TrimSpace(resultModel)
+	if !strings.EqualFold(originalModel, OpenAIMessagesDispatchFableModel) {
+		return false
+	}
+	upstreamModel = strings.TrimSpace(upstreamModel)
+	if upstreamModel != "" && !strings.EqualFold(originalModel, upstreamModel) {
+		return true
+	}
+	return resultModel != "" && !strings.EqualFold(originalModel, resultModel)
 }
 
 func isUsagePricingUnavailableError(err error) bool {

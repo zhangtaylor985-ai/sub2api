@@ -13,11 +13,14 @@ export interface MessagesDispatchFormState {
   exact_model_mappings: MessagesDispatchMappingRow[];
 }
 
+export const OPENAI_MESSAGES_DISPATCH_FABLE_MODEL = "claude-fable-5";
+export const OPENAI_MESSAGES_DISPATCH_FABLE_TARGET_MODEL = "gpt-5.4";
+
 export function createDefaultMessagesDispatchFormState(): MessagesDispatchFormState {
   return {
     allow_messages_dispatch: false,
     opus_mapped_model: "gpt-5.4",
-    sonnet_mapped_model: "gpt-5.3-codex",
+    sonnet_mapped_model: "gpt-5.4",
     haiku_mapped_model: "gpt-5.4-mini",
     exact_model_mappings: [],
   };
@@ -69,4 +72,39 @@ export function resetMessagesDispatchFormState(
   target.sonnet_mapped_model = defaults.sonnet_mapped_model;
   target.haiku_mapped_model = defaults.haiku_mapped_model;
   target.exact_model_mappings = [];
+}
+
+export function isMessagesDispatchFableEnabled(
+  rows: MessagesDispatchMappingRow[],
+): boolean {
+  return rows.some(
+    (row) =>
+      row.claude_model.trim() === OPENAI_MESSAGES_DISPATCH_FABLE_MODEL &&
+      row.target_model.trim() !== "",
+  );
+}
+
+export function setMessagesDispatchFableEnabled(
+  rows: MessagesDispatchMappingRow[],
+  enabled: boolean,
+): void {
+  const index = rows.findIndex(
+    (row) => row.claude_model.trim() === OPENAI_MESSAGES_DISPATCH_FABLE_MODEL,
+  );
+  if (enabled) {
+    if (index >= 0) {
+      rows[index].target_model =
+        rows[index].target_model.trim() ||
+        OPENAI_MESSAGES_DISPATCH_FABLE_TARGET_MODEL;
+      return;
+    }
+    rows.push({
+      claude_model: OPENAI_MESSAGES_DISPATCH_FABLE_MODEL,
+      target_model: OPENAI_MESSAGES_DISPATCH_FABLE_TARGET_MODEL,
+    });
+    return;
+  }
+  if (index >= 0) {
+    rows.splice(index, 1);
+  }
 }

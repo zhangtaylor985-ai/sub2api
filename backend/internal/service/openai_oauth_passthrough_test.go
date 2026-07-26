@@ -926,6 +926,210 @@ func TestOpenAIGatewayService_OAuthPassthrough_NonCodexUAFallbackToCodexUA(t *te
 	require.Equal(t, "codex_cli_rs/0.125.0", upstream.lastReq.Header.Get("User-Agent"))
 }
 
+func TestOpenAIGatewayService_GPT56OAuthForcesCodexUpstreamIdentity(t *testing.T) {
+	for _, passthrough := range []bool{false, true} {
+		for _, client := range []struct {
+			name          string
+			userAgent     string
+			originator    string
+			version       string
+			wantUserAgent string
+			wantVersion   string
+		}{
+			{name: "opencode floor", userAgent: "opencode/1.1.0", originator: "opencode", wantUserAgent: openAIGPT56CodexUserAgent, wantVersion: openAIGPT56CodexVersion},
+			{name: "newer codex preserved", userAgent: "codex_cli_rs/0.150.0", originator: "codex_cli_rs", version: "0.150.0", wantUserAgent: "codex_cli_rs/0.150.0", wantVersion: "0.150.0"},
+		} {
+			t.Run(fmt.Sprintf("passthrough_%t/%s", passthrough, client.name), func(t *testing.T) {
+				gin.SetMode(gin.TestMode)
+
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+				c.Request.Header.Set("User-Agent", client.userAgent)
+				c.Request.Header.Set("originator", client.originator)
+				if client.version != "" {
+					c.Request.Header.Set("version", client.version)
+				}
+
+				inputBody := []byte(`{"model":"gpt-5.6-luna","stream":false,"input":"hi"}`)
+				upstream := &httpUpstreamRecorder{resp: &http.Response{
+					StatusCode: http.StatusBadRequest,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop"}}`)),
+				}}
+				svc := &OpenAIGatewayService{
+					cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+					httpUpstream: upstream,
+				}
+				account := &Account{
+					ID:          123,
+					Name:        "acc",
+					Platform:    PlatformOpenAI,
+					Type:        AccountTypeOAuth,
+					Concurrency: 1,
+					Credentials: map[string]any{
+						"access_token":       "oauth-token",
+						"chatgpt_account_id": "chatgpt-acc",
+					},
+					Extra:       map[string]any{"openai_passthrough": passthrough},
+					Status:      StatusActive,
+					Schedulable: true,
+				}
+
+				_, err := svc.Forward(context.Background(), c, account, inputBody)
+				require.Error(t, err)
+				require.NotNil(t, upstream.lastReq)
+				require.Equal(t, client.wantUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+				require.Equal(t, "codex_cli_rs", upstream.lastReq.Header.Get("originator"))
+				require.Equal(t, client.wantVersion, upstream.lastReq.Header.Get("version"))
+			})
+		}
+	}
+}
+
+func TestApplyOpenAIGPT56OAuthUpstreamIdentity_IsScoped(t *testing.T) {
+	oauthAccount := &Account{Type: AccountTypeOAuth}
+	apiKeyAccount := &Account{Type: AccountTypeAPIKey}
+
+	for _, tc := range []struct {
+		name    string
+		account *Account
+		model   string
+		forced  bool
+	}{
+		{name: "named tier", account: oauthAccount, model: "gpt-5.6-terra", forced: true},
+		{name: "known alias", account: oauthAccount, model: "openai/gpt5.6sol-high", forced: true},
+		{name: "bare id", account: oauthAccount, model: "gpt-5.6", forced: false},
+		{name: "other model", account: oauthAccount, model: "gpt-5.4", forced: false},
+		{name: "api key account", account: apiKeyAccount, model: "gpt-5.6-luna", forced: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			headers := make(http.Header)
+			headers.Set("User-Agent", "opencode/1.1.0")
+			headers.Set("originator", "opencode")
+			applyOpenAIGPT56OAuthUpstreamIdentity(headers, tc.account, tc.model)
+			if tc.forced {
+				require.Equal(t, openAIGPT56CodexUserAgent, headers.Get("User-Agent"))
+				require.Equal(t, "codex_cli_rs", headers.Get("originator"))
+				require.Equal(t, openAIGPT56CodexVersion, headers.Get("version"))
+				return
+			}
+			require.Equal(t, "opencode/1.1.0", headers.Get("User-Agent"))
+			require.Equal(t, "opencode", headers.Get("originator"))
+			require.Empty(t, headers.Get("version"))
+		})
+	}
+}
+
+func TestApplyOpenAIOAuthUpstreamCodexIdentityFloor(t *testing.T) {
+	oauthAccount := &Account{Type: AccountTypeOAuth}
+	apiKeyAccount := &Account{Type: AccountTypeAPIKey}
+
+	for _, tc := range []struct {
+		name          string
+		account       *Account
+		userAgent     string
+		originator    string
+		version       string
+		wantUserAgent string
+		wantOrigin    string
+		wantVersion   string
+	}{
+		{
+			name:          "opencode is upgraded to floor",
+			account:       oauthAccount,
+			userAgent:     "opencode/1.1.0",
+			originator:    "opencode",
+			wantUserAgent: openAIGPT56CodexUserAgent,
+			wantOrigin:    "codex_cli_rs",
+			wantVersion:   openAIGPT56CodexVersion,
+		},
+		{
+			name:          "older codex is upgraded to floor",
+			account:       oauthAccount,
+			userAgent:     "codex_cli_rs/0.125.0",
+			originator:    "codex_cli_rs",
+			version:       "0.125.0",
+			wantUserAgent: openAIGPT56CodexUserAgent,
+			wantOrigin:    "codex_cli_rs",
+			wantVersion:   openAIGPT56CodexVersion,
+		},
+		{
+			name:          "older codex is upgraded to current floor",
+			account:       oauthAccount,
+			userAgent:     "codex_cli_rs/0.143.0 (macOS; arm64)",
+			originator:    "codex_cli_rs",
+			version:       "0.143.0",
+			wantUserAgent: openAIGPT56CodexUserAgent,
+			wantOrigin:    "codex_cli_rs",
+			wantVersion:   openAIGPT56CodexVersion,
+		},
+		{
+			name:          "newer strict version header wins",
+			account:       oauthAccount,
+			userAgent:     "codex_cli_rs/0.130.0",
+			originator:    "codex_cli_rs",
+			version:       "0.150.0",
+			wantUserAgent: "codex_cli_rs/0.150.0",
+			wantOrigin:    "codex_cli_rs",
+			wantVersion:   "0.150.0",
+		},
+		{
+			name:          "malformed versions fall back safely",
+			account:       oauthAccount,
+			userAgent:     "codex_cli_rs/0.143",
+			originator:    "codex_cli_rs",
+			version:       "999.invalid.0",
+			wantUserAgent: openAIGPT56CodexUserAgent,
+			wantOrigin:    "codex_cli_rs",
+			wantVersion:   openAIGPT56CodexVersion,
+		},
+		{
+			name:          "embedded codex marker is not trusted",
+			account:       oauthAccount,
+			userAgent:     "opencode/1.1.0 codex_cli_rs/999.0.0",
+			originator:    "opencode",
+			version:       "999.0.0",
+			wantUserAgent: openAIGPT56CodexUserAgent,
+			wantOrigin:    "codex_cli_rs",
+			wantVersion:   openAIGPT56CodexVersion,
+		},
+		{
+			name:          "invalid user agent version boundary is rejected",
+			account:       oauthAccount,
+			userAgent:     "codex_cli_rs/0.143.0evil",
+			originator:    "codex_cli_rs",
+			version:       "999.0.0",
+			wantUserAgent: openAIGPT56CodexUserAgent,
+			wantOrigin:    "codex_cli_rs",
+			wantVersion:   openAIGPT56CodexVersion,
+		},
+		{
+			name:          "api key account is unchanged",
+			account:       apiKeyAccount,
+			userAgent:     "opencode/1.1.0",
+			originator:    "opencode",
+			wantUserAgent: "opencode/1.1.0",
+			wantOrigin:    "opencode",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			headers := make(http.Header)
+			headers.Set("User-Agent", tc.userAgent)
+			headers.Set("originator", tc.originator)
+			if tc.version != "" {
+				headers.Set("version", tc.version)
+			}
+
+			applyOpenAIOAuthUpstreamCodexIdentityFloor(headers, tc.account)
+
+			require.Equal(t, tc.wantUserAgent, headers.Get("User-Agent"))
+			require.Equal(t, tc.wantOrigin, headers.Get("originator"))
+			require.Equal(t, tc.wantVersion, headers.Get("version"))
+		})
+	}
+}
+
 func TestOpenAIGatewayService_CodexCLIOnly_RejectsNonCodexClient(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

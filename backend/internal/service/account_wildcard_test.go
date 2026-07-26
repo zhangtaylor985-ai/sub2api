@@ -222,6 +222,110 @@ func TestAccountIsModelSupported(t *testing.T) {
 	}
 }
 
+func TestAccountIsModelSupportedWithModelExclusions(t *testing.T) {
+	tests := []struct {
+		name           string
+		credentials    map[string]any
+		requestedModel string
+		expected       bool
+	}{
+		{
+			name: "empty mapping excludes OpenAI GPT 5.6 family",
+			credentials: map[string]any{
+				"model_mapping":    map[string]any{},
+				"model_exclusions": []any{"gpt-5.6-*"},
+			},
+			requestedModel: "gpt-5.6-sol",
+			expected:       false,
+		},
+		{
+			name: "canonical exclusion covers namespaced compact alias",
+			credentials: map[string]any{
+				"model_mapping":    map[string]any{},
+				"model_exclusions": []any{"gpt-5.6-*"},
+			},
+			requestedModel: "openai/gpt5.6sol-high",
+			expected:       false,
+		},
+		{
+			name: "empty mapping still allows OpenAI GPT 5.5",
+			credentials: map[string]any{
+				"model_mapping":    map[string]any{},
+				"model_exclusions": []any{"gpt-5.6-*"},
+			},
+			requestedModel: "gpt-5.5",
+			expected:       true,
+		},
+		{
+			name: "empty mapping still allows Claude dispatch target",
+			credentials: map[string]any{
+				"model_mapping":    map[string]any{},
+				"model_exclusions": []any{"gpt-5.6-*"},
+			},
+			requestedModel: "gpt-5.4",
+			expected:       true,
+		},
+		{
+			name: "exact exclusion wins over exact mapping",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-5.6-terra": "gpt-5.6-terra",
+				},
+				"model_exclusions": []string{"gpt-5.6-terra"},
+			},
+			requestedModel: "gpt-5.6-terra",
+			expected:       false,
+		},
+		{
+			name: "wildcard exclusion wins over wildcard mapping",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-5.6-*": "gpt-5.6-sol",
+				},
+				"model_exclusions": []string{"gpt-5.6-*"},
+			},
+			requestedModel: "gpt-5.6-luna",
+			expected:       false,
+		},
+		{
+			name: "malformed exclusion entries are ignored",
+			credentials: map[string]any{
+				"model_exclusions": []any{nil, 56, true, "", "   "},
+			},
+			requestedModel: "gpt-5.6-sol",
+			expected:       true,
+		},
+		{
+			name: "malformed exclusion container is ignored",
+			credentials: map[string]any{
+				"model_exclusions": map[string]any{"gpt-5.6-*": true},
+			},
+			requestedModel: "gpt-5.6-sol",
+			expected:       true,
+		},
+		{
+			name: "valid exclusion remains effective among malformed entries",
+			credentials: map[string]any{
+				"model_exclusions": []any{nil, "  gpt-5.6-*  ", 56},
+			},
+			requestedModel: "gpt-5.6-sol",
+			expected:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				Platform:    PlatformOpenAI,
+				Credentials: tt.credentials,
+			}
+			if result := account.IsModelSupported(tt.requestedModel); result != tt.expected {
+				t.Errorf("IsModelSupported(%q) = %v, want %v", tt.requestedModel, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestAccountGetMappedModel(t *testing.T) {
 	tests := []struct {
 		name           string

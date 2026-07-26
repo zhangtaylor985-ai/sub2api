@@ -722,10 +722,13 @@ func TestDedicatedUnlimitedBypassesQuotaExhaustedBillingGate(t *testing.T) {
 	tests := []struct {
 		name               string
 		dedicatedUnlimited bool
+		tokenPackageOnly   bool
+		balance            float64
 		wantStatus         int
 	}{
 		{name: "standard_group_blocks_quota_exhausted_key", dedicatedUnlimited: false, wantStatus: http.StatusTooManyRequests},
 		{name: "dedicated_unlimited_group_allows_quota_exhausted_key", dedicatedUnlimited: true, wantStatus: http.StatusOK},
+		{name: "token_package_only_group_allows_quota_exhausted_key", tokenPackageOnly: true, balance: 0, wantStatus: http.StatusOK},
 	}
 
 	for _, tt := range tests {
@@ -743,19 +746,20 @@ func TestDedicatedUnlimitedBypassesQuotaExhaustedBillingGate(t *testing.T) {
 				ID:          7,
 				Role:        service.RoleUser,
 				Status:      service.StatusActive,
-				Balance:     0,
+				Balance:     tt.balance,
 				Concurrency: 3,
 			}
 			apiKey := &service.APIKey{
-				ID:        102,
-				UserID:    user.ID,
-				GroupID:   &group.ID,
-				Key:       "quota-exhausted",
-				Status:    service.StatusAPIKeyQuotaExhausted,
-				User:      user,
-				Group:     group,
-				Quota:     10,
-				QuotaUsed: 10,
+				ID:                   102,
+				UserID:               user.ID,
+				GroupID:              &group.ID,
+				Key:                  "quota-exhausted",
+				Status:               service.StatusAPIKeyQuotaExhausted,
+				User:                 user,
+				Group:                group,
+				Quota:                10,
+				QuotaUsed:            10,
+				TokenPackageRequired: tt.tokenPackageOnly,
 			}
 			apiKeyRepo := &stubApiKeyRepo{
 				getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {

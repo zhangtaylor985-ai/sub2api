@@ -6,6 +6,9 @@ const (
 	defaultOpenAIMessagesDispatchOpusMappedModel   = "gpt-5.4"
 	defaultOpenAIMessagesDispatchSonnetMappedModel = "gpt-5.4"
 	defaultOpenAIMessagesDispatchHaikuMappedModel  = "gpt-5.4-mini"
+
+	OpenAIMessagesDispatchFableModel       = "claude-fable-5"
+	OpenAIMessagesDispatchFableTargetModel = "gpt-5.4"
 )
 
 func normalizeOpenAIMessagesDispatchMappedModel(model string) string {
@@ -44,14 +47,14 @@ func claudeMessagesDispatchFamily(model string) string {
 		return ""
 	}
 	switch {
-	case strings.Contains(normalized, "fable"):
-		return "opus"
 	case strings.Contains(normalized, "opus"):
 		return "opus"
 	case strings.Contains(normalized, "sonnet"):
 		return "sonnet"
 	case strings.Contains(normalized, "haiku"):
 		return "haiku"
+	case strings.Contains(normalized, "fable"):
+		return "fable"
 	default:
 		return ""
 	}
@@ -107,6 +110,11 @@ func resolveOpenAIMessagesDispatchModelConfig(cfg OpenAIMessagesDispatchModelCon
 			return ""
 		}
 		return defaultOpenAIMessagesDispatchHaikuMappedModel
+	case "fable":
+		if !includeDefaults {
+			return ""
+		}
+		return OpenAIMessagesDispatchFableTargetModel
 	default:
 		return ""
 	}

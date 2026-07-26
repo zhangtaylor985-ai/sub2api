@@ -993,6 +993,8 @@ type ApplyOAuthCredentialsRequest struct {
 //
 // 与通用 PUT /:id (Update) 接口的关键区别：
 //   - 仅接收 type / credentials / extra 三个字段（不接受 concurrency / rpm / quota_* 等可能误传的字段）
+//   - Credentials 仅覆盖本次授权返回的键，保留 model_mapping / model_exclusions
+//     等账号级运行策略；
 //   - Extra 走 UpdateAccountExtra(JSONB key 级合并)，**绝不**全量覆盖；
 //     避免 base_rpm / window_cost_limit / max_sessions / quota_* / privacy_mode
 //     等持久化配置在重新授权后丢失
@@ -1028,8 +1030,9 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 	}
 
 	updatedAccount, err := h.adminService.UpdateAccount(ctx, accountID, &service.UpdateAccountInput{
-		Type:        req.Type,
-		Credentials: req.Credentials,
+		Type:                        req.Type,
+		Credentials:                 req.Credentials,
+		PreserveExistingCredentials: true,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

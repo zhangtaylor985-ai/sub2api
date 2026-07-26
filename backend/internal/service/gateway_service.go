@@ -8006,6 +8006,9 @@ func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
 	if p == nil || p.Cost == nil || p.APIKey == nil || p.isDedicatedUnlimited() {
 		return false
 	}
+	if p.APIKey.TokenPackageRequired {
+		return false
+	}
 	return p.Cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil
 }
 

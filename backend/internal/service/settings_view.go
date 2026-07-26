@@ -470,7 +470,9 @@ func DefaultRateLimit429CooldownSettings() *RateLimit429CooldownSettings {
 	}
 }
 
-// DefaultBetaPolicySettings 返回默认的 Beta 策略配置
+// DefaultBetaPolicySettings returns the default Anthropic beta policy.
+// Sonnet 5 supports the 1M context beta; older Sonnet, Opus, and Haiku
+// models keep filtering it to avoid unsupported upstream requests.
 func DefaultBetaPolicySettings() *BetaPolicySettings {
 	return &BetaPolicySettings{
 		Rules: []BetaPolicyRule{
@@ -481,8 +483,22 @@ func DefaultBetaPolicySettings() *BetaPolicySettings {
 			},
 			{
 				BetaToken: "context-1m-2025-08-07",
-				Action:    BetaPolicyActionFilter,
+				Action:    BetaPolicyActionPass,
 				Scope:     BetaPolicyScopeAll,
+				ModelWhitelist: []string{
+					"claude-sonnet-5",
+					"claude-sonnet-5-*",
+					"claude-sonnet-5@*",
+					"us.anthropic.claude-sonnet-5-*",
+					"eu.anthropic.claude-sonnet-5-*",
+					"apac.anthropic.claude-sonnet-5-*",
+					"jp.anthropic.claude-sonnet-5-*",
+					"au.anthropic.claude-sonnet-5-*",
+					"us-gov.anthropic.claude-sonnet-5-*",
+					"global.anthropic.claude-sonnet-5-*",
+					"anthropic.claude-sonnet-5-*",
+				},
+				FallbackAction: BetaPolicyActionFilter,
 			},
 		},
 	}

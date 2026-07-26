@@ -52,6 +52,24 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
 }
 
+func isOpenAIMessagesDispatchFableEnabled(apiKey *service.APIKey) bool {
+	return resolveOpenAIMessagesDispatchMappedModel(apiKey, service.OpenAIMessagesDispatchFableModel) != ""
+}
+
+func buildOpenAIMessagesForwardBody(gatewayService *service.OpenAIGatewayService, body []byte, channelMapping service.ChannelMappingResult, defaultMappedModel string) []byte {
+	if gatewayService == nil {
+		return body
+	}
+	if channelMapping.Mapped {
+		return gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+	}
+	defaultMappedModel = strings.TrimSpace(defaultMappedModel)
+	if defaultMappedModel == "" {
+		return body
+	}
+	return gatewayService.ReplaceModelInBody(body, defaultMappedModel)
+}
+
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
@@ -741,18 +759,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		forwardStart := time.Now()
 
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
-		// 应用渠道模型映射到请求体
-		forwardBody := body
-		if channelMappingMsg.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMappingMsg.MappedModel)
-		}
+		forwardBody := buildOpenAIMessagesForwardBody(h.gatewayService, body, channelMappingMsg, defaultMappedModel)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
+			return h.gatewayService.ForwardAsAnthropicWithDisplayModel(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel, reqModel)
 		}()
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()

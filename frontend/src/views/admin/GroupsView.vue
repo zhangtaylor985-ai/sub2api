@@ -1065,6 +1065,19 @@
           </p>
 
           <div v-if="createForm.allow_messages_dispatch" class="mt-3">
+            <label class="mb-3 block">
+              <span class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-dark-200">
+                <input
+                  v-model="createFableEnabled"
+                  type="checkbox"
+                  class="rounded border-gray-300 text-primary-600"
+                />
+                <span>{{ t("admin.groups.openaiMessages.allowFable5") }}</span>
+              </span>
+              <span class="input-hint">
+                {{ t("admin.groups.openaiMessages.allowFable5Hint") }}
+              </span>
+            </label>
             <div
               class="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-600 dark:bg-dark-800"
             >
@@ -2295,6 +2308,19 @@
           </p>
 
           <div v-if="editForm.allow_messages_dispatch" class="mt-3">
+            <label class="mb-3 block">
+              <span class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-dark-200">
+                <input
+                  v-model="editFableEnabled"
+                  type="checkbox"
+                  class="rounded border-gray-300 text-primary-600"
+                />
+                <span>{{ t("admin.groups.openaiMessages.allowFable5") }}</span>
+              </span>
+              <span class="input-hint">
+                {{ t("admin.groups.openaiMessages.allowFable5Hint") }}
+              </span>
+            </label>
             <div
               class="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-600 dark:bg-dark-800"
             >
@@ -2972,9 +2998,11 @@ import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";
 import {
   createDefaultMessagesDispatchFormState,
+  isMessagesDispatchFableEnabled,
   messagesDispatchConfigToFormState,
   messagesDispatchFormStateToConfig,
   resetMessagesDispatchFormState,
+  setMessagesDispatchFableEnabled,
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
@@ -3554,6 +3582,21 @@ const editForm = reactive({
   rpm_limit: 0 as number,
   // 分组级 API Key 并发限制（0 = 沿用用户并发）
   concurrency: 0 as number,
+});
+
+const createFableEnabled = computed({
+  get: () => isMessagesDispatchFableEnabled(createForm.exact_model_mappings),
+  set: (enabled: boolean) =>
+    setMessagesDispatchFableEnabled(
+      createForm.exact_model_mappings,
+      enabled,
+    ),
+});
+
+const editFableEnabled = computed({
+  get: () => isMessagesDispatchFableEnabled(editForm.exact_model_mappings),
+  set: (enabled: boolean) =>
+    setMessagesDispatchFableEnabled(editForm.exact_model_mappings, enabled),
 });
 
 type ImagePricingFormState = {

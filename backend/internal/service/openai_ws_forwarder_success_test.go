@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -590,10 +591,14 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testi
 		userAgent      string
 		originator     string
 		wantOriginator string
+		wantUserAgent  string
+		wantVersion    string
 	}{
-		{name: "desktop originator preserved", originator: "Codex Desktop", wantOriginator: "Codex Desktop"},
-		{name: "vscode originator preserved", originator: "codex_vscode", wantOriginator: "codex_vscode"},
-		{name: "official ua fallback to codex_cli_rs", userAgent: "Codex Desktop/1.2.3", wantOriginator: "codex_cli_rs"},
+		{name: "desktop originator canonicalized", originator: "Codex Desktop", wantOriginator: "codex_cli_rs", wantUserAgent: openAIGPT56CodexUserAgent, wantVersion: openAIGPT56CodexVersion},
+		{name: "vscode originator canonicalized", originator: "codex_vscode", wantOriginator: "codex_cli_rs", wantUserAgent: openAIGPT56CodexUserAgent, wantVersion: openAIGPT56CodexVersion},
+		{name: "official ua fallback to floor", userAgent: "Codex Desktop/1.2.3", wantOriginator: "codex_cli_rs", wantUserAgent: openAIGPT56CodexUserAgent, wantVersion: openAIGPT56CodexVersion},
+		{name: "opencode upgraded to floor", userAgent: "opencode/1.1.0", originator: "opencode", wantOriginator: "codex_cli_rs", wantUserAgent: openAIGPT56CodexUserAgent, wantVersion: openAIGPT56CodexVersion},
+		{name: "newer codex preserved", userAgent: "codex_cli_rs/0.150.0", originator: "codex_cli_rs", wantOriginator: "codex_cli_rs", wantUserAgent: "codex_cli_rs/0.150.0", wantVersion: "0.150.0"},
 	}
 
 	for _, tt := range tests {
@@ -658,6 +663,8 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testi
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, tt.wantOriginator, captureDialer.lastHeaders.Get("originator"))
+			require.Equal(t, tt.wantUserAgent, captureDialer.lastHeaders.Get("User-Agent"))
+			require.Equal(t, tt.wantVersion, captureDialer.lastHeaders.Get("version"))
 		})
 	}
 }
@@ -1107,6 +1114,71 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnMetadataInPayloadOnConnReuse(t *t
 	secondWrite := requestToJSONString(captureConn.writes[1])
 	require.Equal(t, "turn_meta_payload_1", gjson.Get(firstWrite, "client_metadata.x-codex-turn-metadata").String())
 	require.Equal(t, "turn_meta_payload_2", gjson.Get(secondWrite, "client_metadata.x-codex-turn-metadata").String())
+}
+
+func TestOpenAIGatewayService_Forward_WSv2_OAuthConnReuseRemainsGPT56Capable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+
+	captureConn := &openAIWSCaptureConn{
+		events: [][]byte{
+			[]byte(`{"type":"response.completed","response":{"id":"resp_floor_1","model":"gpt-5.4","usage":{"input_tokens":1,"output_tokens":1}}}`),
+			[]byte(`{"type":"response.completed","response":{"id":"resp_floor_2","model":"gpt-5.6-luna","usage":{"input_tokens":1,"output_tokens":1}}}`),
+		},
+	}
+	captureDialer := &openAIWSCaptureDialer{conn: captureConn}
+	pool := newOpenAIWSConnPool(cfg)
+	defer pool.Close()
+	pool.setClientDialerForTest(captureDialer)
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+	account := &Account{
+		ID:          560,
+		Name:        "openai-oauth-gpt56-floor",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token"},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+	}
+
+	forward := func(model string) *OpenAIForwardResult {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+		c.Request.Header.Set("User-Agent", "opencode/1.1.0")
+		c.Request.Header.Set("originator", "opencode")
+		body := []byte(fmt.Sprintf(`{"model":%q,"stream":false,"input":"hello"}`, model))
+		result, err := svc.Forward(context.Background(), c, account, body)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		return result
+	}
+
+	require.Equal(t, "resp_floor_1", forward("gpt-5.4").RequestID)
+	require.Equal(t, "resp_floor_2", forward("gpt-5.6-luna").RequestID)
+	require.Equal(t, 1, captureDialer.DialCount(), "OAuth pool reuse must keep the original GPT-5.6-capable handshake")
+	require.Equal(t, openAIGPT56CodexUserAgent, captureDialer.lastHeaders.Get("User-Agent"))
+	require.Equal(t, "codex_cli_rs", captureDialer.lastHeaders.Get("originator"))
+	require.Equal(t, openAIGPT56CodexVersion, captureDialer.lastHeaders.Get("version"))
 }
 
 func TestOpenAIGatewayService_Forward_WSv2StoreFalseSessionConnIsolation(t *testing.T) {

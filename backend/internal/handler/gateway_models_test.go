@@ -173,7 +173,6 @@ func TestGatewayModels_ClaudeOnlyOpenAIDispatchDoesNotExposeGPTMappings(t *testi
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	ids := modelIDsForTest(got.Data)
-	require.Contains(t, ids, "claude-fable-5")
 	require.Contains(t, ids, "claude-opus-4-8")
 	require.Contains(t, ids, "claude-opus-4-7")
 	require.Contains(t, ids, "claude-opus-4-6")
@@ -183,7 +182,88 @@ func TestGatewayModels_ClaudeOnlyOpenAIDispatchDoesNotExposeGPTMappings(t *testi
 	require.NotContains(t, ids, "gpt-5.5")
 	require.NotContains(t, ids, "gpt-5.4")
 	require.NotContains(t, ids, "gpt-5.4-mini")
+	require.NotContains(t, ids, "gpt-5.6-sol")
+	require.NotContains(t, ids, "gpt-5.6-terra")
+	require.NotContains(t, ids, "gpt-5.6-luna")
 	require.NotContains(t, ids, "codex-auto-review")
+	require.Contains(t, ids, "claude-fable-5")
+}
+
+func TestGatewayModels_OpenAIDispatchExposesFableByDefault(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(23)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformOpenAI,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"gpt-5.4": "gpt-5.4",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	baseKey := &service.APIKey{
+		AllowClaudeFamily:    true,
+		AllowGPTFamily:       false,
+		ModelFamilyPolicySet: true,
+		Group: &service.Group{
+			ID:                    groupID,
+			Platform:              service.PlatformOpenAI,
+			AllowMessagesDispatch: true,
+		},
+	}
+
+	modelIDs := func(apiKey *service.APIKey) []string {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		c.Set(string(middleware2.ContextKeyAPIKey), apiKey)
+		h.Models(c)
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var got gatewayModelsResponseForTest
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+		return modelIDsForTest(got.Data)
+	}
+
+	require.Contains(t, modelIDs(baseKey), service.OpenAIMessagesDispatchFableModel)
+
+	keyMapped := *baseKey
+	keyMapped.MessagesDispatchModelConfig = service.OpenAIMessagesDispatchModelConfig{
+		ExactModelMappings: map[string]string{
+			service.OpenAIMessagesDispatchFableModel: service.OpenAIMessagesDispatchFableTargetModel,
+		},
+	}
+	require.Contains(t, modelIDs(&keyMapped), service.OpenAIMessagesDispatchFableModel)
+
+	mixedKey := keyMapped
+	mixedKey.AllowGPTFamily = true
+	mixedIDs := modelIDs(&mixedKey)
+	require.Contains(t, mixedIDs, "gpt-5.4")
+	require.Contains(t, mixedIDs, service.OpenAIMessagesDispatchFableModel)
+
+	mixedWithoutMapping := *baseKey
+	mixedWithoutMapping.AllowGPTFamily = true
+	require.Contains(t, modelIDs(&mixedWithoutMapping), service.OpenAIMessagesDispatchFableModel)
+
+	groupMapped := *baseKey
+	groupCopy := *baseKey.Group
+	groupCopy.MessagesDispatchModelConfig = service.OpenAIMessagesDispatchModelConfig{
+		ExactModelMappings: map[string]string{
+			service.OpenAIMessagesDispatchFableModel: service.OpenAIMessagesDispatchFableTargetModel,
+		},
+	}
+	groupMapped.Group = &groupCopy
+	require.Contains(t, modelIDs(&groupMapped), service.OpenAIMessagesDispatchFableModel)
 }
 
 func TestGatewayModels_GPTOnlyOpenAIGroupKeepsOpenAIModels(t *testing.T) {
@@ -221,6 +301,9 @@ func TestGatewayModels_GPTOnlyOpenAIGroupKeepsOpenAIModels(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	ids := modelIDsForTest(got.Data)
 	require.Contains(t, ids, "gpt-5.4")
+	require.Contains(t, ids, "gpt-5.6-sol")
+	require.Contains(t, ids, "gpt-5.6-terra")
+	require.Contains(t, ids, "gpt-5.6-luna")
 	require.NotContains(t, ids, "claude-opus-4-6")
 }
 

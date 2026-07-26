@@ -965,7 +965,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if shouldExposeClaudeModelsForOpenAIDispatch(apiKey) {
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
-			"data":   filterClaudeModelsByAPIKeyFamilyPolicy(claude.DefaultModels, apiKey),
+			"data":   claudeModelsForOpenAIDispatch(apiKey),
 		})
 		return
 	}
@@ -985,6 +985,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 				CreatedAt:   "2024-01-01T00:00:00Z",
 			})
 		}
+		models = appendOpenAIDispatchFableClaudeModel(models, apiKey)
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
 			"data":   models,
@@ -996,7 +997,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if platform == service.PlatformOpenAI {
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
-			"data":   filterOpenAIModelsByAPIKeyFamilyPolicy(openai.DefaultModels, apiKey),
+			"data":   appendOpenAIDispatchFableOpenAIModel(filterOpenAIModelsByAPIKeyFamilyPolicy(openai.DefaultModels, apiKey), apiKey),
 		})
 		return
 	}
@@ -1023,6 +1024,59 @@ func shouldExposeClaudeModelsForOpenAIDispatch(apiKey *service.APIKey) bool {
 		return false
 	}
 	return apiKey.AllowsClaudeFamily() && !apiKey.AllowsGPTFamily()
+}
+
+func claudeModelsForOpenAIDispatch(apiKey *service.APIKey) []claude.Model {
+	models := filterClaudeModelsByAPIKeyFamilyPolicy(claude.DefaultModels, apiKey)
+	return appendOpenAIDispatchFableClaudeModel(models, apiKey)
+}
+
+func shouldAppendOpenAIDispatchFableModel(apiKey *service.APIKey) bool {
+	if apiKey == nil || apiKey.Group == nil {
+		return false
+	}
+	if apiKey.Group.Platform != service.PlatformOpenAI || !apiKey.Group.AllowMessagesDispatch {
+		return false
+	}
+	return apiKey.AllowsClaudeFamily() && isOpenAIMessagesDispatchFableEnabled(apiKey)
+}
+
+func appendOpenAIDispatchFableClaudeModel(models []claude.Model, apiKey *service.APIKey) []claude.Model {
+	if !shouldAppendOpenAIDispatchFableModel(apiKey) {
+		return models
+	}
+	for _, model := range models {
+		if model.ID == service.OpenAIMessagesDispatchFableModel {
+			return models
+		}
+	}
+	out := append([]claude.Model(nil), models...)
+	return append(out, claude.Model{
+		ID:          service.OpenAIMessagesDispatchFableModel,
+		Type:        "model",
+		DisplayName: "Claude Fable 5",
+		CreatedAt:   "2026-07-01T00:00:00Z",
+	})
+}
+
+func appendOpenAIDispatchFableOpenAIModel(models []openai.Model, apiKey *service.APIKey) []openai.Model {
+	if !shouldAppendOpenAIDispatchFableModel(apiKey) {
+		return models
+	}
+	for _, model := range models {
+		if model.ID == service.OpenAIMessagesDispatchFableModel {
+			return models
+		}
+	}
+	out := append([]openai.Model(nil), models...)
+	return append(out, openai.Model{
+		ID:          service.OpenAIMessagesDispatchFableModel,
+		Object:      "model",
+		Created:     1782864000,
+		OwnedBy:     "anthropic",
+		Type:        "model",
+		DisplayName: "Claude Fable 5",
+	})
 }
 
 func filterModelIDsByAPIKeyFamilyPolicy(modelIDs []string, apiKey *service.APIKey) []string {

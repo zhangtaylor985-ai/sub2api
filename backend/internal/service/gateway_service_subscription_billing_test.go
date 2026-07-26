@@ -119,8 +119,34 @@ func TestBuildUsageBillingCommand_TokenPackageOnlyUpdatesRateLimitLedger(t *test
 	if cmd.APIKeyRateLimitCost != 2.5 {
 		t.Fatalf("APIKeyRateLimitCost = %v, want 2.5", cmd.APIKeyRateLimitCost)
 	}
+	if cmd.APIKeyQuotaCost != 0 {
+		t.Fatalf("APIKeyQuotaCost = %v, want 0", cmd.APIKeyQuotaCost)
+	}
 	if cmd.BalanceCost != 0 {
 		t.Fatalf("BalanceCost = %v, want 0", cmd.BalanceCost)
+	}
+}
+
+func TestBuildUsageBillingCommand_TokenPackageOnlySkipsTraditionalQuota(t *testing.T) {
+	t.Parallel()
+
+	p := &postUsageBillingParams{
+		Cost:          &CostBreakdown{TotalCost: 2.5, ActualCost: 2.5},
+		User:          &User{ID: 1},
+		APIKey:        &APIKey{ID: 2, Quota: 1, QuotaUsed: 1, TokenPackageRequired: true},
+		Account:       &Account{ID: 3},
+		APIKeyService: tokenPackageStateAPIKeyServiceStub{total: 10},
+	}
+
+	cmd := buildUsageBillingCommand(context.Background(), "req-token-package-quota", nil, p)
+	if cmd == nil {
+		t.Fatal("buildUsageBillingCommand returned nil")
+	}
+	if cmd.APIKeyQuotaCost != 0 {
+		t.Fatalf("APIKeyQuotaCost = %v, want 0", cmd.APIKeyQuotaCost)
+	}
+	if cmd.APIKeyRateLimitCost != 2.5 {
+		t.Fatalf("APIKeyRateLimitCost = %v, want 2.5", cmd.APIKeyRateLimitCost)
 	}
 }
 

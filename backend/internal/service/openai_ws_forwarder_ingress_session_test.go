@@ -441,6 +441,149 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	require.Len(t, upstreamConn.writes, 1, "passthrough 模式应透传首条 response.create")
 }
 
+func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_OAuthPassthroughModelSwitchUsesGPT56CapableHandshake(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+	cfg.Gateway.OpenAIWS.IngressModeDefault = OpenAIWSIngressModeCtxPool
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	upstreamConn := &openAIWSCaptureConn{
+		readDelays: []time.Duration{0, 150 * time.Millisecond},
+		events: [][]byte{
+			[]byte(`{"type":"response.completed","response":{"id":"resp_oauth_switch_1","model":"gpt-5.4","usage":{"input_tokens":2,"output_tokens":3}}}`),
+			[]byte(`{"type":"response.completed","response":{"id":"resp_oauth_switch_2","model":"gpt-5.6-luna","usage":{"input_tokens":4,"output_tokens":5}}}`),
+		},
+	}
+	captureDialer := &openAIWSCaptureDialer{conn: upstreamConn}
+	svc := &OpenAIGatewayService{
+		cfg:                       cfg,
+		httpUpstream:              &httpUpstreamRecorder{},
+		cache:                     &stubGatewayCache{},
+		openaiWSResolver:          NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:             NewCodexToolCorrector(),
+		openaiWSPassthroughDialer: captureDialer,
+	}
+
+	account := &Account{
+		ID:          456,
+		Name:        "openai-oauth-passthrough-gpt56-floor",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-account",
+		},
+		Extra: map[string]any{
+			"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough,
+		},
+	}
+
+	serverErrCh := make(chan error, 1)
+	resultCh := make(chan *OpenAIForwardResult, 2)
+	hooks := &OpenAIWSIngressHooks{
+		AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
+			if turnErr == nil && result != nil {
+				resultCh <- result
+			}
+		},
+	}
+
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
+		if err != nil {
+			serverErrCh <- err
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+
+		rec := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(rec)
+		req := r.Clone(r.Context())
+		req.Header = req.Header.Clone()
+		req.Header.Set("User-Agent", "opencode/1.1.0")
+		req.Header.Set("originator", "opencode")
+		ginCtx.Request = req
+
+		readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		msgType, firstMessage, readErr := conn.Read(readCtx)
+		cancel()
+		if readErr != nil {
+			serverErrCh <- readErr
+			return
+		}
+		if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
+			serverErrCh <- errors.New("unsupported websocket client message type")
+			return
+		}
+
+		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "oauth-token", firstMessage, hooks)
+	}))
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	writeMessage := func(payload string) {
+		writeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(payload)))
+	}
+	readMessage := func() []byte {
+		readCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_, event, readErr := clientConn.Read(readCtx)
+		require.NoError(t, readErr)
+		return event
+	}
+
+	writeMessage(`{"type":"response.create","model":"gpt-5.4","stream":false}`)
+	require.Equal(t, "resp_oauth_switch_1", gjson.GetBytes(readMessage(), "response.id").String())
+	writeMessage(`{"type":"session.update","session":{"model":"gpt-5.6-luna"}}`)
+	writeMessage(`{"type":"response.create","stream":false}`)
+	require.Equal(t, "resp_oauth_switch_2", gjson.GetBytes(readMessage(), "response.id").String())
+	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
+
+	select {
+	case serverErr := <-serverErrCh:
+		if serverErr != nil {
+			require.Contains(t, serverErr.Error(), "StatusNormalClosure")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("等待 OAuth passthrough websocket 结束超时")
+	}
+
+	for _, wantID := range []string{"resp_oauth_switch_1", "resp_oauth_switch_2"} {
+		select {
+		case result := <-resultCh:
+			require.Equal(t, wantID, result.RequestID)
+			require.True(t, result.OpenAIWSMode)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("未收到 passthrough turn 结果回调: %s", wantID)
+		}
+	}
+
+	require.Equal(t, 1, captureDialer.DialCount(), "model switch must reuse the already GPT-5.6-capable handshake")
+	require.Equal(t, openAIGPT56CodexUserAgent, captureDialer.lastHeaders.Get("User-Agent"))
+	require.Equal(t, "codex_cli_rs", captureDialer.lastHeaders.Get("originator"))
+	require.Equal(t, openAIGPT56CodexVersion, captureDialer.lastHeaders.Get("version"))
+	require.Len(t, upstreamConn.writes, 3, "first create, session update, and GPT-5.6 create must share one upstream connection")
+}
+
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ModeOffReturnsPolicyViolation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

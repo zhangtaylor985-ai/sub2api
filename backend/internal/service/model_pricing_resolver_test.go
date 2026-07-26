@@ -244,6 +244,31 @@ func TestResolve_WithChannelOverride_TokenPartialOverride(t *testing.T) {
 	require.InDelta(t, 15e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
 }
 
+func TestResolve_WithChannelOverride_DoesNotMutateSharedFallback(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(20e-6),
+	}})
+	shared := r.billingService.fallbackPrices["claude-sonnet-4"]
+	require.InDelta(t, 3e-6, shared.InputPricePerToken, 1e-12)
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.NotNil(t, resolved.BasePricing)
+	require.NotSame(t, shared, resolved.BasePricing)
+	require.InDelta(t, 20e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 3e-6, shared.InputPricePerToken, 1e-12)
+
+	unscoped := r.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4"})
+	require.Same(t, shared, unscoped.BasePricing)
+	require.InDelta(t, 3e-6, unscoped.BasePricing.InputPricePerToken, 1e-12)
+}
+
 func TestResolve_WithChannelOverride_TokenWithIntervals(t *testing.T) {
 	r := newResolverWithChannel(t, []ChannelModelPricing{{
 		Platform:    "anthropic",

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"sort"
 	"strconv"
@@ -298,21 +299,22 @@ type CreateAccountInput struct {
 }
 
 type UpdateAccountInput struct {
-	Name                  string
-	Notes                 *string
-	Type                  string // Account type: oauth, setup-token, apikey
-	Credentials           map[string]any
-	Extra                 map[string]any
-	ProxyID               *int64
-	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
-	Priority              *int     // 使用指针区分"未提供"和"设置为0"
-	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
-	LoadFactor            *int
-	Status                string
-	GroupIDs              *[]int64
-	ExpiresAt             *int64
-	AutoPauseOnExpired    *bool
-	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
+	Name                        string
+	Notes                       *string
+	Type                        string // Account type: oauth, setup-token, apikey
+	Credentials                 map[string]any
+	PreserveExistingCredentials bool // OAuth reauthorization merges new tokens into persistent account policy.
+	Extra                       map[string]any
+	ProxyID                     *int64
+	Concurrency                 *int     // 使用指针区分"未提供"和"设置为0"
+	Priority                    *int     // 使用指针区分"未提供"和"设置为0"
+	RateMultiplier              *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor                  *int
+	Status                      string
+	GroupIDs                    *[]int64
+	ExpiresAt                   *int64
+	AutoPauseOnExpired          *bool
+	SkipMixedChannelCheck       bool // 跳过混合渠道检查（用户已确认风险）
 }
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
@@ -2935,9 +2937,15 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Notes = normalizeAccountNotes(input.Notes)
 	}
 	if len(input.Credentials) > 0 {
-		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
-		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
-		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		if input.PreserveExistingCredentials {
+			// Reauthorization returns token-centric credentials. Preserve account-level
+			// runtime policy (for example model mappings and exclusions) atomically.
+			account.Credentials = MergeCredentials(account.Credentials, maps.Clone(input.Credentials))
+		} else {
+			// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
+			// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
+			account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		}
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。

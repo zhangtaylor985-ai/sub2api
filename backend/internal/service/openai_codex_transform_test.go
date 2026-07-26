@@ -868,6 +868,46 @@ func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodexModel_GPT56KnownAliases(t *testing.T) {
+	cases := map[string]string{
+		"gpt-5.6-sol":                                  "gpt-5.6-sol",
+		"openai/gpt-5.6-terra":                         "gpt-5.6-terra",
+		"gpt5.6luna":                                   "gpt-5.6-luna",
+		"gpt 5.6 sol":                                  "gpt-5.6-sol",
+		"azure/openai/gpt5.6terra-xhigh":               "gpt-5.6-terra",
+		"gpt-5.6-luna-2026-07-08":                      "gpt-5.6-luna",
+		"gpt-5.6-sol-20260708":                         "gpt-5.6-sol",
+		"gpt-5.6-terra-openai-compact":                 "gpt-5.6-terra",
+		"gpt-5.6-luna-high-openai-compact":             "gpt-5.6-luna",
+		"vendor/GPT_5.6_SOL_2026-07-08-OPENAI-COMPACT": "gpt-5.6-sol",
+	}
+
+	for input, expected := range cases {
+		t.Run(input, func(t *testing.T) {
+			require.Equal(t, expected, normalizeCodexModel(input))
+		})
+	}
+}
+
+func TestNormalizeCodexModel_GPT56RejectsBareAndNearMissIDs(t *testing.T) {
+	cases := []string{
+		"gpt-5.6",
+		"openai/gpt-5.6",
+		"gpt-5.6-solstice",
+		"gpt5.6solstice",
+		"gpt-5.6-terrestrial",
+		"gpt-5.6-lunatic",
+		"gpt-5.6-sol-unknown",
+	}
+
+	for _, model := range cases {
+		t.Run(model, func(t *testing.T) {
+			require.Equal(t, model, normalizeCodexModel(model))
+			require.Empty(t, normalizeKnownOpenAICodexModel(model))
+		})
+	}
+}
+
 func TestNormalizeCodexModel_RemovedModelsFallbackToSupportedTargets(t *testing.T) {
 	cases := map[string]string{
 		"":                   "gpt-5.4",

@@ -91,6 +91,7 @@
 ## Claude -> GPT 模型映射
 
 - OpenAI 分组开启 `allow_messages_dispatch=true` 后，Claude `/v1/messages` 可调度到 OpenAI/Codex 账号。
+- 请求参数是 Claude 模型时，用户侧响应、流式事件和错误必须保持 Claude 黑盒，不暴露 GPT/Codex/OpenAI 内部模型、账号或 auth file 信息；这些只允许进后台日志/usage 证据。
 - 第一层映射在分组：
   - 表字段：`groups.messages_dispatch_model_config`
   - 代码入口：`Group.ResolveMessagesDispatchModel`

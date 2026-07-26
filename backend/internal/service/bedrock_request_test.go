@@ -480,6 +480,20 @@ func TestBedrockCrossRegionPrefix(t *testing.T) {
 }
 
 func TestResolveBedrockModelID(t *testing.T) {
+	t.Run("sonnet 5 default alias resolves and adjusts region", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+			Credentials: map[string]any{
+				"aws_region": "ap-southeast-2",
+			},
+		}
+
+		modelID, ok := ResolveBedrockModelID(account, "claude-sonnet-5")
+		require.True(t, ok)
+		assert.Equal(t, "au.anthropic.claude-sonnet-5-v1", modelID)
+	})
+
 	t.Run("default alias resolves and adjusts region", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformAnthropic,

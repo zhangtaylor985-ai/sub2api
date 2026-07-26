@@ -35,6 +35,15 @@ var (
 		Mode:                            "chat",
 		SupportsPromptCaching:           true,
 	}
+	openAIGPT56SolFallbackPricing = newOpenAIGPT56FallbackPricing(
+		5e-06, 3e-05, 5e-07, 6.25e-06, 1e-05, 6e-05, 1e-06, 1.25e-05,
+	)
+	openAIGPT56TerraFallbackPricing = newOpenAIGPT56FallbackPricing(
+		2.5e-06, 1.5e-05, 2.5e-07, 3.125e-06, 5e-06, 3e-05, 5e-07, 6.25e-06,
+	)
+	openAIGPT56LunaFallbackPricing = newOpenAIGPT56FallbackPricing(
+		1e-06, 6e-06, 1e-07, 1.25e-06, 2e-06, 1.2e-05, 2e-07, 2.5e-06,
+	)
 	openAIGPT54MiniFallbackPricing = &LiteLLMModelPricing{
 		InputCostPerToken:       7.5e-07,
 		OutputCostPerToken:      4.5e-06,
@@ -53,6 +62,26 @@ var (
 	}
 )
 
+func newOpenAIGPT56FallbackPricing(input, output, cacheRead, cacheCreation, priorityInput, priorityOutput, priorityCacheRead, priorityCacheCreation float64) *LiteLLMModelPricing {
+	return &LiteLLMModelPricing{
+		InputCostPerToken:                   input,
+		InputCostPerTokenPriority:           priorityInput,
+		OutputCostPerToken:                  output,
+		OutputCostPerTokenPriority:          priorityOutput,
+		CacheCreationInputTokenCost:         cacheCreation,
+		CacheCreationInputTokenCostPriority: priorityCacheCreation,
+		CacheReadInputTokenCost:             cacheRead,
+		CacheReadInputTokenCostPriority:     priorityCacheRead,
+		LongContextInputTokenThreshold:      272000,
+		LongContextInputCostMultiplier:      2.0,
+		LongContextOutputCostMultiplier:     1.5,
+		SupportsServiceTier:                 true,
+		LiteLLMProvider:                     "openai",
+		Mode:                                "chat",
+		SupportsPromptCaching:               true,
+	}
+}
+
 // LiteLLMModelPricing LiteLLM价格数据结构
 // 只保留我们需要的字段，使用指针来处理可能缺失的值
 type LiteLLMModelPricing struct {
@@ -61,6 +90,7 @@ type LiteLLMModelPricing struct {
 	OutputCostPerToken                  float64 `json:"output_cost_per_token"`
 	OutputCostPerTokenPriority          float64 `json:"output_cost_per_token_priority"`
 	CacheCreationInputTokenCost         float64 `json:"cache_creation_input_token_cost"`
+	CacheCreationInputTokenCostPriority float64 `json:"cache_creation_input_token_cost_priority"`
 	CacheCreationInputTokenCostAbove1hr float64 `json:"cache_creation_input_token_cost_above_1hr"`
 	CacheReadInputTokenCost             float64 `json:"cache_read_input_token_cost"`
 	CacheReadInputTokenCostPriority     float64 `json:"cache_read_input_token_cost_priority"`
@@ -88,6 +118,7 @@ type LiteLLMRawEntry struct {
 	OutputCostPerToken                  *float64 `json:"output_cost_per_token"`
 	OutputCostPerTokenPriority          *float64 `json:"output_cost_per_token_priority"`
 	CacheCreationInputTokenCost         *float64 `json:"cache_creation_input_token_cost"`
+	CacheCreationInputTokenCostPriority *float64 `json:"cache_creation_input_token_cost_priority"`
 	CacheCreationInputTokenCostAbove1hr *float64 `json:"cache_creation_input_token_cost_above_1hr"`
 	CacheReadInputTokenCost             *float64 `json:"cache_read_input_token_cost"`
 	CacheReadInputTokenCostPriority     *float64 `json:"cache_read_input_token_cost_priority"`
@@ -399,6 +430,9 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 		if entry.CacheCreationInputTokenCost != nil {
 			pricing.CacheCreationInputTokenCost = *entry.CacheCreationInputTokenCost
 		}
+		if entry.CacheCreationInputTokenCostPriority != nil {
+			pricing.CacheCreationInputTokenCostPriority = *entry.CacheCreationInputTokenCostPriority
+		}
 		if entry.CacheCreationInputTokenCostAbove1hr != nil {
 			pricing.CacheCreationInputTokenCostAbove1hr = *entry.CacheCreationInputTokenCostAbove1hr
 		}
@@ -534,6 +568,10 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 	// 标准化模型名称（同时兼容 "models/xxx"、VertexAI 资源名等前缀）
 	modelLower := strings.ToLower(strings.TrimSpace(modelName))
 	lookupCandidates := s.buildModelLookupCandidates(modelLower)
+	canonicalModel := lookupCandidates[0]
+	if hasGPT56ModelPrefix(canonicalModel) && normalizeKnownGPT56Model(canonicalModel) == "" {
+		return nil
+	}
 
 	// 1. 精确匹配
 	for _, candidate := range lookupCandidates {
@@ -764,15 +802,40 @@ func (s *PricingService) matchByModelFamily(model string) *LiteLLMModelPricing {
 	return nil
 }
 
-// matchOpenAIModel OpenAI 模型回退匹配策略
-// 回退顺序：
-// 1. gpt-5.3-codex-spark* -> gpt-5.1-codex（按业务要求固定计费）
-// 2. gpt-5.2-codex -> gpt-5.2（去掉后缀如 -codex, -mini, -max 等）
-// 3. gpt-5.2-20251222 -> gpt-5.2（去掉日期版本号）
+// matchOpenAIModel applies the OpenAI model fallback strategy.
+// Fallback order:
+// 1. gpt-5.3-codex-spark* -> gpt-5.1-codex (fixed billing policy)
+// 2. gpt-5.2-codex -> gpt-5.2 (strip suffixes such as -codex, -mini, or -max)
+// 3. gpt-5.2-20251222 -> gpt-5.2 (strip date suffix)
 // 4. gpt-5.3-codex -> gpt-5.2-codex
-// 5. gpt-5.4* -> 业务静态兜底价
-// 6. 最终回退到 DefaultTestModel (gpt-5.1-codex)
+// 5. Known gpt-5.6-sol/terra/luna variants -> base-model or tier-specific static price
+// 6. gpt-5.4* -> static business fallback price
+// 7. Finally fall back to DefaultTestModel (gpt-5.1-codex)
 func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
+	if normalized := normalizeKnownGPT56Model(model); normalized != "" {
+		if pricing, ok := s.pricingData[normalized]; ok {
+			logger.With(zap.String("component", "service.pricing")).
+				Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, normalized))
+			return pricing
+		}
+
+		var fallback *LiteLLMModelPricing
+		switch normalized {
+		case "gpt-5.6-sol":
+			fallback = openAIGPT56SolFallbackPricing
+		case "gpt-5.6-terra":
+			fallback = openAIGPT56TerraFallbackPricing
+		case "gpt-5.6-luna":
+			fallback = openAIGPT56LunaFallbackPricing
+		}
+		logger.With(zap.String("component", "service.pricing")).
+			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s(static)", model, normalized))
+		return fallback
+	}
+	if hasGPT56ModelPrefix(model) {
+		return nil
+	}
+
 	if strings.HasPrefix(model, "gpt-5.3-codex-spark") {
 		if pricing, ok := s.pricingData["gpt-5.1-codex"]; ok {
 			logger.LegacyPrintf("service.pricing", "[Pricing][SparkBilling] %s -> %s billing", model, "gpt-5.1-codex")

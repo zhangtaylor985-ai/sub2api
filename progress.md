@@ -732,6 +732,6 @@
   - 正式切换前的旧 binary sha256=`27efc96830124c393a3caf839270bf613cc2b79b3b31e0eac328561fcf34eeab`，备份为 `/opt/sub2api/backups/sub2api-binary-before-claude-gpt56-global-20260726T015742Z`。
   - 正式 binary 已原子替换并重启。发布后 usage `2811262/2811263` 分别为 Opus `gpt-5.6-sol/xhigh` 与 Sonnet `gpt-5.6-sol/low`，响应模型保持 Claude且文本精确。
   - 公网 `https://cc.claudepool.com` 的 `claude2 2.1.174` 非交互返回 `CC2_PUBLIC_GPT56_OK`；真实 TTY 显示 Opus 4.8/high 并返回 `TTY_PUBLIC_GPT56_OK`，正式 usage `2811265–2811268` 全为 `claude-opus-4-8→gpt-5.6-sol/high`。
-  - 发布后 `sub2api.service` active、`NRestarts=0`、binary SHA 与候选一致，内网/公网 health 均 ok；首轮 91 行 journal 中 error/panic/fatal 为 0。后续观察到的 20 条 ERROR 日志实际对应同一 `api_key_id=129` 的 10 次直接 `gpt-5.5 /v1/responses` 重试，均为畸形 tool arguments 导致上游 400；Claude 请求错误计数为 0，与本次 5.6 dispatch 无关。
+  - 发布后 `sub2api.service` active、`NRestarts=0`、binary SHA 与候选一致，内网/公网 health 均 ok；首轮 91 行 journal 中 error/panic/fatal 为 0。首个后续快照的 20 条 ERROR 日志实际对应同一 `api_key_id=129` 的 10 次直接 `gpt-5.5 /v1/responses` 重试，均为畸形 tool arguments 导致上游 400；最终复核累计 14 次同类 request error，Claude request error 仍为 0，与本次 5.6 dispatch 无关。
   - 已停止 canary 并确认 18080 无监听；临时生产 API Key `id=515` 已禁用软删除、auth cache 已失效、raw key 文件已销毁；本机 SSH 隧道与测试 TTY 已关闭。
   - 本地账号 `id=2/3` 的临时 OAuth credentials 已清空并禁用软删除；本地 backend、PG、Redis 已停止，8080/5433/6380 无监听；仓库外敏感测试目录共 108 个文件已永久删除。

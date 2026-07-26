@@ -637,4 +637,4 @@
 - 正式发布后的核心 usage 证据为 `2811262`（Opus/max→5.6/xhigh）、`2811263`（Sonnet/low→5.6/low）以及 `2811265–2811268`（公网 Claude Code/TTY→5.6/high）。
 - GPT-5.6 与 5.4 的唯一持续观察差异仍是：5.6 更积极使用本机完成通知，可能增加一次工具调用和 API 轮次；它不影响答案、协议、effort 或多轮稳定性。
 - 正式 binary sha256=`a5ae911f437dd2c21a6323ccba18db30b4330f66adf464f9f248e3ac9401dd1a`；旧 binary、完整 PG dump 与三份配置快照均已保留。
-- 发布后服务零重启、内外 health 正常；Claude 请求错误为 0。观察窗口内后续 20 条 ERROR 日志是同一 `api_key_id=129` 的 10 次直接 GPT-5.5 `/v1/responses` 重试，原因是 14,333 字符的畸形 tool argument name 被上游 400 拒绝，与 Claude→GPT-5.6 无关。canary、临时 API Key/raw key、OAuth 副本、隧道、本地服务和敏感证据目录均已清理。
+- 发布后服务零重启、内外 health 正常；最终复核 Claude 请求错误为 0。首个错误快照的 20 条 ERROR 日志是同一 `api_key_id=129` 的 10 次直接 GPT-5.5 `/v1/responses` 重试，原因是 14,333 字符的畸形 tool argument name 被上游 400 拒绝；最终快照累计 14 次同类 request error，仍与 Claude→GPT-5.6 无关。canary、临时 API Key/raw key、OAuth 副本、隧道、本地服务和敏感证据目录均已清理。

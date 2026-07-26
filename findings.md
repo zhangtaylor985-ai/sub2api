@@ -626,3 +626,15 @@
 - 新 macOS 本地 binary sha256=`fda349677c4532e473eb04f6189538ecb2de82b45aa4a01d439e56e33d36dad1`。迁移 154 自动执行，settings GET/PUT 与非法值 400 校验均通过。
 - 在 API Key/分组 Opus/Sonnet 均为空时，全局 5.4 的 Opus/Sonnet usage 为 99/100；API 不重启切至 5.6 后 usage 101/102 分别保留 `max→xhigh` 与 `low→low`。分组覆盖与 Key 覆盖 usage 103/104 证明优先级正确。
 - 新代码真实 `cc2` PTY 会话 `09846024-f07a-4a6c-b379-6abb38255deb` 两轮分别返回 `TTY-GLOBAL56-ONE` 和 `42`；usage 105–107 全部为 `claude-opus-4-8→gpt-5.6-sol`、effort high、同一账号，debug/session 无 API Error。
+
+## 2026-07-26 Claude → GPT-5.6 生产发布结论
+
+- 全局设置已持久化为 `openai_messages_dispatch_default_target=gpt-5.6-sol`，迁移 `154_openai_messages_dispatch_global_default.sql` 已应用。
+- 生产配置最终只让 active OpenAI dispatch 作用域继承全局：8 个分组和 83 个作用域内 active API Key 清除冗余 Opus/Sonnet 5.4 覆盖；1 个 Anthropic 分组 Key 不在作用域内，未被修改。
+- 迁移保留了现有 Haiku 与 Fable 显式配置。运行时优先级仍是 API Key > 分组 > 全局；因此管理员可继续针对单 Key 或单组固定到 5.4/5.6。
+- 配置可独立于 binary 安全迁移：新 canary 在迁移后走 5.6，旧正式 binary 在同一配置下仍使用代码默认 5.4。故 binary 回滚时 Claude Opus/Sonnet 会自动回到 5.4，不要求先恢复 DB。
+- canary 和正式环境均验证 Opus/Sonnet、`low/high/max`、非流式、SSE/tool、`claude2 -p` 与真实 TTY；用户侧模型始终保持 Claude，未出现 GPT/OpenAI/Codex 泄漏。
+- 正式发布后的核心 usage 证据为 `2811262`（Opus/max→5.6/xhigh）、`2811263`（Sonnet/low→5.6/low）以及 `2811265–2811268`（公网 Claude Code/TTY→5.6/high）。
+- GPT-5.6 与 5.4 的唯一持续观察差异仍是：5.6 更积极使用本机完成通知，可能增加一次工具调用和 API 轮次；它不影响答案、协议、effort 或多轮稳定性。
+- 正式 binary sha256=`a5ae911f437dd2c21a6323ccba18db30b4330f66adf464f9f248e3ac9401dd1a`；旧 binary、完整 PG dump 与三份配置快照均已保留。
+- 发布后服务零重启、内外 health 正常；Claude 请求错误为 0。观察窗口内后续 20 条 ERROR 日志是同一 `api_key_id=129` 的 10 次直接 GPT-5.5 `/v1/responses` 重试，原因是 14,333 字符的畸形 tool argument name 被上游 400 拒绝，与 Claude→GPT-5.6 无关。canary、临时 API Key/raw key、OAuth 副本、隧道、本地服务和敏感证据目录均已清理。

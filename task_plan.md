@@ -346,8 +346,8 @@
 | 3. GPT-5.4 / GPT-5.6 Sol A/B | complete | 16 项直连矩阵、tool/SSE、自然任务、WebSearch、真实 PTY 与 usage 证据均通过 |
 | 4. 全局设置与继承实现 | complete | 后端 setting/resolver、API Key/分组/UI、迁移逻辑 |
 | 5. 全量回归与本地 TTY 复验 | complete | Go、frontend、embed、真实 PTY |
-| 6. Git、canary 与生产发布 | in_progress | commit/push、DB/binary 备份、canary、正式切换 |
-| 7. 发布后观察与清理 | pending | usage/effort/mapping 证据、回滚点、临时凭据清理 |
+| 6. Git、canary 与生产发布 | complete | 两个功能提交、远端分支、完整 DB/配置/binary 备份、隔离 canary、正式切换 |
+| 7. 发布后观察与清理 | complete | 公网 cc2/TTY、usage/effort/mapping、日志与零重启证据；临时 Key/OAuth/隧道/容器均已清理 |
 
 ## 门禁
 
@@ -372,3 +372,13 @@
 | 2026-07-26 | 当前 `pnpm` 包装器检测到不同版本创建的 `node_modules`，非 TTY 下请求确认重装并主动中止 | 未重装依赖；直接调用项目已有 `node_modules/.bin` 中的 ESLint、Vue TypeScript、Vitest 和 Vite |
 | 2026-07-26 | 前端完整 Vitest 的既有基线有 12 项失败 | 逐个确认失败文件均未被本任务修改；本功能专项 37/37 通过，lint/typecheck/build 通过，将既有失败作为非阻断基线记录 |
 | 2026-07-26 | TTY Skill 的 usage 示例仍查询当前 schema 不存在的 `platform/status` 列 | 改为查询 `model/upstream_model/model_mapping_chain/reasoning_effort`，并注明错误终态应结合 ops/server/session 证据 |
+| 2026-07-26 | 生产配置迁移首次把全部 active Key 的 84 个旧覆盖当成 OpenAI dispatch 作用域，断言实际为 83 | 事务在写入前回滚；定位到 1 个 Anthropic 分组 Key 后把作用域收紧到 active OpenAI dispatch 分组，未改该 Key |
+| 2026-07-26 | 两次 JSONB 清理表达式括号错误 | 两个事务均因 `ON_ERROR_STOP` 在 UPDATE 前完整回滚；先用只读 SELECT/EXPLAIN 验证简化表达式，再执行最终事务 |
+| 2026-07-26 | 发布后迁移核验误查 `schema_migrations.version` | 查询真实 schema 后改用 `filename`，确认 `154_openai_messages_dispatch_global_default.sql` 已应用；未产生写入 |
+
+## 发布结论
+
+- GPT-5.6 Sol 已达到 GPT-5.4 门禁，生产全局默认已切换为 `gpt-5.6-sol`。
+- 生产最终解析顺序为 API Key > 分组 > 全局；Haiku/Fable 行为保持不变。
+- 正式 binary sha256 为 `a5ae911f437dd2c21a6323ccba18db30b4330f66adf464f9f248e3ac9401dd1a`，`sub2api.service` active、`NRestarts=0`，内外 health 正常，观察窗口内 Claude 请求错误为 0。
+- DB dump、配置快照和旧 binary 均已保留；canary、临时 API Key、raw key 文件、OAuth 副本、本地隧道和测试服务均已清理。

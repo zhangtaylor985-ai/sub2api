@@ -719,3 +719,19 @@
   - 全局继承实测：usage 99/100 为全局 5.4；不重启切到 5.6 后 usage 101/102 为 5.6 且 effort 分别为 xhigh/low；usage 103/104 证明分组 5.4 与 API Key 5.6 的覆盖优先级。
   - 新代码真实 `cc2` PTY 会话 `09846024-f07a-4a6c-b379-6abb38255deb` 连续两轮返回 `TTY-GLOBAL56-ONE` / `42`；usage 105–107 全部 `claude-opus-4-8→gpt-5.6-sol`、effort high，debug 与 session JSONL 无 API Error。
   - 已修正 TTY Skill 中与当前 `usage_logs` schema 不兼容的示例 SQL，避免后续取证误查不存在的 `platform/status` 字段。
+  - 已把既有部署基线与本功能拆为两个提交：`5e2e0da2 feat(openai): reconcile deployed GPT-5.6 support`、`3d421ea2 feat(dispatch): add global Claude GPT target`，并推送 `origin/codex/claude-gpt56-global`。
+  - Linux 发布 binary 为 `/opt/sub2api/releases/sub2api-linux-amd64-20260726T013758Z-claude-gpt56-global`，sha256=`a5ae911f437dd2c21a6323ccba18db30b4330f66adf464f9f248e3ac9401dd1a`；远端由 zstd patch 重建后 SHA 完全一致，构建元数据为 commit `3d421ea2` 且 `vcs.modified=false`。
+  - 发布前完整 PG dump 为 `/opt/sub2api/backups/sub2api-before-claude-gpt56-global-20260726T014126Z.dump`，sha256=`2f40d610efdd72b802ce30865b9c2d115f1a174607df16e4d8560ea775d78750`，大小约 286 MiB，并通过 `pg_restore --list`；groups/api_keys/setting 另有 0600 PSV 快照。
+  - 隔离 canary `sub2api-gpt56-canary.service` 仅监听远端 `127.0.0.1:18080`。迁移 154 自动应用，全局 setting 为 `gpt-5.6-sol`。
+  - 配置迁移前，新 canary 在显式旧配置下 usage `2811196` 为 `claude-opus-4-8→gpt-5.4/high`；清理覆盖后 canary usage `2811228/2811230` 分别证明 Opus `max→xhigh` 与 Sonnet `low→low` 均进入 `gpt-5.6-sol`。
+  - 同一份已迁移配置由旧正式 binary 处理时，usage `2811232` 仍回落 `gpt-5.4/high`；证明 binary 切换点明确，旧 binary 回滚不依赖恢复配置。
+  - canary 强制 tool/SSE 通过：`message_start.model=claude-opus-4-8`，产生 `tool_use/report_number`，SSE 不含 GPT/OpenAI/Codex。
+  - canary 真实 `cc2` 非交互返回 `CC2_CANARY_GPT56_HIGH_OK`；真实 TTY 同一会话两轮返回 `TTY_CANARY_GPT56_ONE` / `42`。该 TTY 会话 usage 全部为同一账号、`gpt-5.6-sol/high`，未见 API Error。
+  - 生产迁移最终事务：全局设置写入 5.6；8 个 active OpenAI dispatch 分组清除 Opus/Sonnet 5.4 family 与 Opus 4-6/4-7/4-8 exact 覆盖，同时保留 8 个 Haiku 与 8 个 Fable 配置；83 个作用域内 active Key 清除 Opus/Sonnet 5.4 覆盖，1 个 Anthropic 分组旧 Key 保持不动。
+  - 对 111 个 active OpenAI dispatch Key 删除 Redis L2 auth snapshot 并广播 L1 失效；最终复核为 groups `8/0/0/0`、作用域内 key override `0/0`、作用域外 legacy `1`。
+  - 正式切换前的旧 binary sha256=`27efc96830124c393a3caf839270bf613cc2b79b3b31e0eac328561fcf34eeab`，备份为 `/opt/sub2api/backups/sub2api-binary-before-claude-gpt56-global-20260726T015742Z`。
+  - 正式 binary 已原子替换并重启。发布后 usage `2811262/2811263` 分别为 Opus `gpt-5.6-sol/xhigh` 与 Sonnet `gpt-5.6-sol/low`，响应模型保持 Claude且文本精确。
+  - 公网 `https://cc.claudepool.com` 的 `claude2 2.1.174` 非交互返回 `CC2_PUBLIC_GPT56_OK`；真实 TTY 显示 Opus 4.8/high 并返回 `TTY_PUBLIC_GPT56_OK`，正式 usage `2811265–2811268` 全为 `claude-opus-4-8→gpt-5.6-sol/high`。
+  - 发布后 `sub2api.service` active、`NRestarts=0`、binary SHA 与候选一致，内网/公网 health 均 ok；首轮 91 行 journal 中 error/panic/fatal 为 0。后续观察到的 20 条 ERROR 日志实际对应同一 `api_key_id=129` 的 10 次直接 `gpt-5.5 /v1/responses` 重试，均为畸形 tool arguments 导致上游 400；Claude 请求错误计数为 0，与本次 5.6 dispatch 无关。
+  - 已停止 canary 并确认 18080 无监听；临时生产 API Key `id=515` 已禁用软删除、auth cache 已失效、raw key 文件已销毁；本机 SSH 隧道与测试 TTY 已关闭。
+  - 本地账号 `id=2/3` 的临时 OAuth credentials 已清空并禁用软删除；本地 backend、PG、Redis 已停止，8080/5433/6380 无监听；仓库外敏感测试目录共 108 个文件已永久删除。

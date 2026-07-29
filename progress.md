@@ -852,3 +852,15 @@
 - 2026-07-29：已更新 `AGENTS.md`、生产巡检/部署/TTY/临时二进制发布 Skills 到新 ARM64 地址，并新增通过语法检查的 `build-linux-arm64.sh`；未构建或发布新二进制。
 - 2026-07-29：通过既有 session link 通知原磁盘清理任务暂停回滚机清理；对方已验证并确认未修改现生产或回滚机。
 - 2026-07-29：在确认旧机应用已停止后执行 `systemctl reset-failed sub2api`，旧机最终为干净 `inactive`、8080 关闭；PostgreSQL/Redis/Caddy/Xray 保持可用。
+- 2026-07-29：完成线上用户反馈的空 502 排查；生产历史证据同时包含 OpenAI passthrough 空 502 和 buffered `/v1/messages` SSE 终止错误不换号，当前生产内存健康且本问题与 OOM 无关。
+- 2026-07-29：本地修复 OpenAI passthrough 的 429/所有 5xx 换号，并让 buffered SSE error、缺少 terminal event、`response.failed` 在未提交响应时进入账号 failover；账号耗尽继续返回带 request id 的结构化 502。
+- 2026-07-29：定向 protocol/service/handler 测试和 `go test ./... -count=1` 全部通过；真实 Codex CLI 验证空上游 502 会显示安全错误与 request id，不再显示 `(no body)`；Claude Code 本地非交互和真实 TTY 多轮通过。
+- 2026-07-29：提交并推送 `d137c99ee fix(openai): fail over retryable upstream errors` 到 `origin/codex/claude-gpt56-global`；现有未跟踪 `data/` 未纳入提交。
+- 2026-07-29：从 detached clean worktree 构建 ARM64 embed binary `sub2api-linux-arm64-20260729T114212Z-upstream-failover-gpt56`，sha256=`35732082669627e56915541023f7737a321222f0a6465d928072da1b947374e4`；首次构建因 clean worktree 缺少未跟踪 embed dist 而停止，复制既有生成资源后成功。
+- 2026-07-29：远端 release SHA 与本地一致；短时 canary 仅监听 `127.0.0.1:18080`，5.4 基线 smoke 和 5.6 Opus/Sonnet/tool/SSE 门禁均通过。
+- 2026-07-29：生产完整 dump `/opt/sub2api/backups/sub2api-before-upstream-failover-gpt56-20260729T114528Z.dump` 为 311,177,804 bytes，sha256=`2b0df680fdabe265196f40311570d56841e24f2cc3addb327398d9a0899942a8`，已通过 `pg_restore --list`；setting 快照为 `/opt/sub2api/backups/openai-dispatch-setting-before-gpt56-20260729T114528Z.psv`。
+- 2026-07-29：备份脚本首次因普通用户无法删除 postgres 所属 `/tmp` dump 而在复制完成后停止；改用 `sudo rm` 完成明确临时文件清理。setting 快照第一次嵌套 shell 变量未展开，未写入配置；改用 `psql | sudo tee` 后完成。
+- 2026-07-29：全局 `openai_messages_dispatch_default_target` 从 `gpt-5.4` 原子改为 `gpt-5.6-sol`；无分组或 Key 级 Opus/Sonnet 5.4 覆盖需要清理。
+- 2026-07-29：旧 binary 备份为 `/opt/sub2api/sub2api.bak.20260729T115006Z-before-upstream-failover-gpt56`；正式 binary 替换并重启一次，当前 SHA=`35732082669627e56915541023f7737a321222f0a6465d928072da1b947374e4`。
+- 2026-07-29：公网 Opus non-stream 与 Sonnet SSE 均 HTTP 200，usage 验证 `gpt-5.6-sol/xhigh` 与 `gpt-5.6-sol/low`；真实 Claude Code 2.1.220 非交互返回 `CC2_PROD56_D137_OK`，真实 TTY 同会话返回 `TTY_PROD56_ONE` / `TTY_PROD56_TWO`。
+- 2026-07-29：发布后用户测试 Key 的 8 条 usage 全部为 `gpt-5.6-sol`；`sub2api.service` active/running、`NRestarts=0`、内外 health 正常、18080 无监听、HTTP 5xx 为 0。一次辅助请求记录上游 overload WARN，但客户端无 API error/空 502，主请求正常完成。

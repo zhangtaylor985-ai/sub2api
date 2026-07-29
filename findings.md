@@ -794,3 +794,9 @@
 - 新机观察约 10 分钟后 `NRestarts=0`、MemoryCurrent 约 193 MiB、MemoryPeak 约 216 MiB、系统可用约 4.4 GiB、swap 基本未使用，ops error 和 journal OOM/panic/fatal 均为 0。
 - 最终观察后出现 1 条 P3 客户端请求错误：OpenAI 请求体读取失败、HTTP 400、无 account/upstream 状态；这是畸形客户端请求，不是迁移、调度或上游故障。
 - 已通过 `coordinate-codex-sessions` 向原磁盘清理任务发送并记录 PROGRESS；对方已首次消费并确认暂停对 `172.247.109.38` 的发布、日志、数据库、Redis、配置和备份清理。
+- 2026-07-29 空白 `502 status code (no body)` 的确定性代码原因之一是 OpenAI passthrough 只对 429/529 换号，其他上游 5xx 会在响应体为空时原样写给客户端。
+- buffered Claude `/v1/messages` 的上游 SSE error、缺少 terminal event 与 `response.failed` 原先返回普通 error，handler 无法继续调度其他账号；修复后在尚未提交客户端响应时统一返回 `UpstreamFailoverError`。
+- 修复不会把所有上游故障伪装成成功：全部账号不可用时仍返回对应 502，但错误体为安全的结构化 JSON 并带 request id，不再是空响应。
+- 生产全局 setting 切换前，8 个 active OpenAI dispatch 分组和 113 个作用域内 active Key 均无 Opus/Sonnet 5.4 family 或 exact 覆盖，因此只修改 `openai_messages_dispatch_default_target` 即可全局生效。
+- GPT-5.6 canary 的 Opus non-stream、Sonnet SSE、强制 function tool 均通过，usage 分别验证 `max→xhigh`、`low→low`、`high→high`，客户端没有内部模型泄漏。
+- 发布后真实 Claude Code 2.1.220 非交互与同会话两轮 TTY 均成功；一次辅助请求记录上游 overload WARN，但未形成 HTTP 5xx、未出现客户端 API error 或 `(no body)`，主请求和后续 usage 全部完成。

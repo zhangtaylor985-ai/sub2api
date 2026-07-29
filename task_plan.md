@@ -493,3 +493,15 @@
 - 生产最终解析顺序为 API Key > 分组 > 全局；Haiku/Fable 行为保持不变。
 - 正式 binary sha256 为 `a5ae911f437dd2c21a6323ccba18db30b4330f66adf464f9f248e3ac9401dd1a`，`sub2api.service` active、`NRestarts=0`，内外 health 正常，观察窗口内 Claude 请求错误为 0。
 - DB dump、配置快照和旧 binary 均已保留；canary、临时 API Key、raw key 文件、OAuth 副本、本地隧道和测试服务均已清理。
+
+## 2026-07-29 空 502 修复与 GPT-5.6 恢复
+
+- [x] 定位 OpenAI passthrough 空 502 直接透传，以及 buffered `/v1/messages` SSE 失败不换号的问题。
+- [x] 本地实现 429/所有 5xx 与未提交响应的 SSE 终止异常换号；账号耗尽时返回带 request id 的结构化错误。
+- [x] 完成定向测试、后端全量测试、真实 Codex/Claude 本地黑盒。
+- [x] 提交并推送 `d137c99ee fix(openai): fail over retryable upstream errors`。
+- [x] 构建并校验 Linux ARM64 embed binary，完成 `127.0.0.1:18080` canary。
+- [x] 备份生产数据库、全局 setting 与旧 binary。
+- [x] 将全局 Claude Opus/Sonnet 目标恢复为 `gpt-5.6-sol`，正式替换 binary 并重启一次服务。
+- [x] 完成公网 Opus/Sonnet、tool/SSE、Claude Code 非交互与真实 TTY 多轮验收。
+- [x] 确认 `sub2api.service` active/running、`NRestarts=0`，内外 health 正常且发布后无 HTTP 5xx。

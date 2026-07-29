@@ -792,3 +792,63 @@
   - 发布后 `sub2api.service` active、`NRestarts=0`、binary SHA 与候选一致，内网/公网 health 均 ok；首轮 91 行 journal 中 error/panic/fatal 为 0。首个后续快照的 20 条 ERROR 日志实际对应同一 `api_key_id=129` 的 10 次直接 `gpt-5.5 /v1/responses` 重试，均为畸形 tool arguments 导致上游 400；最终复核累计 14 次同类 request error，Claude request error 仍为 0，与本次 5.6 dispatch 无关。
   - 已停止 canary 并确认 18080 无监听；临时生产 API Key `id=515` 已禁用软删除、auth cache 已失效、raw key 文件已销毁；本机 SSH 隧道与测试 TTY 已关闭。
   - 本地账号 `id=2/3` 的临时 OAuth credentials 已清空并禁用软删除；本地 backend、PG、Redis 已停止，8080/5433/6380 无监听；仓库外敏感测试目录共 108 个文件已永久删除。
+
+## 2026-07-28 Sub2API 新机迁移
+
+- 已完整阅读 `planning-with-files`、`sub2api-production-inspection`、`sub2api-deploy` 和 `sub2api-production-regression`。
+- 已确认工作树包含用户现有未提交源码与 `data/`，本任务不会覆盖、回滚或顺手提交这些改动。
+- 已只读复核当前生产服务、数据库/Redis 规模、配置和数据目录大小、二进制 hash、DNS 解析及 Caddy 相关监听端口。
+- 已确认另一项生产磁盘清理任务处于暂停状态，未对生产删除或 vacuum。
+- 已验证目标私钥因权限为 `0644` 被 OpenSSH 拒绝；尚未修改权限，也未能登录目标机。
+- 已发现域名范围歧义：现有线上使用 `claudepool.com`，用户口述为 `cloudpool.com`；等待确认精确主机名。
+- 已决定采用“预恢复演练 + 最终短暂停写 + 一致性快照 + DNS 后切 + 旧机冻结回滚”的迁移策略，不执行无备份热搬。
+- 截至本记录，仅修改本地计划文档；未修改源生产、新机器、Cloudflare DNS、数据库、Redis、systemd 或 Caddy。
+- 用户确认后已把 `/Users/taylor/.ssh/ssh-key-oracle.key` 权限从 `0644` 改为 `0600`；这是当前唯一已执行的本机安全设置修改。
+- 已以 `opc@161.153.91.242` 成功登录并确认免密码 sudo。
+- 目标是 Oracle Linux 9.8 ARM64，2 vCPU、5.5 GiB RAM、4 GiB swap、根盘可用约 20 GiB；规格满足继续迁移预检。
+- 发现架构差异：源生产为 AMD64、目标为 ARM64，进入线上 binary 源码溯源与 ARM64 可复现构建检查。
+- 通过线上 binary 的嵌入字符串定位到 Go 1.26.3、revision `46050f5a82f6bfc882b5c2d036d201b34b29f113`、`vcs.modified=true`，并通过 `--version` 得到短 commit 与构建时间。
+- 已确认当前未提交 context-window 修复不属于线上正式 binary；迁移构建使用 detached `46050f5a`，避免夹带当前 dirty worktree。
+- 已在 `/Users/taylor/.codex/task-snapshots/sub2api-migration-20260728/build-46050` 建立 detached worktree并复制现有嵌入式前端产物。
+- 第一次 AMD64 对照构建成功但 SHA 不匹配，说明 ldflags 与原发布命令仍有差异，尚未生成或上传 ARM64 候选。
+- 错误记录：首次把尚不存在的 worktree 路径作为 `exec` 工作目录，进程创建失败；改为从项目目录创建 worktree 后再 `cd`，未留下额外副作用。
+- 错误记录：一条只读 `rg` 命令包含不存在的 zsh `docker*` glob，被 shell 在执行前中止；已改为明确路径，未产生修改。
+- 已生成 ARM64 正式候选 `/Users/taylor/.codex/task-snapshots/sub2api-migration-20260728/sub2api-linux-arm64-46050f5a`，sha256=`c04ad6f9d2ceb4d978cb63b4887d589320af682472b25ff8500e0d2a22837b15`。
+- 新机已安装 PostgreSQL 18.4、Redis 6.2.22、Caddy 2.11.4、zstd；firewalld 新增 HTTP/HTTPS，SELinux 仍 Enforcing。
+- 新机创建 `sub2api` 系统用户及 `/opt/sub2api`、`/etc/sub2api` 目录；PostgreSQL/Redis 已启用。
+- 首次 PostgreSQL 初始化 locale 为 `en_US.UTF-8`；核验空集群后停止服务，把旧空目录改名为 `data.init-en-us-20260728` 保留，再以 `C.UTF-8`/UTF8 成功重建并启动。
+- 已按源机同版本安装 Xray 26.3.27 ARM64并保持 disabled/stopped；启用 `xray-reality-edge-proxy` Skill 以保护现有 Caddy WebSocket 入口。
+- 已验证一次性 `ssh-agent` 转发可让源机直连目标，不需要生成、复制或安装临时 SSH 私钥。
+- 已直传应用 env、systemd unit、Xray live config、Xray client 参数和 Caddy data；敏感文件未回显。
+- 上传候选 binary 到新机后 staging SHA 校验通过；安装后复核命令因 `opc` 无法遍历 0750 的 `/opt/sub2api` 而在非 sudo `sha256sum` 处中止，前序安装已完成，需用 sudo 继续验证。
+- 使用 sudo 复核目标 binary SHA、版本、ARM64 架构与 Xray live config 均通过；systemd unit 已适配目标服务名并移除不存在的旧机写路径。
+- 已在目标创建 `sub2api` 登录角色和同名数据库，locale/encoding 与源一致；通过服务器间管道复制源角色 SCRAM verifier，目标摘要长度/算法一致，未输出密码。
+- 预切换在线 dump 已从源机直流新机并校验：308,702,763 bytes、970 项、sha256=`01f433c9386cec20ffa359aca6db4394ba9116a104d9287b4632e38ba8d193b7`。
+- 第一次 `pg_restore --list` 因 postgres 无法穿过 `/opt/sub2api` 0750 父目录失败；未放宽权限，改为把归档复制到 postgres 私有目录用于恢复。
+- 一次 `cat | pg_restore --list | wc` 在 `pipefail` 下因上游 SIGPIPE 返回 141，未执行后续恢复；改为 postgres 私有副本的直接文件读取。
+- 第一次业务角色恢复因 `postgres_fdw` 需要 superuser 中止；目标仅有部分演练数据。随后强制断开并重建目标演练库，预创建 `pg_trgm/postgres_fdw`、过滤两项扩展和 COMMENT 后从头恢复成功。
+- PostgreSQL 演练对账通过：users/api_keys/accounts/groups/migrations 与源一致，账号 credentials 摘要一致，usage 水位符合快照时间，业务表 owner 全部正确。
+- 已完成 `/opt/sub2api/data` 预同步并生成/传输 Redis RDB。
+- Redis 6.2 启动失败，原因是无法加载 Redis 7 RDB；启用 Oracle AppStream `redis:7` 并升级到 7.2.14 后成功加载。源/目标持久 db13 均为 352，db0 差 4 个已过期 TTL key。
+- 已安装并验证源 Caddyfile，启用 Caddy/Xray；80/443/10085 监听形态正确，Sub2API 仍未启动。
+- 源机直连目标 80/443 成功；`cc /health` 在目标 app 未启动时返回预期 502，`usage /` 返回预期 302。Mac 透明代理导致的假 200 已作废。
+- 发现并纳入现有 Xray 认证 SOCKS5 `26812/tcp`；目标 firewalld 已放行，Xray 正确监听，但 Oracle Cloud 云侧仍阻断公网连接。
+- 已完成 Xray 443 WebSocket/TLS 端到端：目标出口 IP正确、Google 204；临时敏感客户端配置已销毁。
+- Xray 测试首次直接 source `edge-ws-client.env`，其中 `PATH` 字段覆盖系统 PATH，导致 jq/shred 未执行且留下一个空临时文件；已精确清理该目录，改为 awk 逐字段解析后成功。
+- Cloudflare MCP DNS 方法未在当前任务暴露；IAB 与 Chrome 均无 Cloudflare 会话。Google OAuth 停在多账号选择页，等待用户确认具体邮箱，未选择任何账号。
+- 已确认 DNS TTL 300 秒、源/目标 PostgreSQL 运行参数一致；切换脚本不需要额外参数改写。
+- 最终停写预计约 10–15 分钟：最终 dump 直传、目标从头恢复、最终 data/Redis 增量同步、启动与对账；在 Cloudflare 与 26812 两项外部阻塞解除前不会开始。
+- 2026-07-29：用户确认 Cloudflare 登录邮箱并表示已新增 Oracle Cloud `TCP 26812` 入站；项目 `.env.secrets` 的 Cloudflare API token 验证为 active，可读取 `claudepool.com` zone，因此后续 DNS 通过 API 修改，不再依赖 Chrome。
+- 2026-07-29：从旧生产机对 `161.153.91.242:26812` 做带认证 SOCKS5 端到端复验，出口 IP 为目标机、Google HTTP 204；两个外部阻塞均解除，进入最终停写阶段。
+- 2026-07-29：`02:44:17Z` 停止旧机 Sub2API，确认 8080 关闭；PostgreSQL、Redis、Caddy、Xray 保持运行，记录最终 usage 与账号凭据摘要。
+- 2026-07-29：本机中转最终 dump 受传输回压，取消未完成临时流后改为旧机通过 SSH agent forwarding 直传新机；最终归档 310,786,260 bytes、970 项、sha256=`048591142c4528609a78eeb033527a2905673ff0123ba315fe62f2d8607220ef`。
+- 2026-07-29：完成最终 `data/` 增量与 Redis RDB 同步；目标 PostgreSQL 双并发恢复用时约 5 分 25 秒，核心计数、usage 水位和账号凭据摘要与源完全一致。
+- 2026-07-29：启动目标 `sub2api.service`，health 200、`NRestarts=0`、ARM64 binary sha256=`c04ad6f9d2ceb4d978cb63b4887d589320af682472b25ff8500e0d2a22837b15`；直连 HTTPS、usage 跳转和认证 models smoke 通过。
+- 2026-07-29：Cloudflare 将 `cc` 的 DNS-only A 与 `usage` 的 proxied A 切到 `161.153.91.242`，保留 `admin` 原记录；1.1.1.1 解析和公网 HTTPS 验证通过。
+- 2026-07-29：公网 `/v1/messages` 最小真实请求 HTTP 200，响应保持 Claude 模型并精确返回 `MIGRATION_OK`，request id 存在；进入短观察窗口。
+- 2026-07-29：观察发现新机启动后历史 usage 减少 10,000；只读定位为 `DashboardAggregation` 启动 retention 的 10,000 行批次清理。旧机当前为同一清理后基线，新机在其上新增切换后流量；最终 dump 仍保留清理前完整水位。
+- 2026-07-29：约 10 分钟观察后新机五项服务均 active，Sub2API `NRestarts=0`、health 200、内存峰值约 216 MiB、系统可用约 4.4 GiB、ops error 与 OOM/panic/fatal 均为 0；公网 cc/usage 与认证 SOCKS5 继续通过。
+- 2026-07-29：最终快照新增 1 条 P3 `invalid_request_error`，为客户端请求体读取失败 HTTP 400，无 account/upstream 状态；确认与迁移和 Codex 上游无关。
+- 2026-07-29：已更新 `AGENTS.md`、生产巡检/部署/TTY/临时二进制发布 Skills 到新 ARM64 地址，并新增通过语法检查的 `build-linux-arm64.sh`；未构建或发布新二进制。
+- 2026-07-29：通过既有 session link 通知原磁盘清理任务暂停回滚机清理；对方已验证并确认未修改现生产或回滚机。
+- 2026-07-29：在确认旧机应用已停止后执行 `systemctl reset-failed sub2api`，旧机最终为干净 `inactive`、8080 关闭；PostgreSQL/Redis/Caddy/Xray 保持可用。

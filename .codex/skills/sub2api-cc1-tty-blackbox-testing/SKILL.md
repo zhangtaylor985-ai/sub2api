@@ -120,7 +120,8 @@ curl -fsS http://127.0.0.1:8080/health
 如果是生产或 canary，通过对应日志源观察：
 
 ```bash
-ssh -p 41012 root@172.247.109.38 "journalctl -u sub2api -n 100 --no-pager"
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
+  "sudo journalctl -u sub2api -n 100 --no-pager"
 ```
 
 ## Direct API Smoke First
@@ -286,8 +287,8 @@ docker logs sub2api --tail 200 2>/dev/null || true
 生产 systemd 可用：
 
 ```bash
-ssh -p 41012 root@172.247.109.38 \
-  "journalctl -u sub2api --since '15 minutes ago' --no-pager"
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
+  "sudo journalctl -u sub2api --since '15 minutes ago' --no-pager"
 ```
 
 查 request id 或最近 usage 时，避免输出 raw API key：

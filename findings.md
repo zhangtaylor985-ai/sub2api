@@ -729,3 +729,68 @@
 - GPT-5.6 与 5.4 的唯一持续观察差异仍是：5.6 更积极使用本机完成通知，可能增加一次工具调用和 API 轮次；它不影响答案、协议、effort 或多轮稳定性。
 - 正式 binary sha256=`a5ae911f437dd2c21a6323ccba18db30b4330f66adf464f9f248e3ac9401dd1a`；旧 binary、完整 PG dump 与三份配置快照均已保留。
 - 发布后服务零重启、内外 health 正常；最终复核 Claude 请求错误为 0。首个错误快照的 20 条 ERROR 日志是同一 `api_key_id=129` 的 10 次直接 GPT-5.5 `/v1/responses` 重试，原因是 14,333 字符的畸形 tool argument name 被上游 400 拒绝；最终快照累计 14 次同类 request error，仍与 Claude→GPT-5.6 无关。canary、临时 API Key/raw key、OAuth 副本、隧道、本地服务和敏感证据目录均已清理。
+
+## 2026-07-28 新机迁移预检
+
+- 迁移目标地址为 `161.153.91.242`；用户提供私钥 `/Users/taylor/.ssh/ssh-key-oracle.key`，但未提供 SSH 用户。
+- 私钥当前权限为 `0644`，OpenSSH 因权限过宽拒绝加载。连接新机前必须经用户确认改为 `0600`。
+- 当前生产仍是 `172.247.109.38:41012`，主机名 `C20260613138680`；Sub2API、PostgreSQL 18、Redis、Caddy 均 active。
+- 生产健康检查 HTTP 200，`sub2api.service` active，`NRestarts=3`；当前二进制 sha256=`538f71a58735c2d7744c10154b020ad9db53fc443a630fe0cc446bac2fbe1713`。
+- 源机仅约 2 GiB 内存且无 swap，20 GB 根盘约 95% 已用；迁移前必须先确认新机 RAM、swap 和磁盘容量足以避免重复 OOM/磁盘告警。
+- PostgreSQL 数据目录约 4.5 GB，数据库逻辑大小约 4.4 GB；Redis 约 529 keys、已用约 3 MB；`/opt/sub2api/data` 约 224 MB，历史备份约 1.6 GB。
+- 数据库基线：用户 88、API Key 123、账号 17、usage 约 167 万行、分组 20；最新 usage 时间为 2026-07-28 10:44 UTC。迁移验收需以最终停写后的同类统计为准。
+- Codex/OpenAI 账号及敏感 credentials 存储在 PostgreSQL `accounts.credentials`；不是另有一批独立 auth files。原封迁移 PostgreSQL、环境配置和 Redis 即覆盖该状态。
+- `cc.claudepool.com` 当前从源机解析为 `172.247.109.38`，源站 health 200。
+- `usage.claudepool.com` 当前经 Cloudflare 代理，旧机 Caddy 源站返回跳转；它应与主入口一并处理。
+- `admin.claudepool.com` 当前经 Cloudflare 代理，但旧机依赖的 8317/5173 均无监听，源站实测 502；不能把它误当作当前健康的 Sub2API 服务迁移。
+- `cloudpool.com` 与现有 `claudepool.com` 拼写不同，不能未经确认修改。
+- 另一项生产归档/磁盘清理任务已暂停：未删除历史发布、备份或日志，未改服务配置；不会与本迁移并发。
+- 当前环境未暴露已登录的 Cloudflare DNS MCP 工具；正式切换前需恢复官方入口或采用不泄露凭据的受控 Cloudflare 操作方式。
+- 用户确认可以把私钥权限改为 `0600`，SSH 用户为 `opc`，目标域名拼写为 `claudepool.com`，并授权停写切换。
+- 新机 SSH 已成功：主机名 `default`，Oracle Linux 9.8，架构 `aarch64`，2 vCPU。
+- 新机内存总计约 5.5 GiB、可用约 4.8 GiB，并已有 4 GiB swap；根文件系统 30 GiB、可用约 20 GiB。
+- `opc` 具备免密码 sudo；当前仅监听 SSH/RPC 与两个本机端口，没有 80/443/8080 监听。
+- 旧机正式 binary 为 AMD64，新机为 ARM64，不能原样复制执行；必须从与线上 binary 一致的源码状态交叉构建 ARM64 产物，并核对构建元数据。
+- 线上 binary 内嵌 Go 版本为 1.26.3，`vcs.revision=46050f5a82f6bfc882b5c2d036d201b34b29f113`，`vcs.modified=true`，运行版本为 `0.1.131`，内嵌 commit 为短 SHA `46050f5a`，构建时间为 `2026-07-26T11:19:15Z`。
+- 既有发布记录确认线上 sha256 `538f71a5…1713` 就是私下客户订阅功能的正式构建；当前 365 行 context-window dirty 源码是在该发布后产生，未进入线上 binary，本次迁移不得夹带。
+- 当前 `backend/internal/web/dist` 含该发布的私下订阅页面且后续没有 frontend 源码变更，可作为同提交 ARM64 重建的嵌入式前端输入。
+- 首次隔离 AMD64 重建 sha256 为 `18d58e81…2d7`，与线上不一致；源提交、Go 版本和前端已对齐，下一步需收敛原发布的精确 ldflags/build flags 后再构建 ARM64。
+- 线上 binary 的正式发布记录已确认其源码就是干净提交 `46050f5a` 加同版嵌入式前端；`vcs.modified=true` 来自当时构建工作区状态，不代表当前 context-window dirty 修复已上线。
+- ARM64 候选已从 detached `46050f5a` 构建，Go 1.26.3、`CGO_ENABLED=0`、`-tags=embed`、静态链接，sha256=`c04ad6f9d2ceb4d978cb63b4887d589320af682472b25ff8500e0d2a22837b15`。
+- 新机已从 PostgreSQL 官方 PGDG ARM64 仓库安装 PostgreSQL 18.4，从 Caddy 官方推荐 COPR 安装 Caddy 2.11.4，并安装 Redis 6.2.22、zstd。
+- firewalld 仅开放 SSH/HTTP/HTTPS，8080 未对公网开放；SELinux 继续 Enforcing，并启用 Caddy 连接本机上游所需布尔项。
+- PostgreSQL 包首次初始化继承 `en_US.UTF-8`，与源库 `C.UTF-8` 不一致；确认空集群无角色/业务数据库后将目录改名保留，并重新以 `C.UTF-8`、UTF8、data checksums 初始化成功。
+- 源 Redis 无密码，仅绑定 loopback、protected-mode 开启、RDB 持久化且 AOF 关闭；目标将保持同等边界。
+- Caddy 还承载 `cc.claudepool.com` 下的 Xray WebSocket 路径；DNS 切换时必须同步迁移 Xray，否则会破坏现有辅助入口。
+- 源 Xray 为 26.3.27、WebSocket 监听 `127.0.0.1:10085`、零重启；目标已通过官方 XTLS 安装器安装相同版本 ARM64，当前保持停止。
+- 源 Caddy 证书存储仅约 192 KiB，已通过 SSH 直传预同步到新机，可用于降低 DNS 切换时的证书空窗。
+- 预切换 PostgreSQL dump 直接由源机流向目标，不占源机磁盘；大小 308,702,763 bytes，sha256=`01f433c9386cec20ffa359aca6db4394ba9116a104d9287b4632e38ba8d193b7`，归档目录 970 项。
+- dump 包含 `pg_trgm` 与 `postgres_fdw`。正确恢复方式是先由 postgres 预创建扩展，再在 restore list 中排除扩展及其 COMMENT，剩余对象以 `sub2api` 角色恢复。
+- 恢复后两个扩展归 postgres、业务表/分区非 `sub2api` owner 数为 0。
+- 预切换快照对账：users 88、api_keys 123、accounts 17（未删除 7/active 6/schedulable 5/有 credentials 7）、groups 20、schema_migrations 189、usage_logs 1,670,724，最大 id 2,855,115。
+- 同时刻源库业务实体计数完全一致；源 usage 已继续增长到 1,671,159 / id 2,855,550，差额 435 条符合在线快照后的持续写入。
+- Oracle Linux 初装的非模块 Redis 6.2 无法加载 Redis 7 生成的 RDB；切换到 Oracle AppStream `redis:7` 后安装 Redis 7.2.14，RDB 成功加载。
+- Redis 预同步后源/目标 db13 均为 352 keys；db0 因 TTL 自然到期从源查询时 496 变为目标 492，属于预期的缓存过期，不是迁移丢失。最终停写时仍会重新生成 RDB。
+- 目标 Caddy/Xray 已启动：Caddy 监听 80/443，Xray 仅监听 `127.0.0.1:10085`，配置验证通过；Sub2API 尚未启动。
+- 进一步检查发现 Xray 还有一个认证 SOCKS5 inbound：`0.0.0.0:26812/tcp`、1 个账号、password auth、UDP 关闭；目标已继承相同配置并在 firewalld 放行精确端口。
+- 从源机访问目标 `26812` 仍超时，而目标 80/443 可达，确认阻断在 Oracle Cloud VCN/安全列表；实例无 OCI CLI/config，无法在主机内安全自助修改云侧规则。
+- Xray VLESS WebSocket/TLS 已从源机经目标 `161.153.91.242:443` 完成真实端到端：出口 IP 为目标 IP、Google generate_204 返回 204；临时客户端配置已安全销毁。
+- Mac 即使清空代理变量，透明代理仍会把域名请求送到 Cloudflare，导致 `--resolve` 假 200；所有新机入口验收改由源机直连目标 IP。源机直连目标 `cc /health` 在 Sub2API 未启动时正确 502，`usage /` 正确 302。
+- Cloudflare MCP 配置存在且 OAuth enabled，但当前任务未暴露 DNS 调用方法；Chrome/IAB 均未登录 Cloudflare，Google OAuth 账号选择页有多个账号，不能安全猜测实际 zone owner。
+- 公共 DNS TTL 均为 300 秒：`cc.claudepool.com` DNS-only A 为旧机 `172.247.109.38`；`usage/admin` 为 Cloudflare proxied Anycast。
+- 源/目标 PostgreSQL 的 max_connections、shared_buffers、work_mem、maintenance_work_mem、effective_cache_size、wal/checkpoint/I/O 参数完全一致，无需另做参数迁移。
+- 当前源服务仍 active，`NRestarts=3`、health 200；目标 PostgreSQL/Redis/Caddy/Xray active，Sub2API inactive，不存在双写。
+- 2026-07-29 项目 `.env.secrets` 中存在非空 `CLOUDFLARE_API_TOKEN`；Cloudflare token 验证为 active，且可读取唯一 active 的 `claudepool.com` zone。检查过程未输出 token。
+- 2026-07-29 从旧生产机经目标 `161.153.91.242:26812` 做现有账号的认证 SOCKS5 端到端测试，出口 IP 为目标机、Google `generate_204` 返回 204；Oracle 云侧端口阻塞已解除。
+- 最终停写时间为 `2026-07-29T02:44:17Z`；最终源端 usage 水位为 1,679,142 条、max id 2,863,533、max created_at `2026-07-29 02:44:18.348459+00`。
+- 最终 PostgreSQL 归档为目标机 `/opt/sub2api/backups/sub2api-final-cutover-20260729T024417Z.dump`，310,786,260 bytes、970 项、sha256=`048591142c4528609a78eeb033527a2905673ff0123ba315fe62f2d8607220ef`。
+- 本机中转 dump 因传输回压六分钟仅约 14 MiB；取消未完成流后改用 SSH agent forwarding 让旧机直传新机，几分钟完成且保留同等一致性与归档格式。
+- 最终目标库 users/api_keys/accounts/groups/schema_migrations/usage 水位、账号凭据摘要均与冻结源一致；业务表非 `sub2api` owner 为 0。
+- 新机 `sub2api.service` 启动后 health 200、`NRestarts=0`；旧机直连目标 HTTPS health 200，认证 `/v1/models` 200。
+- Cloudflare 已把 `cc.claudepool.com` 的 DNS-only A 和 `usage.claudepool.com` 的 proxied A 切到 `161.153.91.242`；`admin.claudepool.com` 保持原 Tunnel CNAME 未改。
+- 公网 `/v1/messages` 最小 smoke 返回 HTTP 200、Claude 黑盒模型、精确 `MIGRATION_OK` 和 request id，证明 API Key、映射、Codex/OAuth 调度与 usage 链路可用。
+- 观察窗口内 `DashboardAggregation` 启动保留策略按 10,000 行批次清理过期 usage；新机总数从冻结水位减少 10,000 后继续增长。旧机当前总数也为同一清理后基线，新机等于旧机基线加切换后新流量，排除迁移丢失。
+- 切换前 1,679,142 条 usage 的完整状态仍保存在最终 dump；当前没有 `usage_cleanup_tasks`，也没有继续运行的人工 usage 清理任务。
+- 新机观察约 10 分钟后 `NRestarts=0`、MemoryCurrent 约 193 MiB、MemoryPeak 约 216 MiB、系统可用约 4.4 GiB、swap 基本未使用，ops error 和 journal OOM/panic/fatal 均为 0。
+- 最终观察后出现 1 条 P3 客户端请求错误：OpenAI 请求体读取失败、HTTP 400、无 account/upstream 状态；这是畸形客户端请求，不是迁移、调度或上游故障。
+- 已通过 `coordinate-codex-sessions` 向原磁盘清理任务发送并记录 PROGRESS；对方已首次消费并确认暂停对 `172.247.109.38` 的发布、日志、数据库、Redis、配置和备份清理。

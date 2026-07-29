@@ -3405,6 +3405,28 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
+	if IsOpenAIContextWindowExceededMessage(upstreamMsg) {
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:             account.Platform,
+			AccountID:            account.ID,
+			AccountName:          account.Name,
+			UpstreamStatusCode:   resp.StatusCode,
+			UpstreamRequestID:    resp.Header.Get("x-request-id"),
+			Passthrough:          true,
+			Kind:                 "invalid_request",
+			Message:              upstreamMsg,
+			Detail:               upstreamDetail,
+			UpstreamResponseBody: upstreamDetail,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"code":    "context_length_exceeded",
+				"message": OpenAIContextWindowExceededClientMessage,
+			},
+		})
+		return fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	}
 	// 透传模式保留原始上游错误响应，但运行态账号状态仍需更新，
 	// 避免粘性路由继续复用刚被限流的账号。
 	_ = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
@@ -3518,9 +3540,6 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 }
 
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
-	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
-		return true
-	}
 	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
 	if code == "" {
 		code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
@@ -3530,6 +3549,12 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 		errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
 	}
 	combined := strings.ToLower(strings.TrimSpace(message + " " + code + " " + errType))
+	if IsOpenAIContextWindowExceededMessage(combined) {
+		return false
+	}
+	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
+		return true
+	}
 	if combined == "" {
 		return true
 	}
@@ -3685,6 +3710,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				if rewrittenData, rewritten := rewriteOpenAIContextWindowErrorPayload(dataBytes); rewritten {
+					dataBytes = rewrittenData
+					trimmedData = strings.TrimSpace(string(rewrittenData))
+					line = "data: " + string(rewrittenData)
+				}
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 					return resultWithUsage(),
 						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
@@ -4194,6 +4224,27 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		)
 	}
 
+	if IsOpenAIContextWindowExceededMessage(upstreamMsg) {
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "invalid_request",
+			Message:            upstreamMsg,
+			Detail:             upstreamDetail,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"code":    "context_length_exceeded",
+				"message": OpenAIContextWindowExceededClientMessage,
+			},
+		})
+		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	}
+
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(
 		c,
 		PlatformOpenAI,
@@ -4347,6 +4398,25 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
+	if IsOpenAIContextWindowExceededMessage(upstreamMsg) {
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "invalid_request",
+			Message:            upstreamMsg,
+			Detail:             upstreamDetail,
+		})
+		clientMessage := OpenAIContextWindowExceededClientMessage
+		if opt.BlackBoxClientError {
+			clientMessage = AnthropicContextWindowExceededClientMessage
+		}
+		writeError(c, http.StatusBadRequest, "invalid_request_error", clientMessage)
+		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+	}
 
 	if !opt.BlackBoxClientError {
 		// Apply error passthrough rules
@@ -4650,6 +4720,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			forceFlushFailedEvent := false
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				if rewrittenData, rewritten := rewriteOpenAIContextWindowErrorPayload(dataBytes); rewritten {
+					dataBytes = rewrittenData
+					data = string(rewrittenData)
+					line = "data: " + data
+				}
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 					sawFailedEvent = true
 					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage)
@@ -5169,13 +5244,21 @@ func (s *OpenAIGatewayService) writeOpenAINonStreamingProtocolError(resp *http.R
 	if message == "" {
 		message = "Upstream returned an invalid non-streaming response"
 	}
-	setOpsUpstreamError(c, http.StatusBadGateway, message, "")
+	statusCode := http.StatusBadGateway
+	errType := "upstream_error"
+	clientMessage := message
+	if IsOpenAIContextWindowExceededMessage(message) {
+		statusCode = http.StatusBadRequest
+		errType = "invalid_request_error"
+		clientMessage = OpenAIContextWindowExceededClientMessage
+	}
+	setOpsUpstreamError(c, statusCode, message, "")
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	c.JSON(http.StatusBadGateway, gin.H{
+	c.JSON(statusCode, gin.H{
 		"error": gin.H{
-			"type":    "upstream_error",
-			"message": message,
+			"type":    errType,
+			"message": clientMessage,
 		},
 	})
 	return fmt.Errorf("non-streaming openai protocol error: %s", message)

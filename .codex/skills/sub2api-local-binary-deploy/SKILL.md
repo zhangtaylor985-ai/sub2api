@@ -1,13 +1,13 @@
 ---
 name: sub2api-local-binary-deploy
-description: Use when deploying Sub2API temporarily without GitHub/CI by building a local Linux amd64 binary, transferring it to the production systemd host, optionally using zstd patch-from to avoid slow uploads, backing up /opt/sub2api/sub2api, restarting sub2api.service, and verifying health/smoke/usage. Also use for quickly enabling or disabling Claude Fable 5 support in Sub2API production. Trigger on requests like 本地 build 二进制上传, 临时二进制上线, 不走 GitHub 部署, zstd patch 发布, 开启/关闭 Fable/Fables 模型支持, or fast production hotfix deploy for Sub2API.
+description: Use when deploying Sub2API temporarily without GitHub/CI by building a local Linux arm64 binary, transferring it to the production systemd host, optionally using zstd patch-from to avoid slow uploads, backing up /opt/sub2api/sub2api, restarting sub2api.service, and verifying health/smoke/usage. Also use for quickly enabling or disabling Claude Fable 5 support in Sub2API production. Trigger on requests like 本地 build 二进制上传, 临时二进制上线, 不走 GitHub 部署, zstd patch 发布, 开启/关闭 Fable/Fables 模型支持, or fast production hotfix deploy for Sub2API.
 ---
 
 # Sub2API 临时本地二进制发布
 
 ## 定位
 
-这是 GitHub/CI 发布链路恢复前的临时上线方案：在本地已验证源码上构建 Linux amd64 二进制，上传到新生产机 `/opt/sub2api/releases/`，备份并替换 `/opt/sub2api/sub2api`，最后重启 `sub2api.service`。
+这是 GitHub/CI 发布链路恢复前的临时上线方案：在本地已验证源码上构建 Linux arm64 二进制，上传到生产机 `/opt/sub2api/releases/`，备份并替换 `/opt/sub2api/sub2api`，最后重启 `sub2api.service`。
 
 优先使用正式 GitHub commit/tag 发布；只有用户明确同意临时不走 GitHub，或生产需要快速热修且当前线上不是 Git checkout 时，使用本 Skill。
 
@@ -18,7 +18,7 @@ description: Use when deploying Sub2API temporarily without GitHub/CI by buildin
 - 发布前先说明动作、影响范围和回滚方式；替换 binary 和重启 systemd 前必须得到用户明确确认。
 - 不要回滚或整理无关 dirty worktree；只构建当前用户确认过的工作区状态。
 - 不要把 `.env`、API Key、OAuth token、数据库密码、Redis 密码写入日志、文档或命令输出。
-- 不要在生产机远端编译大 Go 工程作为默认方案；新机内存约 2G 且无 swap，曾在编译 `ent`/依赖时被 OOM kill。
+- 不要在生产机远端编译大 Go 工程作为默认方案；即使当前 ARM64 生产机约 5.5 GiB 内存并有 4 GiB swap，发布构建仍应在本地或独立构建机完成。
 - 大文件上传很慢时，优先用 `zstd --patch-from` 基于旧 binary 生成补丁；不要反复全量传 80M+ binary。
 - 备份和 release 产物默认保留；删除临时文件或清理 release/backups 前另行确认。
 
@@ -42,10 +42,10 @@ NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 go test ./...
 3. 只读检查生产：
 
 ```bash
-ssh -o IPQoS=none -p 41012 root@172.247.109.38 '
+ssh -o IPQoS=none -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 '
   set -e
-  systemctl is-active sub2api
-  sha256sum /opt/sub2api/sub2api
+  sudo systemctl is-active sub2api
+  sudo sha256sum /opt/sub2api/sub2api
   curl -fsS http://127.0.0.1:8080/health
   curl -fsS https://cc.claudepool.com/health
 '
@@ -173,16 +173,16 @@ WHERE g.id = ak.group_id
 
 ## 本地构建
 
-使用脚本生成 Linux amd64 binary 和 `.zst`：
+使用脚本生成 Linux arm64 binary 和 `.zst`：
 
 ```bash
-.codex/skills/sub2api-local-binary-deploy/scripts/build-linux-amd64.sh fable5-billing
+.codex/skills/sub2api-local-binary-deploy/scripts/build-linux-arm64.sh fable5-billing
 ```
 
 脚本会在 `backend/bin/` 下输出：
 
-- `sub2api-linux-amd64-<timestamp>-<suffix>`
-- `sub2api-linux-amd64-<timestamp>-<suffix>.zst`
+- `sub2api-linux-arm64-<timestamp>-<suffix>`
+- `sub2api-linux-arm64-<timestamp>-<suffix>.zst`
 
 记录 binary sha256 和 zst sha256。
 
@@ -193,23 +193,25 @@ WHERE g.id = ak.group_id
 上传 `.zst` 到 release 目录：
 
 ```bash
-rsync -av --partial --append -e 'ssh -o IPQoS=none -p 41012' \
+rsync -av --partial --append -e 'ssh -o IPQoS=none -i /Users/taylor/.ssh/ssh-key-oracle.key' \
   backend/bin/<binary>.zst \
-  root@172.247.109.38:/opt/sub2api/releases/<binary>.zst
+  opc@161.153.91.242:/tmp/<binary>.zst
 ```
 
 远端校验并解压：
 
 ```bash
-ssh -o IPQoS=none -p 41012 root@172.247.109.38 '
+ssh -o IPQoS=none -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 '
   set -euo pipefail
+  sudo install -o sub2api -g sub2api -m 0644 /tmp/<binary>.zst /opt/sub2api/releases/<binary>.zst
+  rm -f /tmp/<binary>.zst
   ZST=/opt/sub2api/releases/<binary>.zst
   OUT=/opt/sub2api/releases/<binary>
-  sha256sum "$ZST"
-  zstd -d -f "$ZST" -o "$OUT"
-  chmod 0755 "$OUT"
-  chown sub2api:sub2api "$OUT"
-  sha256sum "$OUT"
+  sudo sha256sum "$ZST"
+  sudo zstd -d -f "$ZST" -o "$OUT"
+  sudo chmod 0755 "$OUT"
+  sudo chown sub2api:sub2api "$OUT"
+  sudo sha256sum "$OUT"
 '
 ```
 
@@ -226,24 +228,26 @@ ssh -o IPQoS=none -p 41012 root@172.247.109.38 '
 上传 patch：
 
 ```bash
-rsync -av --partial --append -e 'ssh -o IPQoS=none -p 41012' \
+rsync -av --partial --append -e 'ssh -o IPQoS=none -i /Users/taylor/.ssh/ssh-key-oracle.key' \
   backend/bin/<new-binary>-from-<old-sha>.zst \
-  root@172.247.109.38:/opt/sub2api/releases/
+  opc@161.153.91.242:/tmp/
 ```
 
 远端用当前线上 binary 还原 release：
 
 ```bash
-ssh -o IPQoS=none -p 41012 root@172.247.109.38 '
+ssh -o IPQoS=none -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 '
   set -euo pipefail
+  sudo install -o sub2api -g sub2api -m 0644 /tmp/<patch>.zst /opt/sub2api/releases/<patch>.zst
+  rm -f /tmp/<patch>.zst
   PATCH=/opt/sub2api/releases/<patch>.zst
   BASIS=/opt/sub2api/sub2api
   OUT=/opt/sub2api/releases/<new-binary>
-  sha256sum "$BASIS" "$PATCH"
-  zstd -d --patch-from="$BASIS" "$PATCH" -o "$OUT"
-  chmod 0755 "$OUT"
-  chown --reference="$BASIS" "$OUT"
-  sha256sum "$OUT"
+  sudo sha256sum "$BASIS" "$PATCH"
+  sudo zstd -d --patch-from="$BASIS" "$PATCH" -o "$OUT"
+  sudo chmod 0755 "$OUT"
+  sudo chown --reference="$BASIS" "$OUT"
+  sudo sha256sum "$OUT"
 '
 ```
 
@@ -254,33 +258,33 @@ ssh -o IPQoS=none -p 41012 root@172.247.109.38 '
 替换前再次说明将发生一次短暂 `sub2api.service` 重启。用户确认后执行：
 
 ```bash
-ssh -o IPQoS=none -p 41012 root@172.247.109.38 '
+ssh -o IPQoS=none -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 '
   set -euo pipefail
   NEW=/opt/sub2api/releases/<new-binary>
   CUR=/opt/sub2api/sub2api
   BAK=/opt/sub2api/sub2api.bak.<timestamp>-before-<reason>
-  systemctl is-active sub2api
-  sha256sum "$CUR" "$NEW"
-  cp -a "$CUR" "$BAK"
-  install -m 0755 -o sub2api -g sub2api "$NEW" "$CUR"
-  systemctl restart sub2api
+  sudo systemctl is-active sub2api
+  sudo sha256sum "$CUR" "$NEW"
+  sudo cp -a "$CUR" "$BAK"
+  sudo install -m 0755 -o sub2api -g sub2api "$NEW" "$CUR"
+  sudo systemctl restart sub2api
   sleep 2
-  systemctl is-active sub2api
+  sudo systemctl is-active sub2api
   curl -fsS http://127.0.0.1:8080/health
   curl -fsS https://cc.claudepool.com/health
-  sha256sum "$CUR" "$BAK"
+  sudo sha256sum "$CUR" "$BAK"
 '
 ```
 
 回滚使用对应备份：
 
 ```bash
-ssh -o IPQoS=none -p 41012 root@172.247.109.38 '
+ssh -o IPQoS=none -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 '
   set -euo pipefail
   BAK=/opt/sub2api/sub2api.bak.<timestamp>-before-<reason>
-  install -m 0755 -o sub2api -g sub2api "$BAK" /opt/sub2api/sub2api
-  systemctl restart sub2api
-  systemctl is-active sub2api
+  sudo install -m 0755 -o sub2api -g sub2api "$BAK" /opt/sub2api/sub2api
+  sudo systemctl restart sub2api
+  sudo systemctl is-active sub2api
   curl -fsS http://127.0.0.1:8080/health
 '
 ```
@@ -293,8 +297,8 @@ ssh -o IPQoS=none -p 41012 root@172.247.109.38 '
 - 确认没有残留本地/远端上传或构建进程：
 
 ```bash
-ps -o pid,ppid,etime,stat,command | rg 'rsync|ssh -o IPQoS=none -p 41012|go build|zstd.*patch-from' || true
-ssh -o IPQoS=none -p 41012 root@172.247.109.38 \
+ps -o pid,ppid,etime,stat,command | rg 'rsync|ssh -o IPQoS=none.*161\\.153\\.91\\.242|go build|zstd.*patch-from' || true
+ssh -o IPQoS=none -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
   'ps -eo pid,ppid,etime,stat,cmd | grep -E "rsync|go build|sub2api-build" | grep -v grep || true'
 ```
 

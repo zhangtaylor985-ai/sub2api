@@ -483,7 +483,11 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai messages buffered", requestID)
 	if err != nil {
-		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream error")
+		if IsOpenAIContextWindowExceededError(err) {
+			writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", AnthropicContextWindowExceededClientMessage)
+		} else {
+			writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream error")
+		}
 		return nil, err
 	}
 
@@ -493,7 +497,11 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	}
 	if strings.EqualFold(finalResponse.Status, "failed") {
 		msg := openAICompatResponseFailureMessage(finalResponse, "")
-		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream response failed")
+		if IsOpenAIContextWindowExceededMessage(msg) {
+			writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", AnthropicContextWindowExceededClientMessage)
+		} else {
+			writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream response failed")
+		}
 		return nil, fmt.Errorf("upstream response failed: %s", msg)
 	}
 
@@ -838,7 +846,11 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		if msg := openAICompatSSEPayloadErrorMessage(payload); msg != "" {
 			terminalErr = fmt.Errorf("upstream SSE error: %s", msg)
 			if !clientDisconnected {
-				writeAnthropicStreamErrorEvent(c.Writer, gatewayRequestID, "api_error", "Upstream stream error")
+				if IsOpenAIContextWindowExceededMessage(msg) {
+					writeAnthropicStreamErrorEvent(c.Writer, gatewayRequestID, "invalid_request_error", AnthropicContextWindowExceededClientMessage)
+				} else {
+					writeAnthropicStreamErrorEvent(c.Writer, gatewayRequestID, "api_error", "Upstream stream error")
+				}
 				c.Writer.Flush()
 			}
 			return true
@@ -868,7 +880,11 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			msg := openAICompatResponseFailureMessage(event.Response, payload)
 			terminalErr = fmt.Errorf("upstream response failed: %s", msg)
 			if !clientDisconnected {
-				writeAnthropicStreamErrorEvent(c.Writer, gatewayRequestID, "api_error", "Upstream response failed")
+				if IsOpenAIContextWindowExceededMessage(msg) {
+					writeAnthropicStreamErrorEvent(c.Writer, gatewayRequestID, "invalid_request_error", AnthropicContextWindowExceededClientMessage)
+				} else {
+					writeAnthropicStreamErrorEvent(c.Writer, gatewayRequestID, "api_error", "Upstream response failed")
+				}
 				c.Writer.Flush()
 			}
 			return true

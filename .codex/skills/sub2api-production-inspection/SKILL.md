@@ -20,20 +20,21 @@ description: Use when inspecting Sub2API local/production addresses, containers,
 - Frontend: `/Users/taylor/sdk/sub2api/frontend`
 - Maintained remote: `origin git@github.com:zhangtaylor985-ai/sub2api.git`
 - Upstream reference: `upstream https://github.com/Wei-Shaw/sub2api.git`
-- Production SSH: `ssh -p 41012 root@172.247.109.38`
-- Production host name: `C20260613138680`
+- Production SSH: `ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242`
+- Production host name: `default`
+- Production OS / architecture: Oracle Linux 9.8 / ARM64
 - Production app directory: `/opt/sub2api`
 - Production systemd service: `sub2api.service`
 - Public endpoint: `https://cc.claudepool.com`
 - Local app endpoint on production host: `http://127.0.0.1:8080`
 - Caddy route on new host: `cc.claudepool.com -> 127.0.0.1:8080`
-- Cloudflare DNS: `cc.claudepool.com` A record points directly to `172.247.109.38` in DNS-only mode.
-- Old host bridge: old host `204.168.245.138` Caddy still proxies `cc.claudepool.com` to `172.247.109.38:8080`, but DNS no longer points there; keep it only for short rollback observation.
+- Cloudflare DNS: `cc.claudepool.com` is a DNS-only A and `usage.claudepool.com` is a proxied A; both point to `161.153.91.242`.
 - Runtime data: `/opt/sub2api/data`
 - Env file: `/etc/sub2api/sub2api.env`
 - Database: host PostgreSQL 18, database `sub2api`
-- Redis: host `redis-server`
-- Old rollback host: `ssh root@204.168.245.138`, hostname `PG-01`, directory `/root/cliapp/sub2api`, Docker Compose app stopped but Postgres/Redis retained.
+- Redis: host service `redis`
+- Direct rollback host: `ssh -p 41012 root@172.247.109.38`, hostname `C20260613138680`, app stopped with PostgreSQL/Redis/Caddy/Xray/data retained.
+- Legacy rollback host: `ssh root@204.168.245.138`, hostname `PG-01`, directory `/root/cliapp/sub2api`, Docker Compose app stopped but Postgres/Redis retained.
 
 ## Safety Rules
 
@@ -42,21 +43,21 @@ description: Use when inspecting Sub2API local/production addresses, containers,
 - 查 API key 时只输出 `id/user_id/name/group_id/status/last_used_at` 等非敏感字段；不要 SELECT `api_keys.key`，除非为了本机内部缓存失效脚本且不回显。
 - 查 `accounts.credentials` 时只看模型映射等非密钥字段，优先用 JSON 运算输出布尔或非敏感摘要。
 - 需要修改生产配置或数据库时，先说明影响面、回滚方式和是否需要清缓存；用户确认后再执行。
-- 线上应用代码来自 Docker image；发布或回滚使用 `sub2api-deploy` skill，不要用远程编辑器热改源码。
+- 线上应用由 systemd 运行 `/opt/sub2api/sub2api` ARM64 binary；发布或回滚使用 `sub2api-deploy` skill，不要用远程编辑器热改二进制或配置。
 
 ## Basic Production Checks
 
 ```bash
-ssh -p 41012 root@172.247.109.38 'hostname'
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 'hostname'
 
-ssh -p 41012 root@172.247.109.38 \
-  "systemctl status sub2api --no-pager --lines=20"
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
+  "sudo systemctl status sub2api --no-pager --lines=20"
 
-ssh -p 41012 root@172.247.109.38 \
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
   "curl -fsS http://127.0.0.1:8080/health"
 
-ssh -p 41012 root@172.247.109.38 \
-  "journalctl -u sub2api -n 200 --no-pager"
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
+  "sudo journalctl -u sub2api -n 200 --no-pager"
 ```
 
 ## Production Logs And Request ID
@@ -78,10 +79,10 @@ Find one request by request id:
 ```bash
 RID='<request-id>'
 
-ssh -p 41012 root@172.247.109.38 \
-  "grep -F \"$RID\" /opt/sub2api/data/logs/sub2api.log | tail -80"
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
+  "sudo grep -F \"$RID\" /opt/sub2api/data/logs/sub2api.log | tail -80"
 
-ssh -p 41012 root@172.247.109.38 \
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
   "sudo -u postgres psql -d sub2api -F \"|\" -At" <<SQL
 SELECT created_at, request_id, client_request_id, api_key_id, account_id,
        platform, model, status_code, upstream_status_code, error_phase,
@@ -96,7 +97,7 @@ SQL
 Recent error overview:
 
 ```bash
-ssh -p 41012 root@172.247.109.38 \
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
   "sudo -u postgres psql -d sub2api -F \"|\" -At" <<'SQL'
 SELECT created_at, request_id, client_request_id, api_key_id, account_id,
        platform, model, status_code, error_phase, error_type, severity,
@@ -121,14 +122,14 @@ Note: `usage_logs.request_id` is for usage/billing idempotency and can differ fr
 Use container-local `psql`; do not read `.env` just to get credentials.
 
 ```bash
-ssh -p 41012 root@172.247.109.38 \
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
   "sudo -u postgres psql -d sub2api"
 ```
 
 For one-off read-only SQL, prefer a quoted heredoc:
 
 ```bash
-ssh -p 41012 root@172.247.109.38 \
+ssh -i /Users/taylor/.ssh/ssh-key-oracle.key opc@161.153.91.242 \
   "sudo -u postgres psql -d sub2api -F \"|\" -At" <<'SQL'
 SELECT id, name, platform, status
 FROM groups

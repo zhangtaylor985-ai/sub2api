@@ -448,6 +448,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					)
 					continue
 				}
+				if service.IsOpenAIContextWindowExceededError(err) {
+					if !c.Writer.Written() {
+						h.handleStreamingAwareError(
+							c,
+							http.StatusBadRequest,
+							"invalid_request_error",
+							service.OpenAIContextWindowExceededClientMessage,
+							streamStarted,
+						)
+					}
+					reqLog.Warn("openai.context_window_exceeded",
+						zap.Int64("account_id", account.ID),
+						zap.Error(err),
+					)
+					return
+				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
 				fields := []zap.Field{
@@ -842,6 +858,22 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						zap.Int("max_switches", maxAccountSwitches),
 					)
 					continue
+				}
+				if service.IsOpenAIContextWindowExceededError(err) {
+					if !c.Writer.Written() {
+						h.anthropicStreamingAwareError(
+							c,
+							http.StatusBadRequest,
+							"invalid_request_error",
+							service.AnthropicContextWindowExceededClientMessage,
+							streamStarted,
+						)
+					}
+					reqLog.Warn("openai_messages.context_window_exceeded",
+						zap.Int64("account_id", account.ID),
+						zap.Error(err),
+					)
+					return
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 				wroteFallback := h.ensureAnthropicErrorResponse(c, streamStarted)

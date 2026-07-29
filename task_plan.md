@@ -437,6 +437,56 @@
 | 2026-07-26 | 两次 JSONB 清理表达式括号错误 | 两个事务均因 `ON_ERROR_STOP` 在 UPDATE 前完整回滚；先用只读 SELECT/EXPLAIN 验证简化表达式，再执行最终事务 |
 | 2026-07-26 | 发布后迁移核验误查 `schema_migrations.version` | 查询真实 schema 后改用 `filename`，确认 `154_openai_messages_dispatch_global_default.sql` 已应用；未产生写入 |
 
+# 2026-07-28 Sub2API 迁移至 161.153.91.242
+
+## 目标与安全边界
+
+- 将当前生产 Sub2API 的 PostgreSQL、Redis、应用二进制、运行配置、数据目录和 Codex/OAuth 账号完整迁移到 `161.153.91.242`。
+- 数据库中的账号凭据、API Key、usage 数据和模型映射必须保持一致；敏感配置只通过加密 SSH 通道传输，目标权限不低于源机。
+- 必须创建切换时点的最终一致性备份；不把“当前最新数据”与“无备份”混为一谈。
+- 旧机在切换后停止应用写入并完整保留，作为短期回滚点；观察期结束前不删除源数据库、Redis、配置、日志或备份。
+- DNS 仅在新机恢复和本地/Host Header 验证全部通过后修改。
+
+## 阶段
+
+| 阶段 | 状态 | 门禁与输出 |
+| --- | --- | --- |
+| 0. 源端与目标端只读预检 | complete | 目标规格、架构、网络、运行服务和 binary 源码基线已确认 |
+| 1. 新机基础环境 | complete | PostgreSQL 18、Redis 7、Caddy、Xray、systemd 用户/目录和防火墙已准备并验证 |
+| 2. 预同步与恢复演练 | complete | PG/Redis/data/Caddy/Xray 预同步、恢复、对账及 443 端到端验证通过 |
+| 3. 最终停写与一致性迁移 | complete | 最终 PG dump、Redis RDB 与 data 增量已传输；目标从头恢复成功并完成一致性对账 |
+| 4. 新机验收 | complete | health、binary hash、核心行数、usage、账号凭据摘要、Redis 与公网 Claude smoke 均通过 |
+| 5. DNS/TLS 切换 | complete | `cc` 与 `usage` 已切到 `161.153.91.242`，公网 HTTPS、跳转与真实请求通过 |
+| 6. 观察与回滚保护 | complete | 新机稳定运行、真实流量增长、零重启/零硬错误；旧机冻结并通过跨任务协调暂停清理 |
+
+## 回滚原则
+
+- 新机未通过全部验收时不改 DNS。
+- DNS 切换后若新机异常，立即阻断新机写入、把域名切回旧机并恢复旧机 Sub2API。
+- 切换后已经写入新机的数据不能静默丢弃；是否回滚必须先评估增量 usage/账号配置，必要时采用前滚修复。
+
+## 已确认事项
+
+- 用户已授权把 `/Users/taylor/.ssh/ssh-key-oracle.key` 从 `0644` 调整为 `0600`，并确认目标 SSH 用户为 `opc`。
+- 用户确认域名为 `claudepool.com`，并授权执行最终停写与迁移。
+- 本次默认迁移 `cc.claudepool.com` 与 `usage.claudepool.com`；旧源站已经 502 的 `admin.claudepool.com` 不纳入健康服务切换，除非后续发现其真实后端并通过验收。
+
+## 当前外部阻塞
+
+- 已解除：项目 `.env.secrets` 中的 Cloudflare API token 状态为 active，可读取 `claudepool.com` zone；不会在日志或文档中记录 token。
+- 已解除：从旧生产机通过目标 `161.153.91.242:26812` 做带认证 SOCKS5 端到端测试，出口 IP 为目标机且 Google 返回 HTTP 204。
+- 已进入最终停写与一致性迁移阶段。
+- 当前迁移六个阶段均已完成；旧机下线或清理必须作为观察窗口结束后的独立任务重新确认。
+
+## 迁移错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-07-29 | 最终预检首次把带参数的 SSH 命令保存在普通 shell 字符串中，zsh 将整段当作命令名并在连接前退出 | 改为直接调用完整 `ssh` 命令；未连接生产、未停止服务、未产生任何远端修改 |
+| 2026-07-29 | DNS 切换脚本在函数中使用 zsh 特殊变量名 `path`，覆盖命令搜索路径并在首次 GET 前报 `curl: command not found` | 改名为 `api_path` 后重跑；脚本未发出 API 请求，Cloudflare DNS 尚未改变 |
+| 2026-07-29 | 公网 `/v1/messages` smoke 的首次内联 SSH 命令因本地 zsh 对嵌套 jq 引号和 `?` 通配符展开而在连接前退出 | 改用单引号 heredoc 把脚本传给远端 bash；首次未连接远端、未发模型请求 |
+| 2026-07-29 | 文档地址搜索包含不存在的 `.codex/skills/sub2api-*.md` zsh glob，命令在执行前退出 | 改为直接对 `.codex/skills` 目录执行 `rg`；未修改文件 |
+
 ## 发布结论
 
 - GPT-5.6 Sol 已达到 GPT-5.4 门禁，生产全局默认已切换为 `gpt-5.6-sol`。

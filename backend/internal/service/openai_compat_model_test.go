@@ -1980,43 +1980,74 @@ func TestForwardAsAnthropic_StreamEOFAfterOpenToolUseReturnsMissingTerminalError
 	require.Contains(t, rec.Body.String(), `"type":"tool_use"`)
 }
 
-func TestForwardAsAnthropic_BufferedSSEErrorFrameReturnsStreamError(t *testing.T) {
+func TestForwardAsAnthropic_BufferedRetryableTerminalFailuresReturnFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
 	body := []byte(`{"model":"gpt-5.4","max_tokens":16,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
 
-	upstreamBody := strings.Join([]string{
-		`data: {"error":{"message":"empty_stream: upstream stream closed before first payload","type":"server_error"}}`,
-		"",
-	}, "\n")
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_sse_error_frame"}},
-		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
-	}}
-
-	svc := &OpenAIGatewayService{httpUpstream: upstream}
-	account := &Account{
-		ID:          1,
-		Name:        "openai-oauth",
-		Platform:    PlatformOpenAI,
-		Type:        AccountTypeOAuth,
-		Concurrency: 1,
-		Credentials: map[string]any{
-			"access_token":       "oauth-token",
-			"chatgpt_account_id": "chatgpt-acc",
+	testCases := []struct {
+		name         string
+		upstreamBody string
+	}{
+		{
+			name: "sse_error_frame",
+			upstreamBody: strings.Join([]string{
+				`data: {"error":{"message":"empty_stream: upstream stream closed before first payload","type":"server_error"}}`,
+				"",
+			}, "\n"),
+		},
+		{
+			name: "missing_terminal_event",
+			upstreamBody: strings.Join([]string{
+				`data: {"type":"response.created","response":{"id":"resp_missing_terminal","model":"gpt-5.4"}}`,
+				"",
+			}, "\n"),
+		},
+		{
+			name: "response_failed",
+			upstreamBody: strings.Join([]string{
+				`data: {"type":"response.failed","response":{"id":"resp_failed","status":"failed","error":{"message":"upstream processing failed"}}}`,
+				"",
+			}, "\n"),
 		},
 	}
 
-	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.1")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "upstream SSE error")
-	require.Nil(t, result)
-	require.Contains(t, rec.Body.String(), "Upstream stream error")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_buffered_failover"}},
+				Body:       io.NopCloser(strings.NewReader(tc.upstreamBody)),
+			}}
+
+			svc := &OpenAIGatewayService{httpUpstream: upstream}
+			account := &Account{
+				ID:          1,
+				Name:        "openai-oauth",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"access_token":       "oauth-token",
+					"chatgpt_account_id": "chatgpt-acc",
+				},
+			}
+
+			result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.1")
+			require.Error(t, err)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+			require.Nil(t, result)
+			require.False(t, c.Writer.Written())
+			require.Empty(t, rec.Body.String())
+		})
+	}
 }
 
 func TestForwardAsAnthropic_BufferedContextWindowErrorPromptsCompact(t *testing.T) {

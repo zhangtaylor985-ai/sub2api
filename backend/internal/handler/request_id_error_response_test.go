@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -97,4 +98,33 @@ func TestResponsesFailedSSEIncludesRequestID(t *testing.T) {
 	data := sseDataJSON(t, rec.Body.String())
 	require.Equal(t, "rid-failed", gjson.Get(data, "response.error.request_id").String())
 	require.Equal(t, "server_error", gjson.Get(data, "response.error.code").String())
+}
+
+func TestOpenAIFailoverExhaustedEmpty502HasStructuredBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, rec := testContextWithRequestID("/v1/responses", "rid-empty-502")
+
+	(&OpenAIGatewayHandler{}).handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode: http.StatusBadGateway,
+	}, false)
+
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+	require.Equal(t, "Upstream service temporarily unavailable", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+	require.Equal(t, "rid-empty-502", gjson.GetBytes(rec.Body.Bytes(), "error.request_id").String())
+}
+
+func TestAnthropicFailoverExhaustedEmpty502HasStructuredBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, rec := testContextWithRequestID("/v1/messages", "rid-anthropic-empty-502")
+
+	(&OpenAIGatewayHandler{}).handleAnthropicFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode: http.StatusBadGateway,
+	}, false)
+
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Equal(t, "error", gjson.GetBytes(rec.Body.Bytes(), "type").String())
+	require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+	require.Equal(t, "Upstream service temporarily unavailable", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+	require.Equal(t, "rid-anthropic-empty-502", gjson.GetBytes(rec.Body.Bytes(), "request_id").String())
 }

@@ -392,7 +392,7 @@ func (s *OpenAIGatewayService) forwardAsAnthropic(
 		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime, compatOptions)
 	} else {
 		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
-		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime, compatOptions)
+		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime, compatOptions)
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
@@ -473,6 +473,7 @@ func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
 func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -485,24 +486,28 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	if err != nil {
 		if IsOpenAIContextWindowExceededError(err) {
 			writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", AnthropicContextWindowExceededClientMessage)
-		} else {
-			writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream error")
+			return nil, err
 		}
-		return nil, err
+		return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, nil, err.Error())
 	}
 
 	if finalResponse == nil {
-		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
-		return nil, fmt.Errorf("upstream stream ended without terminal event")
+		return nil, s.newOpenAIStreamFailoverError(
+			c,
+			account,
+			false,
+			requestID,
+			nil,
+			"OpenAI stream ended without a terminal response event",
+		)
 	}
 	if strings.EqualFold(finalResponse.Status, "failed") {
 		msg := openAICompatResponseFailureMessage(finalResponse, "")
 		if IsOpenAIContextWindowExceededMessage(msg) {
 			writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", AnthropicContextWindowExceededClientMessage)
-		} else {
-			writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream response failed")
+			return nil, fmt.Errorf("upstream response failed: %s", msg)
 		}
-		return nil, fmt.Errorf("upstream response failed: %s", msg)
+		return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, nil, msg)
 	}
 
 	// When the terminal event has an empty output array, reconstruct from

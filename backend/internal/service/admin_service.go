@@ -2275,6 +2275,10 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCre
 	if input.Concurrency < 0 {
 		return nil, infraerrors.BadRequest("INVALID_API_KEY_CONCURRENCY", "concurrency must be non-negative")
 	}
+	expiresAt, err := resolveAPIKeyExpiration(input.ExpiresAt, time.Now())
+	if err != nil {
+		return nil, err
+	}
 
 	userID, err := s.resolveAdminAPIKeyOwner(ctx, input.UserID)
 	if err != nil {
@@ -2312,7 +2316,7 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, input AdminCre
 		RateMultiplier:           rateMultiplier,
 		TokenPackageRequired:     input.TokenPackageRequired,
 		QuotaUsed:                0,
-		ExpiresAt:                input.ExpiresAt,
+		ExpiresAt:                expiresAt,
 		RateLimit5h:              input.RateLimit5h,
 		RateLimit1d:              input.RateLimit1d,
 		RateLimit7d:              input.RateLimit7d,
@@ -2596,11 +2600,11 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 		apiKey.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
 	}
 	if input.ClearExpires {
-		apiKey.ExpiresAt = nil
-		if apiKey.Status == StatusAPIKeyExpired {
-			apiKey.Status = StatusActive
-		}
+		return nil, ErrAPIKeyExpirationRequired
 	} else if input.ExpiresAt != nil {
+		if !input.ExpiresAt.After(time.Now()) {
+			return nil, ErrAPIKeyExpirationInvalid
+		}
 		apiKey.ExpiresAt = input.ExpiresAt
 		if apiKey.Status == StatusAPIKeyExpired && time.Now().Before(*input.ExpiresAt) {
 			apiKey.Status = StatusActive

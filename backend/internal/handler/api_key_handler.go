@@ -31,12 +31,12 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
 	Name          string   `json:"name" binding:"required"`
-	GroupID       *int64   `json:"group_id"`        // nullable
-	CustomKey     *string  `json:"custom_key"`      // 可选的自定义key
-	IPWhitelist   []string `json:"ip_whitelist"`    // IP 白名单
-	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
-	Quota         *float64 `json:"quota"`           // 配额限制 (USD)
-	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
+	GroupID       *int64   `json:"group_id"`                                           // nullable
+	CustomKey     *string  `json:"custom_key"`                                         // 可选的自定义key
+	IPWhitelist   []string `json:"ip_whitelist"`                                       // IP 白名单
+	IPBlacklist   []string `json:"ip_blacklist"`                                       // IP 黑名单
+	Quota         *float64 `json:"quota"`                                              // 配额限制 (USD)
+	ExpiresInDays *int     `json:"expires_in_days" binding:"omitempty,min=1,max=3650"` // 过期天数，默认 30 天
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h *float64 `json:"rate_limit_5h"`

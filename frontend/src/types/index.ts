@@ -603,7 +603,7 @@ export interface CreateApiKeyRequest {
   quota?: number // Quota limit in USD (0 = unlimited)
   token_package_required?: boolean
   concurrency?: number // API key concurrency override (0 = inherit group/user)
-  expires_in_days?: number // Days until expiry (null = never expires)
+  expires_in_days?: number // Days until expiry (omitted = backend default of 30 days)
   expires_at?: string | null
   rate_limit_5h?: number
   rate_limit_1d?: number

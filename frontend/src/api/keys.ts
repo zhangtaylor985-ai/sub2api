@@ -53,7 +53,7 @@ export async function getById(id: number): Promise<ApiKey> {
  * @param ipWhitelist - Optional IP whitelist
  * @param ipBlacklist - Optional IP blacklist
  * @param quota - Optional quota limit in USD (0 = unlimited)
- * @param expiresInDays - Optional days until expiry (undefined = never expires)
+ * @param expiresInDays - Optional days until expiry (undefined = backend default of 30 days)
  * @param rateLimitData - Optional rate limit fields
  * @returns Created API key
  */

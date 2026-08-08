@@ -769,26 +769,12 @@
 
         <!-- Expiration Section -->
         <div class="space-y-3">
-          <div class="flex items-center justify-between">
+          <div>
             <label class="input-label mb-0">{{ t('keys.expiration') }}</label>
-            <button
-              type="button"
-              @click="formData.enable_expiration = !formData.enable_expiration"
-              :class="[
-                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.enable_expiration ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  formData.enable_expiration ? 'translate-x-4' : 'translate-x-0'
-                ]"
-              />
-            </button>
+            <p class="input-hint mt-1">{{ t('keys.expirationRequiredHint') }}</p>
           </div>
 
-          <div v-if="formData.enable_expiration" class="space-y-4 pt-2">
+          <div class="space-y-4 pt-2">
             <!-- Quick select buttons (for both create and edit mode) -->
             <div class="flex flex-wrap gap-2">
               <button
@@ -1085,6 +1071,12 @@ const formatDateTimeLocal = (isoDate: string): string => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+const expirationDateFromDays = (days: number): string => {
+  const expiresAt = new Date()
+  expiresAt.setDate(expiresAt.getDate() + days)
+  return formatDateTimeLocal(expiresAt.toISOString())
+}
+
 interface GroupOption {
   value: number
   label: string
@@ -1185,9 +1177,8 @@ const formData = ref({
   rate_limit_5h: null as number | null,
   rate_limit_1d: null as number | null,
   rate_limit_7d: null as number | null,
-  enable_expiration: false,
   expiration_preset: '30' as '7' | '30' | '90' | 'custom',
-  expiration_date: ''
+  expiration_date: expirationDateFromDays(30)
 })
 
 // 自定义Key验证
@@ -1390,7 +1381,6 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 const editKey = (key: ApiKey) => {
   selectedKey.value = key
   const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
-  const hasExpiration = !!key.expires_at
   formData.value = {
     name: key.name,
     group_id: key.group_id,
@@ -1406,9 +1396,8 @@ const editKey = (key: ApiKey) => {
     rate_limit_5h: key.rate_limit_5h || null,
     rate_limit_1d: key.rate_limit_1d || null,
     rate_limit_7d: key.rate_limit_7d || null,
-    enable_expiration: hasExpiration,
     expiration_preset: 'custom',
-    expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : ''
+    expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : expirationDateFromDays(30)
   }
   showEditModal.value = true
 }
@@ -1513,23 +1502,37 @@ const handleSubmit = async () => {
   // Calculate quota value (null/empty/0 = unlimited, stored as 0)
   const quota = formData.value.quota && formData.value.quota > 0 ? formData.value.quota : 0
 
-  // Calculate expiration
+  if (!formData.value.expiration_date) {
+    appStore.showError(t('keys.expirationRequired'))
+    return
+  }
+
+  // Calculate mandatory expiration
   let expiresInDays: number | undefined
-  let expiresAt: string | null | undefined
-  if (formData.value.enable_expiration && formData.value.expiration_date) {
-    if (!showEditModal.value) {
-      // Create mode: calculate days from date
-      const expDate = new Date(formData.value.expiration_date)
-      const now = new Date()
-      const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      expiresInDays = diffDays > 0 ? diffDays : 1
-    } else {
-      // Edit mode: use custom date directly
-      expiresAt = new Date(formData.value.expiration_date).toISOString()
+  let expiresAt: string | undefined
+  const expDate = new Date(formData.value.expiration_date)
+  if (Number.isNaN(expDate.getTime())) {
+    appStore.showError(t('keys.expirationInvalid'))
+    return
+  }
+  if (!showEditModal.value) {
+    const diffDays = Math.ceil((expDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    if (diffDays < 1) {
+      appStore.showError(t('keys.expirationFutureRequired'))
+      return
     }
-  } else if (showEditModal.value) {
-    // Edit mode: if expiration disabled or date cleared, send empty string to clear
-    expiresAt = ''
+    expiresInDays = diffDays
+  } else if (selectedKey.value) {
+    const originalExpiration = selectedKey.value.expires_at
+      ? formatDateTimeLocal(selectedKey.value.expires_at)
+      : ''
+    if (formData.value.expiration_date !== originalExpiration) {
+      if (expDate.getTime() <= Date.now()) {
+        appStore.showError(t('keys.expirationFutureRequired'))
+        return
+      }
+      expiresAt = expDate.toISOString()
+    }
   }
 
   // Calculate rate limit values (send 0 when toggle is off)
@@ -1623,9 +1626,8 @@ const closeModals = () => {
     rate_limit_5h: null,
     rate_limit_1d: null,
     rate_limit_7d: null,
-    enable_expiration: false,
     expiration_preset: '30',
-    expiration_date: ''
+    expiration_date: expirationDateFromDays(30)
   }
 }
 
@@ -1637,9 +1639,7 @@ const confirmResetQuota = () => {
 // Set expiration date based on quick select days
 const setExpirationDays = (days: number) => {
   formData.value.expiration_preset = days.toString() as '7' | '30' | '90'
-  const expDate = new Date()
-  expDate.setDate(expDate.getDate() + days)
-  formData.value.expiration_date = formatDateTimeLocal(expDate.toISOString())
+  formData.value.expiration_date = expirationDateFromDays(days)
 }
 
 // Reset quota used for an API key

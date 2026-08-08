@@ -511,16 +511,29 @@ func TestAdminService_AdminUpdateAPIKeyPolicy_RejectsInvalidStatus(t *testing.T)
 	require.Nil(t, apiKeyRepo.updated)
 }
 
-func TestAdminService_AdminUpdateAPIKeyPolicy_ClearsExpiration(t *testing.T) {
+func TestAdminService_AdminUpdateAPIKeyPolicy_RejectsClearingExpiration(t *testing.T) {
 	expiresAt := time.Now().Add(time.Hour)
 	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusAPIKeyExpired, ExpiresAt: &expiresAt}
 	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
 	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
 
-	got, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{ClearExpires: true})
-	require.NoError(t, err)
-	require.Nil(t, got.ExpiresAt)
-	require.Equal(t, StatusActive, got.Status)
+	_, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{ClearExpires: true})
+	require.Error(t, err)
+	require.Equal(t, "API_KEY_EXPIRATION_REQUIRED", infraerrors.Reason(err))
+	require.Nil(t, apiKeyRepo.updated)
+}
+
+func TestAdminService_AdminUpdateAPIKeyPolicy_RejectsPastExpiration(t *testing.T) {
+	existingExpiration := time.Now().Add(time.Hour)
+	pastExpiration := time.Now().Add(-time.Hour)
+	existing := &APIKey{ID: 1, Key: "sk-test", Status: StatusActive, ExpiresAt: &existingExpiration}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	_, err := svc.AdminUpdateAPIKeyPolicy(context.Background(), 1, AdminUpdateAPIKeyPolicyInput{ExpiresAt: &pastExpiration})
+	require.Error(t, err)
+	require.Equal(t, "API_KEY_EXPIRATION_INVALID", infraerrors.Reason(err))
+	require.Nil(t, apiKeyRepo.updated)
 }
 
 func TestAdminService_AdminUpdateAPIKeyPolicy_UpdatesWeeklyWindowStart(t *testing.T) {

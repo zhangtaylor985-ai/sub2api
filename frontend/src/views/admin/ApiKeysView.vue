@@ -273,6 +273,18 @@
           </label>
           <label class="space-y-1 md:col-span-2">
             <span class="input-label">{{ t('admin.apiKeys.form.expiresAt') }}</span>
+            <span class="input-hint">{{ t('admin.apiKeys.form.expirationRequiredHint') }}</span>
+            <div class="flex flex-wrap gap-2 py-1">
+              <button
+                v-for="days in [7, 30, 90]"
+                :key="days"
+                type="button"
+                class="rounded-lg bg-gray-100 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
+                @click="setAdminExpirationDays(createForm, days)"
+              >
+                {{ t('admin.apiKeys.form.expiresInDays', { days }) }}
+              </button>
+            </div>
             <input v-model="createForm.expires_at_local" type="datetime-local" class="input" />
           </label>
           <div class="space-y-2 md:col-span-2">
@@ -394,11 +406,21 @@
           </label>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.expiresAt') }}</span>
+            <div class="flex flex-wrap gap-2 py-1">
+              <button
+                v-for="days in [7, 30, 90]"
+                :key="days"
+                type="button"
+                class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
+                @click="setAdminExpirationDays(editForm, days)"
+              >
+                {{ t('admin.apiKeys.form.expiresInDays', { days }) }}
+              </button>
+            </div>
             <input
               v-model="editForm.expires_at_local"
               type="datetime-local"
               class="input"
-              :disabled="editForm.clear_expires_at"
             />
           </label>
           <label class="space-y-1 md:col-span-2">
@@ -458,10 +480,6 @@
           </div>
         </div>
         <div class="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-dark-300">
-          <label class="inline-flex items-center gap-2">
-            <input v-model="editForm.clear_expires_at" type="checkbox" class="rounded border-gray-300 text-primary-600" />
-            <span>{{ t('admin.apiKeys.form.clearExpires') }}</span>
-          </label>
           <label class="inline-flex items-center gap-2">
             <input v-model="editForm.reset_quota" type="checkbox" class="rounded border-gray-300 text-primary-600" />
             <span>{{ t('admin.apiKeys.form.resetQuota') }}</span>
@@ -638,6 +656,13 @@ const sortState = reactive({
   sort_order: 'desc' as 'asc' | 'desc'
 })
 
+const dateTimeLocalFromDays = (days: number): string => {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
+}
+
 const defaultCreateForm = () => ({
   name: '',
   custom_key: '',
@@ -658,7 +683,7 @@ const defaultCreateForm = () => ({
   dispatch_sonnet_mapped_model: '',
   dispatch_haiku_mapped_model: '',
   dispatch_exact_model_mappings: {} as Record<string, string>,
-  expires_at_local: ''
+  expires_at_local: dateTimeLocalFromDays(30)
 })
 
 const createForm = reactive(defaultCreateForm())
@@ -682,7 +707,6 @@ const editForm = reactive({
   dispatch_exact_model_mappings: {} as Record<string, string>,
   expires_at_local: '',
   window_7d_start_local: '',
-  clear_expires_at: false,
   reset_quota: false,
   reset_rate_limit_usage: false
 })
@@ -796,13 +820,22 @@ const toDateTimeLocal = (value?: string | null) => {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
 }
 
-const toISOStringOrEmpty = (value: string) => {
-  if (!value) return ''
+const toFutureExpirationISOString = (value: string) => {
+  if (!value) {
+    throw new Error(t('admin.apiKeys.errors.expirationRequired'))
+  }
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
     throw new Error(t('admin.apiKeys.errors.invalidExpiresAt'))
   }
+  if (date.getTime() <= Date.now()) {
+    throw new Error(t('admin.apiKeys.errors.expirationFutureRequired'))
+  }
   return date.toISOString()
+}
+
+const setAdminExpirationDays = (form: { expires_at_local: string }, days: number) => {
+  form.expires_at_local = dateTimeLocalFromDays(days)
 }
 
 const toWeeklyWindowISOStringOrEmpty = (value: string) => {
@@ -1046,9 +1079,8 @@ const openEditDialog = (key: ApiKey) => {
   editForm.allow_gpt_family = key.allow_gpt_family !== false
   editForm.allow_image_generation = key.allow_image_generation !== false
   applyDispatchConfigToForm(editForm, key.messages_dispatch_model_config)
-  editForm.expires_at_local = toDateTimeLocal(key.expires_at)
+  editForm.expires_at_local = toDateTimeLocal(key.expires_at) || dateTimeLocalFromDays(30)
   editForm.window_7d_start_local = toDateTimeLocal(key.window_7d_start)
-  editForm.clear_expires_at = false
   editForm.reset_quota = false
   editForm.reset_rate_limit_usage = false
   showEditDialog.value = true
@@ -1124,7 +1156,7 @@ const handleCreate = async () => {
   }
   submitting.value = true
   try {
-    const expiresAt = toISOStringOrEmpty(createForm.expires_at_local)
+    const expiresAt = toFutureExpirationISOString(createForm.expires_at_local)
     const result = await adminAPI.apiKeys.create({
       name: createForm.name.trim(),
       custom_key: createForm.custom_key.trim() || undefined,
@@ -1142,7 +1174,7 @@ const handleCreate = async () => {
       allow_gpt_family: createForm.allow_gpt_family,
       allow_image_generation: createForm.allow_image_generation,
       messages_dispatch_model_config: dispatchConfigFromForm(createForm),
-      expires_at: expiresAt || undefined
+      expires_at: expiresAt
     })
     apiKeys.value.unshift(result.api_key)
     pagination.total += 1
@@ -1165,7 +1197,10 @@ const handleUpdate = async () => {
   }
   submitting.value = true
   try {
-    const expiresAt = editForm.clear_expires_at ? '' : toISOStringOrEmpty(editForm.expires_at_local)
+    const originalExpirationLocal = toDateTimeLocal(editingKey.value.expires_at)
+    const expiresAt = editForm.expires_at_local !== originalExpirationLocal
+      ? toFutureExpirationISOString(editForm.expires_at_local)
+      : undefined
     const originalWeeklyWindowStartLocal = toDateTimeLocal(editingKey.value.window_7d_start)
     const weeklyWindowStart =
       editForm.window_7d_start_local !== originalWeeklyWindowStartLocal
@@ -1185,7 +1220,7 @@ const handleUpdate = async () => {
       allow_gpt_family: editForm.allow_gpt_family,
       allow_image_generation: editForm.allow_image_generation,
       messages_dispatch_model_config: dispatchConfigFromForm(editForm),
-      expires_at: editForm.clear_expires_at || editForm.expires_at_local ? expiresAt : undefined,
+      expires_at: expiresAt,
       window_7d_start: weeklyWindowStart,
       reset_quota: editForm.reset_quota,
       reset_rate_limit_usage: editForm.reset_rate_limit_usage

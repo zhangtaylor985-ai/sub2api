@@ -48,10 +48,13 @@ func (s *APIKeyRepoSuite) TestCreate() {
 	err := s.repo.Create(s.ctx, key)
 	s.Require().NoError(err, "Create")
 	s.Require().NotZero(key.ID, "expected ID to be set")
+	s.Require().NotNil(key.ExpiresAt, "expected mandatory default expiration")
+	s.Require().WithinDuration(time.Now().AddDate(0, 0, service.DefaultAPIKeyExpirationDays), *key.ExpiresAt, 5*time.Second)
 
 	got, err := s.repo.GetByID(s.ctx, key.ID)
 	s.Require().NoError(err, "GetByID")
 	s.Require().Equal("sk-create-test", got.Key)
+	s.Require().NotNil(got.ExpiresAt)
 }
 
 func (s *APIKeyRepoSuite) TestGetByID_NotFound() {

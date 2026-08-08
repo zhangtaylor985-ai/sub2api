@@ -91,11 +91,12 @@ func (APIKey) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0).
 			Comment("Used quota amount in USD"),
-		// Expiration time (nil = never expires)
+		// Kept nillable in the generated model for legacy compatibility; migration 156
+		// backfills existing rows and enforces a database-level default and NOT NULL.
 		field.Time("expires_at").
 			Optional().
 			Nillable().
-			Comment("Expiration time for this API key (null = never expires)"),
+			Comment("Mandatory expiration time for this API key"),
 
 		// ========== Rate limit fields ==========
 		// Rate limit configuration (0 = unlimited)

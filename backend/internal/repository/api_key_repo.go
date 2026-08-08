@@ -39,6 +39,10 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
 	service.NormalizeAPIKeyModelFamilyPolicy(key)
+	if key.ExpiresAt == nil {
+		expiresAt := service.DefaultAPIKeyExpiresAt(time.Now())
+		key.ExpiresAt = &expiresAt
+	}
 	builder := r.client.APIKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
@@ -214,6 +218,9 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) error {
+	if key.ExpiresAt == nil {
+		return service.ErrAPIKeyExpirationRequired
+	}
 	// 使用原子操作：将软删除检查与更新合并到同一语句，避免竞态条件。
 	// 之前的实现先检查 Exist 再 UpdateOneID，若在两步之间发生软删除，
 	// 则会更新已删除的记录。
@@ -247,12 +254,8 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		builder.ClearGroupID()
 	}
 
-	// Expiration time
-	if key.ExpiresAt != nil {
-		builder.SetExpiresAt(*key.ExpiresAt)
-	} else {
-		builder.ClearExpiresAt()
-	}
+	// API keys always have a mandatory expiration time.
+	builder.SetExpiresAt(*key.ExpiresAt)
 
 	// Rate limit window start times
 	if key.Window5hStart != nil {

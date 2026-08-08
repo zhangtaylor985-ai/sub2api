@@ -32,7 +32,7 @@ type AdminUpdateAPIKeyGroupRequest struct {
 	Quota                       *float64                                   `json:"quota"`                          // nil=不修改, 0=不限制
 	RateMultiplier              *float64                                   `json:"rate_multiplier"`                // nil=不修改, >0=计费倍率
 	TokenPackageRequired        *bool                                      `json:"token_package_required"`         // nil=不修改
-	ExpiresAt                   *string                                    `json:"expires_at"`                     // nil=不修改, ""=清空, RFC3339=设置
+	ExpiresAt                   *string                                    `json:"expires_at"`                     // nil=不修改, ""=拒绝, RFC3339=设置
 	ResetQuota                  *bool                                      `json:"reset_quota"`                    // true=重置总额度已用量
 	Concurrency                 *int                                       `json:"concurrency"`                    // nil=不修改, 0=继承分组/用户, >0=单 key 并发
 	AllowClaudeFamily           *bool                                      `json:"allow_claude_family"`            // nil=不修改

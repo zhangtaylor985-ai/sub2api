@@ -28,6 +28,9 @@ var (
 	ErrAPIKeyRateLimited           = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
 	ErrInvalidIPPattern            = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
 	ErrAPIKeyExpired               = infraerrors.Forbidden("API_KEY_EXPIRED", "API key has expired")
+	ErrAPIKeyExpirationRequired    = infraerrors.BadRequest("API_KEY_EXPIRATION_REQUIRED", "API key expiration is required")
+	ErrAPIKeyExpirationInvalid     = infraerrors.BadRequest("API_KEY_EXPIRATION_INVALID", "API key expiration must be in the future")
+	ErrAPIKeyExpirationDaysInvalid = infraerrors.BadRequest("API_KEY_EXPIRATION_DAYS_INVALID", "API key expiration days must be between 1 and 3650")
 	ErrAPIKeyQuotaExhausted        = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
 	ErrAPIKeyTokenPackageExhausted = infraerrors.TooManyRequests("API_KEY_TOKEN_PACKAGE_EXHAUSTED", "API key token package has been exhausted")
 
@@ -161,7 +164,7 @@ type CreateAPIKeyRequest struct {
 
 	// Quota fields
 	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
-	ExpiresInDays *int    `json:"expires_in_days"` // Days until expiry (nil = never expires)
+	ExpiresInDays *int    `json:"expires_in_days"` // Days until expiry (nil = 30 days)
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h float64 `json:"rate_limit_5h"`
@@ -333,6 +336,11 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
+	expiresAt, err := resolveAPIKeyExpirationDays(req.ExpiresInDays, time.Now())
+	if err != nil {
+		return nil, err
+	}
+
 	// 验证用户存在
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -412,16 +420,11 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		IPBlacklist: req.IPBlacklist,
 		Quota:       req.Quota,
 		QuotaUsed:   0,
+		ExpiresAt:   expiresAt,
 		RateLimit5h: req.RateLimit5h,
 		RateLimit1d: req.RateLimit1d,
 		RateLimit7d: req.RateLimit7d,
 		Concurrency: req.Concurrency,
-	}
-
-	// Set expiration time if specified
-	if req.ExpiresInDays != nil && *req.ExpiresInDays > 0 {
-		expiresAt := time.Now().AddDate(0, 0, *req.ExpiresInDays)
-		apiKey.ExpiresAt = &expiresAt
 	}
 
 	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
@@ -591,12 +594,11 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		}
 	}
 	if req.ClearExpiration {
-		apiKey.ExpiresAt = nil
-		// If clearing expiry and status was expired, reactivate
-		if apiKey.Status == StatusAPIKeyExpired {
-			apiKey.Status = StatusActive
-		}
+		return nil, ErrAPIKeyExpirationRequired
 	} else if req.ExpiresAt != nil {
+		if !req.ExpiresAt.After(time.Now()) {
+			return nil, ErrAPIKeyExpirationInvalid
+		}
 		apiKey.ExpiresAt = req.ExpiresAt
 		// If extending expiry and status was expired, reactivate
 		if apiKey.Status == StatusAPIKeyExpired && time.Now().Before(*req.ExpiresAt) {

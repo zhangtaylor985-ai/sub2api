@@ -64,7 +64,7 @@ type APIKey struct {
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)
 	QuotaUsed float64    // Used quota amount
-	ExpiresAt *time.Time // Expiration time (nil = never expires)
+	ExpiresAt *time.Time // Expiration time (required for persisted API keys)
 
 	// Rate limit fields
 	RateLimit5h   float64    // Rate limit in USD per 5h (0 = unlimited)

@@ -57,6 +57,12 @@ type CreateUsageCleanupTaskRequest struct {
 	Timezone    string  `json:"timezone"`
 }
 
+// SearchAPIKeysRequest keeps API key search terms out of the URL.
+type SearchAPIKeysRequest struct {
+	UserID  *int64 `json:"user_id"`
+	Keyword string `json:"keyword"`
+}
+
 // List handles listing all usage records with filters
 // GET /api/v1/admin/usage
 func (h *UsageHandler) List(c *gin.Context) {
@@ -390,6 +396,48 @@ func (h *UsageHandler) SearchAPIKeys(c *gin.Context) {
 	}
 
 	// Return simplified API key list (only id and name)
+	type SimpleAPIKey struct {
+		ID     int64  `json:"id"`
+		Name   string `json:"name"`
+		UserID int64  `json:"user_id"`
+	}
+
+	result := make([]SimpleAPIKey, len(keys))
+	for i, k := range keys {
+		result[i] = SimpleAPIKey{
+			ID:     k.ID,
+			Name:   k.Name,
+			UserID: k.UserID,
+		}
+	}
+
+	response.Success(c, result)
+}
+
+// SearchAPIKeysSecure handles API key searches submitted in a JSON body.
+// POST /api/v1/admin/usage/search-api-keys
+func (h *UsageHandler) SearchAPIKeysSecure(c *gin.Context) {
+	var req SearchAPIKeysRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request")
+		return
+	}
+
+	userID := int64(0)
+	if req.UserID != nil {
+		if *req.UserID <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		userID = *req.UserID
+	}
+
+	keys, err := h.apiKeyService.SearchAPIKeys(c.Request.Context(), userID, strings.TrimSpace(req.Keyword), 30)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
 	type SimpleAPIKey struct {
 		ID     int64  `json:"id"`
 		Name   string `json:"name"`

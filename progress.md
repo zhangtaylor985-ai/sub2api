@@ -864,3 +864,21 @@
 - 2026-07-29：旧 binary 备份为 `/opt/sub2api/sub2api.bak.20260729T115006Z-before-upstream-failover-gpt56`；正式 binary 替换并重启一次，当前 SHA=`35732082669627e56915541023f7737a321222f0a6465d928072da1b947374e4`。
 - 2026-07-29：公网 Opus non-stream 与 Sonnet SSE 均 HTTP 200，usage 验证 `gpt-5.6-sol/xhigh` 与 `gpt-5.6-sol/low`；真实 Claude Code 2.1.220 非交互返回 `CC2_PROD56_D137_OK`，真实 TTY 同会话返回 `TTY_PROD56_ONE` / `TTY_PROD56_TWO`。
 - 2026-07-29：发布后用户测试 Key 的 8 条 usage 全部为 `gpt-5.6-sol`；`sub2api.service` active/running、`NRestarts=0`、内外 health 正常、18080 无监听、HTTP 5xx 为 0。一次辅助请求记录上游 overload WARN，但客户端无 API error/空 502，主请求正常完成。
+# 2026-08-09 管理员全局使用记录 API Key 搜索修复
+
+- 已完整阅读 `planning-with-files`、`sub2api-production-inspection`、`sub2api-deploy`、`sub2api-production-regression` 和 Chrome 控制 skill。
+- 已确认 `/admin/usage` 是管理员全局入口，个人 `/usage` 保持不变。
+- 已通过生产 Chrome 登录态只读核对控件：API Key 输入框存在，无搜索按钮，页面现有交互是名称联想候选。
+- 已核对源码：现有 GET 搜索会把输入放入 URL，仓储只按名称模糊匹配，完整 Key 和 ID 不受支持。
+- 已 fetch `origin`，从最新 `origin/main=c9ff8e6d1` 创建干净分支 `codex/admin-usage-key-search` 和独立 worktree `/Users/taylor/sdk/sub2api-admin-usage-search-fix`。
+- 已实现 POST body 搜索、名称模糊匹配与完整 Key 精确匹配；返回仍只有 `id/name/user_id`，前端沿用候选点击交互。
+- 用户收敛范围为“支持完整 API Key 搜索”，保留既有候选点击交互，不新增搜索按钮或修改个人页面。
+- 首次 gofmt 因在 `backend/` 目录仍使用 `backend/...` 路径而未找到文件；下一次改用 `internal/...`，不重复该错误。
+- 首次前端测试命令同样误带工作目录前缀，依赖链接和测试均未执行；后续全部使用相对 `frontend/` 的路径。
+- 后端 handler 定向测试、前端 API Vitest、相关 ESLint 与 vue-tsc 已通过。
+- API Key repository integration 用例因本机 Docker 不可用在 Testcontainers 初始化阶段失败，尚未进入本次测试逻辑；改用生产 PostgreSQL 只读 PREPARE 验证 SQL 形态，并继续全量普通 Go 测试。
+- 生产 PostgreSQL `BEGIN READ ONLY` 中完成名称 ILIKE + Key 等值条件的 PREPARE/EXECUTE/ROLLBACK，未写入数据、未使用真实 Key。
+- `go test ./... -count=1` 全量通过；前端 `npm run lint:check`、`npm run typecheck`、专项 Vitest 与 `npm run build` 全部通过。
+- 本地实现阶段完成，进入 diff 审查、提交、远端同步与 ARM64 embed binary 构建。
+
+---

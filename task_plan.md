@@ -505,3 +505,43 @@
 - [x] 将全局 Claude Opus/Sonnet 目标恢复为 `gpt-5.6-sol`，正式替换 binary 并重启一次服务。
 - [x] 完成公网 Opus/Sonnet、tool/SSE、Claude Code 非交互与真实 TTY 多轮验收。
 - [x] 确认 `sub2api.service` active/running、`NRestarts=0`，内外 health 正常且发布后无 HTTP 5xx。
+# 管理员全局使用记录 API Key 搜索修复
+
+## 当前目标
+
+修复 `/admin/usage` 的 API Key 筛选交互：管理员可在全局使用记录中按 Key 名称、ID 或完整 Key 精确定位并提交筛选；个人 `/usage` 与普通用户权限保持不变。
+
+## 当前阶段
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 生产 UI 与实现只读审计 | complete | 确认现有控件仅名称联想、无搜索按钮且完整 Key 会进入 GET 查询参数 |
+| 2. 安全搜索接口与前端交互 | complete | POST 请求体搜索、完整 Key 精确匹配、沿用候选选择交互 |
+| 3. 本地回归 | complete | handler/Vitest、Go 全量、前端 lint/typecheck/build、PostgreSQL 只读 SQL 验证 |
+| 4. Git 同步与 ARM64 构建 | in_progress | 提交、fetch/rebase、push、embed binary |
+| 5. 生产发布与验收 | pending | binary 备份、systemd 发布、health 与管理员页面验证 |
+
+## 已确认边界
+
+- 不修改个人 `/usage` 页面或普通用户的 usage 权限。
+- 管理员全局页默认仍展示所有使用记录，并沿用“输入后点击候选”的现有交互。
+- 完整 Key 只能做精确匹配，不做模糊或前缀扫描；响应不返回原始 Key。
+- 新搜索请求使用 POST JSON body，避免敏感 Key 进入 URL、浏览器历史和访问日志请求行。
+- 无数据库迁移；生产仅替换 ARM64 embed binary 并重启一次 systemd 服务。
+
+## 风险与回滚
+
+- 截图中的完整 Key 已暴露给当前会话，旧前端 debounce 还可能将它作为 GET 参数写入访问日志；本次不擅自轮换 Key 或删除日志。
+- 当前主工作树含大量既有修改，本次只在 `/Users/taylor/sdk/sub2api-admin-usage-search-fix` 干净 worktree 开发。
+- 发布前备份 `/opt/sub2api/sub2api`；异常时恢复备份并重启 `sub2api.service`。
+
+## 错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-08-09 | Chrome 只读页面检查使用 `instanceof HTMLInputElement` 时页面隔离环境未暴露该构造器 | 改用 `tagName` 与字符串长度检查；未修改页面或提交敏感信息 |
+| 2026-08-09 | 在 `backend/` 工作目录执行 gofmt 时误带 `backend/` 路径前缀 | 改用相对当前目录的 `internal/...` 路径；失败命令未修改文件 |
+| 2026-08-09 | 在 `frontend/` 工作目录准备依赖链接与执行工具时误带 `frontend/` 路径前缀 | 改用当前目录下的 `node_modules` 与 `.bin`；失败命令未创建链接或运行测试 |
+| 2026-08-09 | PostgreSQL repository integration test 因本机 Docker 不可用而 panic：`rootless Docker not found` | 不重复启动容器；保留单元/编译回归，并在生产 PostgreSQL 只读事务中验证等价查询可解析，不写入或读取原始 Key |
+
+---

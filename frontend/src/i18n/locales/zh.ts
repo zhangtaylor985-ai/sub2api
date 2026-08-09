@@ -4840,7 +4840,7 @@ export default {
       description: '查看和管理所有用户的使用记录',
       userFilter: '用户',
       searchUserPlaceholder: '按邮箱搜索用户...',
-      searchApiKeyPlaceholder: '按名称搜索 API 密钥...',
+      searchApiKeyPlaceholder: '按名称或 API Key 搜索...',
       searchAccountPlaceholder: '按名称搜索账号...',
       selectedUser: '已选择',
       user: '用户',

@@ -316,6 +316,19 @@ func (s *APIKeyRepoSuite) TestSearchAPIKeys() {
 	s.Require().Contains(found[0].Name, "Production")
 }
 
+func (s *APIKeyRepoSuite) TestSearchAPIKeys_ExactKeyValue() {
+	user := s.mustCreateUser("searchbyvalue@test.com")
+	key := s.mustCreateApiKey(user.ID, "sk-search-by-exact-value", "Private Customer", nil)
+	s.mustCreateApiKey(user.ID, "sk-search-other-value", "Other Key", nil)
+	s.mustCreateApiKey(user.ID, "sk-search-name-collision", "Label sk-search-by-exact-value", nil)
+
+	found, err := s.repo.SearchAPIKeys(s.ctx, 0, key.Key, 10)
+	s.Require().NoError(err, "SearchAPIKeys exact key")
+	s.Require().Len(found, 1)
+	s.Require().Equal(key.ID, found[0].ID)
+	s.Require().Equal("Private Customer", found[0].Name)
+}
+
 func (s *APIKeyRepoSuite) TestSearchAPIKeys_NoKeyword() {
 	user := s.mustCreateUser("searchnokw@test.com")
 	s.mustCreateApiKey(user.ID, "sk-nk-1", "K1", nil)

@@ -800,3 +800,15 @@
 - 生产全局 setting 切换前，8 个 active OpenAI dispatch 分组和 113 个作用域内 active Key 均无 Opus/Sonnet 5.4 family 或 exact 覆盖，因此只修改 `openai_messages_dispatch_default_target` 即可全局生效。
 - GPT-5.6 canary 的 Opus non-stream、Sonnet SSE、强制 function tool 均通过，usage 分别验证 `max→xhigh`、`low→low`、`high→high`，客户端没有内部模型泄漏。
 - 发布后真实 Claude Code 2.1.220 非交互与同会话两轮 TTY 均成功；一次辅助请求记录上游 overload WARN，但未形成 HTTP 5xx、未出现客户端 API error 或 `(no body)`，主请求和后续 usage 全部完成。
+# 2026-08-09 管理员全局使用记录 API Key 搜索
+
+- 用户确认个人 `/usage` 无需修改，目标仅为 `/admin/usage`。
+- 生产页面的 API Key 输入框占位文案为“按名称搜索 API 密钥...”，没有显式搜索按钮。
+- 当前 `UsageFilters.vue` 在输入后 300ms 调用 `GET /admin/usage/search-api-keys?q=...`，只返回候选；必须点击候选后才设置 `api_key_id` 并刷新。
+- 当前仓储 `SearchAPIKeys` 只做 `name contains`，因此完整 Key 或数字 ID 都无法匹配。
+- 管理员 usage list/stats 已是全局可选过滤，不需要修改 usage 权限或查询主链路。
+- 安全修复应让搜索词走 POST body；完整 Key 只做等值匹配，结果只返回 `id/name/user_id`。
+- 用户进一步确认无需新增搜索按钮：完整 Key 能检索出对应候选，点击候选后应用筛选即可。
+- 生产当前 binary SHA256 为 `66db536c26bfad1a44d1e37e5136b5cdff7971b2758832504864ce5962042a84`，服务 active，health 正常。
+
+---

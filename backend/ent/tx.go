@@ -28,6 +28,18 @@ type Tx struct {
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
 	AuthIdentityChannel *AuthIdentityChannelClient
+	// BusinessAPIKeyConfig is the client for interacting with the BusinessAPIKeyConfig builders.
+	BusinessAPIKeyConfig *BusinessAPIKeyConfigClient
+	// BusinessCostItem is the client for interacting with the BusinessCostItem builders.
+	BusinessCostItem *BusinessCostItemClient
+	// BusinessExchangeRate is the client for interacting with the BusinessExchangeRate builders.
+	BusinessExchangeRate *BusinessExchangeRateClient
+	// BusinessMonthlySnapshot is the client for interacting with the BusinessMonthlySnapshot builders.
+	BusinessMonthlySnapshot *BusinessMonthlySnapshotClient
+	// BusinessMonthlySnapshotItem is the client for interacting with the BusinessMonthlySnapshotItem builders.
+	BusinessMonthlySnapshotItem *BusinessMonthlySnapshotItemClient
+	// BusinessPricingRule is the client for interacting with the BusinessPricingRule builders.
+	BusinessPricingRule *BusinessPricingRuleClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -224,6 +236,12 @@ func (tx *Tx) init() {
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)
 	tx.AuthIdentity = NewAuthIdentityClient(tx.config)
 	tx.AuthIdentityChannel = NewAuthIdentityChannelClient(tx.config)
+	tx.BusinessAPIKeyConfig = NewBusinessAPIKeyConfigClient(tx.config)
+	tx.BusinessCostItem = NewBusinessCostItemClient(tx.config)
+	tx.BusinessExchangeRate = NewBusinessExchangeRateClient(tx.config)
+	tx.BusinessMonthlySnapshot = NewBusinessMonthlySnapshotClient(tx.config)
+	tx.BusinessMonthlySnapshotItem = NewBusinessMonthlySnapshotItemClient(tx.config)
+	tx.BusinessPricingRule = NewBusinessPricingRuleClient(tx.config)
 	tx.ChannelMonitor = NewChannelMonitorClient(tx.config)
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)

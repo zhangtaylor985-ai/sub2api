@@ -428,6 +428,237 @@ var (
 			},
 		},
 	}
+	// BusinessAPIKeyConfigsColumns holds the columns for the "business_api_key_configs" table.
+	BusinessAPIKeyConfigsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "api_key_id", Type: field.TypeInt64, Unique: true},
+		{Name: "revenue_excluded", Type: field.TypeBool, Default: false},
+		{Name: "override_amount_cents", Type: field.TypeInt64, Nullable: true},
+		{Name: "private_subscription_id", Type: field.TypeInt64, Unique: true, Nullable: true},
+		{Name: "reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// BusinessAPIKeyConfigsTable holds the schema information for the "business_api_key_configs" table.
+	BusinessAPIKeyConfigsTable = &schema.Table{
+		Name:       "business_api_key_configs",
+		Columns:    BusinessAPIKeyConfigsColumns,
+		PrimaryKey: []*schema.Column{BusinessAPIKeyConfigsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "businessapikeyconfig_revenue_excluded",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessAPIKeyConfigsColumns[4]},
+			},
+			{
+				Name:    "businessapikeyconfig_private_subscription_id",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessAPIKeyConfigsColumns[6]},
+			},
+		},
+	}
+	// BusinessCostItemsColumns holds the columns for the "business_cost_items" table.
+	BusinessCostItemsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 160},
+		{Name: "cost_class", Type: field.TypeString, Size: 20},
+		{Name: "category", Type: field.TypeString, Size: 50},
+		{Name: "amount_minor", Type: field.TypeInt64},
+		{Name: "currency", Type: field.TypeString, Size: 3},
+		{Name: "billing_cycle", Type: field.TypeString, Size: 20},
+		{Name: "starts_on", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "ends_on", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "account_identifier", Type: field.TypeString, Nullable: true, Size: 160},
+		{Name: "is_free", Type: field.TypeBool, Default: false},
+		{Name: "active", Type: field.TypeBool, Default: true},
+		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// BusinessCostItemsTable holds the schema information for the "business_cost_items" table.
+	BusinessCostItemsTable = &schema.Table{
+		Name:       "business_cost_items",
+		Columns:    BusinessCostItemsColumns,
+		PrimaryKey: []*schema.Column{BusinessCostItemsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "businesscostitem_active_starts_on",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessCostItemsColumns[15], BusinessCostItemsColumns[10]},
+			},
+			{
+				Name:    "businesscostitem_cost_class",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessCostItemsColumns[5]},
+			},
+			{
+				Name:    "businesscostitem_category",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessCostItemsColumns[6]},
+			},
+			{
+				Name:    "businesscostitem_currency",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessCostItemsColumns[8]},
+			},
+			{
+				Name:    "businesscostitem_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessCostItemsColumns[12]},
+			},
+			{
+				Name:    "businesscostitem_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessCostItemsColumns[3]},
+			},
+		},
+	}
+	// BusinessExchangeRatesColumns holds the columns for the "business_exchange_rates" table.
+	BusinessExchangeRatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "month", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "currency", Type: field.TypeString, Size: 3},
+		{Name: "rate_scaled", Type: field.TypeInt64},
+		{Name: "source", Type: field.TypeString, Size: 32, Default: "manual"},
+		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// BusinessExchangeRatesTable holds the schema information for the "business_exchange_rates" table.
+	BusinessExchangeRatesTable = &schema.Table{
+		Name:       "business_exchange_rates",
+		Columns:    BusinessExchangeRatesColumns,
+		PrimaryKey: []*schema.Column{BusinessExchangeRatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "businessexchangerate_month_currency",
+				Unique:  true,
+				Columns: []*schema.Column{BusinessExchangeRatesColumns[3], BusinessExchangeRatesColumns[4]},
+			},
+		},
+	}
+	// BusinessMonthlySnapshotsColumns holds the columns for the "business_monthly_snapshots" table.
+	BusinessMonthlySnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "month", Type: field.TypeTime, Unique: true, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "locked"},
+		{Name: "data_quality", Type: field.TypeString, Size: 20},
+		{Name: "api_key_count", Type: field.TypeInt, Default: 0},
+		{Name: "private_subscription_count", Type: field.TypeInt, Default: 0},
+		{Name: "customer_count", Type: field.TypeInt, Default: 0},
+		{Name: "excluded_api_key_count", Type: field.TypeInt, Default: 0},
+		{Name: "anomaly_count", Type: field.TypeInt, Default: 0},
+		{Name: "api_key_revenue_cents", Type: field.TypeInt64, Default: 0},
+		{Name: "private_subscription_revenue_cents", Type: field.TypeInt64, Default: 0},
+		{Name: "total_revenue_cents", Type: field.TypeInt64, Default: 0},
+		{Name: "direct_cost_cents", Type: field.TypeInt64, Default: 0},
+		{Name: "operating_cost_cents", Type: field.TypeInt64, Default: 0},
+		{Name: "gross_profit_cents", Type: field.TypeInt64, Default: 0},
+		{Name: "net_profit_cents", Type: field.TypeInt64, Default: 0},
+		{Name: "gross_margin_bps", Type: field.TypeInt64, Default: 0},
+		{Name: "net_margin_bps", Type: field.TypeInt64, Default: 0},
+		{Name: "costs_complete", Type: field.TypeBool, Default: true},
+		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "closed_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "closed_by", Type: field.TypeInt64, Nullable: true},
+	}
+	// BusinessMonthlySnapshotsTable holds the schema information for the "business_monthly_snapshots" table.
+	BusinessMonthlySnapshotsTable = &schema.Table{
+		Name:       "business_monthly_snapshots",
+		Columns:    BusinessMonthlySnapshotsColumns,
+		PrimaryKey: []*schema.Column{BusinessMonthlySnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "businessmonthlysnapshot_data_quality",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessMonthlySnapshotsColumns[5]},
+			},
+			{
+				Name:    "businessmonthlysnapshot_closed_at",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessMonthlySnapshotsColumns[22]},
+			},
+		},
+	}
+	// BusinessMonthlySnapshotItemsColumns holds the columns for the "business_monthly_snapshot_items" table.
+	BusinessMonthlySnapshotItemsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "snapshot_id", Type: field.TypeInt64},
+		{Name: "item_type", Type: field.TypeString, Size: 40},
+		{Name: "source_type", Type: field.TypeString, Size: 40},
+		{Name: "source_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "name", Type: field.TypeString, Size: 180},
+		{Name: "category", Type: field.TypeString, Nullable: true, Size: 50},
+		{Name: "tier", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "original_amount_minor", Type: field.TypeInt64, Default: 0},
+		{Name: "currency", Type: field.TypeString, Size: 3},
+		{Name: "rate_scaled", Type: field.TypeInt64, Default: 1000000},
+		{Name: "amount_cny_cents", Type: field.TypeInt64, Default: 0},
+		{Name: "expires_on", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "included", Type: field.TypeBool, Default: true},
+		{Name: "linked_api_key_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "group_name", Type: field.TypeString, Nullable: true, Size: 160},
+		{Name: "user_email", Type: field.TypeString, Nullable: true, Size: 254},
+	}
+	// BusinessMonthlySnapshotItemsTable holds the schema information for the "business_monthly_snapshot_items" table.
+	BusinessMonthlySnapshotItemsTable = &schema.Table{
+		Name:       "business_monthly_snapshot_items",
+		Columns:    BusinessMonthlySnapshotItemsColumns,
+		PrimaryKey: []*schema.Column{BusinessMonthlySnapshotItemsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "businessmonthlysnapshotitem_snapshot_id",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessMonthlySnapshotItemsColumns[3]},
+			},
+			{
+				Name:    "businessmonthlysnapshotitem_snapshot_id_item_type",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessMonthlySnapshotItemsColumns[3], BusinessMonthlySnapshotItemsColumns[4]},
+			},
+			{
+				Name:    "businessmonthlysnapshotitem_source_type_source_id",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessMonthlySnapshotItemsColumns[5], BusinessMonthlySnapshotItemsColumns[6]},
+			},
+		},
+	}
+	// BusinessPricingRulesColumns holds the columns for the "business_pricing_rules" table.
+	BusinessPricingRulesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "group_id", Type: field.TypeInt64, Unique: true},
+		{Name: "tier", Type: field.TypeString, Size: 32},
+		{Name: "monthly_price_cents", Type: field.TypeInt64},
+		{Name: "active", Type: field.TypeBool, Default: true},
+		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// BusinessPricingRulesTable holds the schema information for the "business_pricing_rules" table.
+	BusinessPricingRulesTable = &schema.Table{
+		Name:       "business_pricing_rules",
+		Columns:    BusinessPricingRulesColumns,
+		PrimaryKey: []*schema.Column{BusinessPricingRulesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "businesspricingrule_active",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessPricingRulesColumns[6]},
+			},
+			{
+				Name:    "businesspricingrule_tier",
+				Unique:  false,
+				Columns: []*schema.Column{BusinessPricingRulesColumns[4]},
+			},
+		},
+	}
 	// ChannelMonitorsColumns holds the columns for the "channel_monitors" table.
 	ChannelMonitorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1817,6 +2048,12 @@ var (
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
+		BusinessAPIKeyConfigsTable,
+		BusinessCostItemsTable,
+		BusinessExchangeRatesTable,
+		BusinessMonthlySnapshotsTable,
+		BusinessMonthlySnapshotItemsTable,
+		BusinessPricingRulesTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
@@ -1879,6 +2116,24 @@ func init() {
 	AuthIdentityChannelsTable.ForeignKeys[0].RefTable = AuthIdentitiesTable
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
+	}
+	BusinessAPIKeyConfigsTable.Annotation = &entsql.Annotation{
+		Table: "business_api_key_configs",
+	}
+	BusinessCostItemsTable.Annotation = &entsql.Annotation{
+		Table: "business_cost_items",
+	}
+	BusinessExchangeRatesTable.Annotation = &entsql.Annotation{
+		Table: "business_exchange_rates",
+	}
+	BusinessMonthlySnapshotsTable.Annotation = &entsql.Annotation{
+		Table: "business_monthly_snapshots",
+	}
+	BusinessMonthlySnapshotItemsTable.Annotation = &entsql.Annotation{
+		Table: "business_monthly_snapshot_items",
+	}
+	BusinessPricingRulesTable.Annotation = &entsql.Annotation{
+		Table: "business_pricing_rules",
 	}
 	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{

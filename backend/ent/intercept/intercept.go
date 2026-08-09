@@ -15,6 +15,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/businessapikeyconfig"
+	"github.com/Wei-Shaw/sub2api/ent/businesscostitem"
+	"github.com/Wei-Shaw/sub2api/ent/businessexchangerate"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshot"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshotitem"
+	"github.com/Wei-Shaw/sub2api/ent/businesspricingrule"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -290,6 +296,168 @@ func (f TraverseAuthIdentityChannel) Traverse(ctx context.Context, q ent.Query) 
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AuthIdentityChannelQuery", q)
+}
+
+// The BusinessAPIKeyConfigFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BusinessAPIKeyConfigFunc func(context.Context, *ent.BusinessAPIKeyConfigQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BusinessAPIKeyConfigFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BusinessAPIKeyConfigQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BusinessAPIKeyConfigQuery", q)
+}
+
+// The TraverseBusinessAPIKeyConfig type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBusinessAPIKeyConfig func(context.Context, *ent.BusinessAPIKeyConfigQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBusinessAPIKeyConfig) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBusinessAPIKeyConfig) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BusinessAPIKeyConfigQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BusinessAPIKeyConfigQuery", q)
+}
+
+// The BusinessCostItemFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BusinessCostItemFunc func(context.Context, *ent.BusinessCostItemQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BusinessCostItemFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BusinessCostItemQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BusinessCostItemQuery", q)
+}
+
+// The TraverseBusinessCostItem type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBusinessCostItem func(context.Context, *ent.BusinessCostItemQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBusinessCostItem) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBusinessCostItem) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BusinessCostItemQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BusinessCostItemQuery", q)
+}
+
+// The BusinessExchangeRateFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BusinessExchangeRateFunc func(context.Context, *ent.BusinessExchangeRateQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BusinessExchangeRateFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BusinessExchangeRateQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BusinessExchangeRateQuery", q)
+}
+
+// The TraverseBusinessExchangeRate type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBusinessExchangeRate func(context.Context, *ent.BusinessExchangeRateQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBusinessExchangeRate) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBusinessExchangeRate) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BusinessExchangeRateQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BusinessExchangeRateQuery", q)
+}
+
+// The BusinessMonthlySnapshotFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BusinessMonthlySnapshotFunc func(context.Context, *ent.BusinessMonthlySnapshotQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BusinessMonthlySnapshotFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BusinessMonthlySnapshotQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BusinessMonthlySnapshotQuery", q)
+}
+
+// The TraverseBusinessMonthlySnapshot type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBusinessMonthlySnapshot func(context.Context, *ent.BusinessMonthlySnapshotQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBusinessMonthlySnapshot) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBusinessMonthlySnapshot) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BusinessMonthlySnapshotQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BusinessMonthlySnapshotQuery", q)
+}
+
+// The BusinessMonthlySnapshotItemFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BusinessMonthlySnapshotItemFunc func(context.Context, *ent.BusinessMonthlySnapshotItemQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BusinessMonthlySnapshotItemFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BusinessMonthlySnapshotItemQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BusinessMonthlySnapshotItemQuery", q)
+}
+
+// The TraverseBusinessMonthlySnapshotItem type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBusinessMonthlySnapshotItem func(context.Context, *ent.BusinessMonthlySnapshotItemQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBusinessMonthlySnapshotItem) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBusinessMonthlySnapshotItem) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BusinessMonthlySnapshotItemQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BusinessMonthlySnapshotItemQuery", q)
+}
+
+// The BusinessPricingRuleFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BusinessPricingRuleFunc func(context.Context, *ent.BusinessPricingRuleQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BusinessPricingRuleFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BusinessPricingRuleQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BusinessPricingRuleQuery", q)
+}
+
+// The TraverseBusinessPricingRule type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBusinessPricingRule func(context.Context, *ent.BusinessPricingRuleQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBusinessPricingRule) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBusinessPricingRule) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BusinessPricingRuleQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BusinessPricingRuleQuery", q)
 }
 
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1092,6 +1260,18 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AuthIdentityQuery, predicate.AuthIdentity, authidentity.OrderOption]{typ: ent.TypeAuthIdentity, tq: q}, nil
 	case *ent.AuthIdentityChannelQuery:
 		return &query[*ent.AuthIdentityChannelQuery, predicate.AuthIdentityChannel, authidentitychannel.OrderOption]{typ: ent.TypeAuthIdentityChannel, tq: q}, nil
+	case *ent.BusinessAPIKeyConfigQuery:
+		return &query[*ent.BusinessAPIKeyConfigQuery, predicate.BusinessAPIKeyConfig, businessapikeyconfig.OrderOption]{typ: ent.TypeBusinessAPIKeyConfig, tq: q}, nil
+	case *ent.BusinessCostItemQuery:
+		return &query[*ent.BusinessCostItemQuery, predicate.BusinessCostItem, businesscostitem.OrderOption]{typ: ent.TypeBusinessCostItem, tq: q}, nil
+	case *ent.BusinessExchangeRateQuery:
+		return &query[*ent.BusinessExchangeRateQuery, predicate.BusinessExchangeRate, businessexchangerate.OrderOption]{typ: ent.TypeBusinessExchangeRate, tq: q}, nil
+	case *ent.BusinessMonthlySnapshotQuery:
+		return &query[*ent.BusinessMonthlySnapshotQuery, predicate.BusinessMonthlySnapshot, businessmonthlysnapshot.OrderOption]{typ: ent.TypeBusinessMonthlySnapshot, tq: q}, nil
+	case *ent.BusinessMonthlySnapshotItemQuery:
+		return &query[*ent.BusinessMonthlySnapshotItemQuery, predicate.BusinessMonthlySnapshotItem, businessmonthlysnapshotitem.OrderOption]{typ: ent.TypeBusinessMonthlySnapshotItem, tq: q}, nil
+	case *ent.BusinessPricingRuleQuery:
+		return &query[*ent.BusinessPricingRuleQuery, predicate.BusinessPricingRule, businesspricingrule.OrderOption]{typ: ent.TypeBusinessPricingRule, tq: q}, nil
 	case *ent.ChannelMonitorQuery:
 		return &query[*ent.ChannelMonitorQuery, predicate.ChannelMonitor, channelmonitor.OrderOption]{typ: ent.TypeChannelMonitor, tq: q}, nil
 	case *ent.ChannelMonitorDailyRollupQuery:

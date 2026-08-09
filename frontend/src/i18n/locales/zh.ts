@@ -385,6 +385,10 @@ export default {
     availableChannels: '可用渠道',
     subscriptions: '订阅管理',
     privateSubscriptions: '客户订阅',
+    businessManagement: '经营管理',
+    businessDashboard: '经营看板',
+    businessCosts: '成本管理',
+    businessReconciliation: '数据对账',
     accounts: '账号管理',
     proxies: 'IP管理',
     redeemCodes: '兑换码',
@@ -1400,6 +1404,14 @@ export default {
 
   // Admin
   admin: {
+    business: {
+      dashboardTitle: '经营盈利看板',
+      dashboardDescription: '查看当前收入、毛利、净利润及月度锁账历史',
+      costsTitle: '成本管理',
+      costsDescription: '维护订阅账号、服务器、代理等经营成本和月度汇率',
+      reconciliationTitle: '经营数据对账',
+      reconciliationDescription: '核对到期时间、价格、排除策略和客户订阅关联'
+    },
     apiKeys: {
       title: 'API Key 管理',
       description: '由管理员直接创建和维护 API Key 的额度、限速和并发',

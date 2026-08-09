@@ -22,6 +22,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/businessapikeyconfig"
+	"github.com/Wei-Shaw/sub2api/ent/businesscostitem"
+	"github.com/Wei-Shaw/sub2api/ent/businessexchangerate"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshot"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshotitem"
+	"github.com/Wei-Shaw/sub2api/ent/businesspricingrule"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -74,6 +80,18 @@ type Client struct {
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
 	AuthIdentityChannel *AuthIdentityChannelClient
+	// BusinessAPIKeyConfig is the client for interacting with the BusinessAPIKeyConfig builders.
+	BusinessAPIKeyConfig *BusinessAPIKeyConfigClient
+	// BusinessCostItem is the client for interacting with the BusinessCostItem builders.
+	BusinessCostItem *BusinessCostItemClient
+	// BusinessExchangeRate is the client for interacting with the BusinessExchangeRate builders.
+	BusinessExchangeRate *BusinessExchangeRateClient
+	// BusinessMonthlySnapshot is the client for interacting with the BusinessMonthlySnapshot builders.
+	BusinessMonthlySnapshot *BusinessMonthlySnapshotClient
+	// BusinessMonthlySnapshotItem is the client for interacting with the BusinessMonthlySnapshotItem builders.
+	BusinessMonthlySnapshotItem *BusinessMonthlySnapshotItemClient
+	// BusinessPricingRule is the client for interacting with the BusinessPricingRule builders.
+	BusinessPricingRule *BusinessPricingRuleClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -150,6 +168,12 @@ func (c *Client) init() {
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
 	c.AuthIdentityChannel = NewAuthIdentityChannelClient(c.config)
+	c.BusinessAPIKeyConfig = NewBusinessAPIKeyConfigClient(c.config)
+	c.BusinessCostItem = NewBusinessCostItemClient(c.config)
+	c.BusinessExchangeRate = NewBusinessExchangeRateClient(c.config)
+	c.BusinessMonthlySnapshot = NewBusinessMonthlySnapshotClient(c.config)
+	c.BusinessMonthlySnapshotItem = NewBusinessMonthlySnapshotItemClient(c.config)
+	c.BusinessPricingRule = NewBusinessPricingRuleClient(c.config)
 	c.ChannelMonitor = NewChannelMonitorClient(c.config)
 	c.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(c.config)
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
@@ -278,6 +302,12 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
+		BusinessAPIKeyConfig:          NewBusinessAPIKeyConfigClient(cfg),
+		BusinessCostItem:              NewBusinessCostItemClient(cfg),
+		BusinessExchangeRate:          NewBusinessExchangeRateClient(cfg),
+		BusinessMonthlySnapshot:       NewBusinessMonthlySnapshotClient(cfg),
+		BusinessMonthlySnapshotItem:   NewBusinessMonthlySnapshotItemClient(cfg),
+		BusinessPricingRule:           NewBusinessPricingRuleClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -333,6 +363,12 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
+		BusinessAPIKeyConfig:          NewBusinessAPIKeyConfigClient(cfg),
+		BusinessCostItem:              NewBusinessCostItemClient(cfg),
+		BusinessExchangeRate:          NewBusinessExchangeRateClient(cfg),
+		BusinessMonthlySnapshot:       NewBusinessMonthlySnapshotClient(cfg),
+		BusinessMonthlySnapshotItem:   NewBusinessMonthlySnapshotItemClient(cfg),
+		BusinessPricingRule:           NewBusinessPricingRuleClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -392,7 +428,9 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
+		c.AuthIdentity, c.AuthIdentityChannel, c.BusinessAPIKeyConfig,
+		c.BusinessCostItem, c.BusinessExchangeRate, c.BusinessMonthlySnapshot,
+		c.BusinessMonthlySnapshotItem, c.BusinessPricingRule, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
@@ -412,7 +450,9 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
+		c.AuthIdentity, c.AuthIdentityChannel, c.BusinessAPIKeyConfig,
+		c.BusinessCostItem, c.BusinessExchangeRate, c.BusinessMonthlySnapshot,
+		c.BusinessMonthlySnapshotItem, c.BusinessPricingRule, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
@@ -444,6 +484,18 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuthIdentity.mutate(ctx, m)
 	case *AuthIdentityChannelMutation:
 		return c.AuthIdentityChannel.mutate(ctx, m)
+	case *BusinessAPIKeyConfigMutation:
+		return c.BusinessAPIKeyConfig.mutate(ctx, m)
+	case *BusinessCostItemMutation:
+		return c.BusinessCostItem.mutate(ctx, m)
+	case *BusinessExchangeRateMutation:
+		return c.BusinessExchangeRate.mutate(ctx, m)
+	case *BusinessMonthlySnapshotMutation:
+		return c.BusinessMonthlySnapshot.mutate(ctx, m)
+	case *BusinessMonthlySnapshotItemMutation:
+		return c.BusinessMonthlySnapshotItem.mutate(ctx, m)
+	case *BusinessPricingRuleMutation:
+		return c.BusinessPricingRule.mutate(ctx, m)
 	case *ChannelMonitorMutation:
 		return c.ChannelMonitor.mutate(ctx, m)
 	case *ChannelMonitorDailyRollupMutation:
@@ -1646,6 +1698,806 @@ func (c *AuthIdentityChannelClient) mutate(ctx context.Context, m *AuthIdentityC
 		return (&AuthIdentityChannelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuthIdentityChannel mutation op: %q", m.Op())
+	}
+}
+
+// BusinessAPIKeyConfigClient is a client for the BusinessAPIKeyConfig schema.
+type BusinessAPIKeyConfigClient struct {
+	config
+}
+
+// NewBusinessAPIKeyConfigClient returns a client for the BusinessAPIKeyConfig from the given config.
+func NewBusinessAPIKeyConfigClient(c config) *BusinessAPIKeyConfigClient {
+	return &BusinessAPIKeyConfigClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `businessapikeyconfig.Hooks(f(g(h())))`.
+func (c *BusinessAPIKeyConfigClient) Use(hooks ...Hook) {
+	c.hooks.BusinessAPIKeyConfig = append(c.hooks.BusinessAPIKeyConfig, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `businessapikeyconfig.Intercept(f(g(h())))`.
+func (c *BusinessAPIKeyConfigClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BusinessAPIKeyConfig = append(c.inters.BusinessAPIKeyConfig, interceptors...)
+}
+
+// Create returns a builder for creating a BusinessAPIKeyConfig entity.
+func (c *BusinessAPIKeyConfigClient) Create() *BusinessAPIKeyConfigCreate {
+	mutation := newBusinessAPIKeyConfigMutation(c.config, OpCreate)
+	return &BusinessAPIKeyConfigCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BusinessAPIKeyConfig entities.
+func (c *BusinessAPIKeyConfigClient) CreateBulk(builders ...*BusinessAPIKeyConfigCreate) *BusinessAPIKeyConfigCreateBulk {
+	return &BusinessAPIKeyConfigCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BusinessAPIKeyConfigClient) MapCreateBulk(slice any, setFunc func(*BusinessAPIKeyConfigCreate, int)) *BusinessAPIKeyConfigCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BusinessAPIKeyConfigCreateBulk{err: fmt.Errorf("calling to BusinessAPIKeyConfigClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BusinessAPIKeyConfigCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BusinessAPIKeyConfigCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BusinessAPIKeyConfig.
+func (c *BusinessAPIKeyConfigClient) Update() *BusinessAPIKeyConfigUpdate {
+	mutation := newBusinessAPIKeyConfigMutation(c.config, OpUpdate)
+	return &BusinessAPIKeyConfigUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BusinessAPIKeyConfigClient) UpdateOne(_m *BusinessAPIKeyConfig) *BusinessAPIKeyConfigUpdateOne {
+	mutation := newBusinessAPIKeyConfigMutation(c.config, OpUpdateOne, withBusinessAPIKeyConfig(_m))
+	return &BusinessAPIKeyConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BusinessAPIKeyConfigClient) UpdateOneID(id int64) *BusinessAPIKeyConfigUpdateOne {
+	mutation := newBusinessAPIKeyConfigMutation(c.config, OpUpdateOne, withBusinessAPIKeyConfigID(id))
+	return &BusinessAPIKeyConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BusinessAPIKeyConfig.
+func (c *BusinessAPIKeyConfigClient) Delete() *BusinessAPIKeyConfigDelete {
+	mutation := newBusinessAPIKeyConfigMutation(c.config, OpDelete)
+	return &BusinessAPIKeyConfigDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BusinessAPIKeyConfigClient) DeleteOne(_m *BusinessAPIKeyConfig) *BusinessAPIKeyConfigDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BusinessAPIKeyConfigClient) DeleteOneID(id int64) *BusinessAPIKeyConfigDeleteOne {
+	builder := c.Delete().Where(businessapikeyconfig.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BusinessAPIKeyConfigDeleteOne{builder}
+}
+
+// Query returns a query builder for BusinessAPIKeyConfig.
+func (c *BusinessAPIKeyConfigClient) Query() *BusinessAPIKeyConfigQuery {
+	return &BusinessAPIKeyConfigQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBusinessAPIKeyConfig},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BusinessAPIKeyConfig entity by its id.
+func (c *BusinessAPIKeyConfigClient) Get(ctx context.Context, id int64) (*BusinessAPIKeyConfig, error) {
+	return c.Query().Where(businessapikeyconfig.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BusinessAPIKeyConfigClient) GetX(ctx context.Context, id int64) *BusinessAPIKeyConfig {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *BusinessAPIKeyConfigClient) Hooks() []Hook {
+	return c.hooks.BusinessAPIKeyConfig
+}
+
+// Interceptors returns the client interceptors.
+func (c *BusinessAPIKeyConfigClient) Interceptors() []Interceptor {
+	return c.inters.BusinessAPIKeyConfig
+}
+
+func (c *BusinessAPIKeyConfigClient) mutate(ctx context.Context, m *BusinessAPIKeyConfigMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BusinessAPIKeyConfigCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BusinessAPIKeyConfigUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BusinessAPIKeyConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BusinessAPIKeyConfigDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BusinessAPIKeyConfig mutation op: %q", m.Op())
+	}
+}
+
+// BusinessCostItemClient is a client for the BusinessCostItem schema.
+type BusinessCostItemClient struct {
+	config
+}
+
+// NewBusinessCostItemClient returns a client for the BusinessCostItem from the given config.
+func NewBusinessCostItemClient(c config) *BusinessCostItemClient {
+	return &BusinessCostItemClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `businesscostitem.Hooks(f(g(h())))`.
+func (c *BusinessCostItemClient) Use(hooks ...Hook) {
+	c.hooks.BusinessCostItem = append(c.hooks.BusinessCostItem, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `businesscostitem.Intercept(f(g(h())))`.
+func (c *BusinessCostItemClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BusinessCostItem = append(c.inters.BusinessCostItem, interceptors...)
+}
+
+// Create returns a builder for creating a BusinessCostItem entity.
+func (c *BusinessCostItemClient) Create() *BusinessCostItemCreate {
+	mutation := newBusinessCostItemMutation(c.config, OpCreate)
+	return &BusinessCostItemCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BusinessCostItem entities.
+func (c *BusinessCostItemClient) CreateBulk(builders ...*BusinessCostItemCreate) *BusinessCostItemCreateBulk {
+	return &BusinessCostItemCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BusinessCostItemClient) MapCreateBulk(slice any, setFunc func(*BusinessCostItemCreate, int)) *BusinessCostItemCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BusinessCostItemCreateBulk{err: fmt.Errorf("calling to BusinessCostItemClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BusinessCostItemCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BusinessCostItemCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BusinessCostItem.
+func (c *BusinessCostItemClient) Update() *BusinessCostItemUpdate {
+	mutation := newBusinessCostItemMutation(c.config, OpUpdate)
+	return &BusinessCostItemUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BusinessCostItemClient) UpdateOne(_m *BusinessCostItem) *BusinessCostItemUpdateOne {
+	mutation := newBusinessCostItemMutation(c.config, OpUpdateOne, withBusinessCostItem(_m))
+	return &BusinessCostItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BusinessCostItemClient) UpdateOneID(id int64) *BusinessCostItemUpdateOne {
+	mutation := newBusinessCostItemMutation(c.config, OpUpdateOne, withBusinessCostItemID(id))
+	return &BusinessCostItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BusinessCostItem.
+func (c *BusinessCostItemClient) Delete() *BusinessCostItemDelete {
+	mutation := newBusinessCostItemMutation(c.config, OpDelete)
+	return &BusinessCostItemDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BusinessCostItemClient) DeleteOne(_m *BusinessCostItem) *BusinessCostItemDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BusinessCostItemClient) DeleteOneID(id int64) *BusinessCostItemDeleteOne {
+	builder := c.Delete().Where(businesscostitem.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BusinessCostItemDeleteOne{builder}
+}
+
+// Query returns a query builder for BusinessCostItem.
+func (c *BusinessCostItemClient) Query() *BusinessCostItemQuery {
+	return &BusinessCostItemQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBusinessCostItem},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BusinessCostItem entity by its id.
+func (c *BusinessCostItemClient) Get(ctx context.Context, id int64) (*BusinessCostItem, error) {
+	return c.Query().Where(businesscostitem.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BusinessCostItemClient) GetX(ctx context.Context, id int64) *BusinessCostItem {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *BusinessCostItemClient) Hooks() []Hook {
+	hooks := c.hooks.BusinessCostItem
+	return append(hooks[:len(hooks):len(hooks)], businesscostitem.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *BusinessCostItemClient) Interceptors() []Interceptor {
+	inters := c.inters.BusinessCostItem
+	return append(inters[:len(inters):len(inters)], businesscostitem.Interceptors[:]...)
+}
+
+func (c *BusinessCostItemClient) mutate(ctx context.Context, m *BusinessCostItemMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BusinessCostItemCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BusinessCostItemUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BusinessCostItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BusinessCostItemDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BusinessCostItem mutation op: %q", m.Op())
+	}
+}
+
+// BusinessExchangeRateClient is a client for the BusinessExchangeRate schema.
+type BusinessExchangeRateClient struct {
+	config
+}
+
+// NewBusinessExchangeRateClient returns a client for the BusinessExchangeRate from the given config.
+func NewBusinessExchangeRateClient(c config) *BusinessExchangeRateClient {
+	return &BusinessExchangeRateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `businessexchangerate.Hooks(f(g(h())))`.
+func (c *BusinessExchangeRateClient) Use(hooks ...Hook) {
+	c.hooks.BusinessExchangeRate = append(c.hooks.BusinessExchangeRate, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `businessexchangerate.Intercept(f(g(h())))`.
+func (c *BusinessExchangeRateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BusinessExchangeRate = append(c.inters.BusinessExchangeRate, interceptors...)
+}
+
+// Create returns a builder for creating a BusinessExchangeRate entity.
+func (c *BusinessExchangeRateClient) Create() *BusinessExchangeRateCreate {
+	mutation := newBusinessExchangeRateMutation(c.config, OpCreate)
+	return &BusinessExchangeRateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BusinessExchangeRate entities.
+func (c *BusinessExchangeRateClient) CreateBulk(builders ...*BusinessExchangeRateCreate) *BusinessExchangeRateCreateBulk {
+	return &BusinessExchangeRateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BusinessExchangeRateClient) MapCreateBulk(slice any, setFunc func(*BusinessExchangeRateCreate, int)) *BusinessExchangeRateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BusinessExchangeRateCreateBulk{err: fmt.Errorf("calling to BusinessExchangeRateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BusinessExchangeRateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BusinessExchangeRateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BusinessExchangeRate.
+func (c *BusinessExchangeRateClient) Update() *BusinessExchangeRateUpdate {
+	mutation := newBusinessExchangeRateMutation(c.config, OpUpdate)
+	return &BusinessExchangeRateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BusinessExchangeRateClient) UpdateOne(_m *BusinessExchangeRate) *BusinessExchangeRateUpdateOne {
+	mutation := newBusinessExchangeRateMutation(c.config, OpUpdateOne, withBusinessExchangeRate(_m))
+	return &BusinessExchangeRateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BusinessExchangeRateClient) UpdateOneID(id int64) *BusinessExchangeRateUpdateOne {
+	mutation := newBusinessExchangeRateMutation(c.config, OpUpdateOne, withBusinessExchangeRateID(id))
+	return &BusinessExchangeRateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BusinessExchangeRate.
+func (c *BusinessExchangeRateClient) Delete() *BusinessExchangeRateDelete {
+	mutation := newBusinessExchangeRateMutation(c.config, OpDelete)
+	return &BusinessExchangeRateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BusinessExchangeRateClient) DeleteOne(_m *BusinessExchangeRate) *BusinessExchangeRateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BusinessExchangeRateClient) DeleteOneID(id int64) *BusinessExchangeRateDeleteOne {
+	builder := c.Delete().Where(businessexchangerate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BusinessExchangeRateDeleteOne{builder}
+}
+
+// Query returns a query builder for BusinessExchangeRate.
+func (c *BusinessExchangeRateClient) Query() *BusinessExchangeRateQuery {
+	return &BusinessExchangeRateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBusinessExchangeRate},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BusinessExchangeRate entity by its id.
+func (c *BusinessExchangeRateClient) Get(ctx context.Context, id int64) (*BusinessExchangeRate, error) {
+	return c.Query().Where(businessexchangerate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BusinessExchangeRateClient) GetX(ctx context.Context, id int64) *BusinessExchangeRate {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *BusinessExchangeRateClient) Hooks() []Hook {
+	return c.hooks.BusinessExchangeRate
+}
+
+// Interceptors returns the client interceptors.
+func (c *BusinessExchangeRateClient) Interceptors() []Interceptor {
+	return c.inters.BusinessExchangeRate
+}
+
+func (c *BusinessExchangeRateClient) mutate(ctx context.Context, m *BusinessExchangeRateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BusinessExchangeRateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BusinessExchangeRateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BusinessExchangeRateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BusinessExchangeRateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BusinessExchangeRate mutation op: %q", m.Op())
+	}
+}
+
+// BusinessMonthlySnapshotClient is a client for the BusinessMonthlySnapshot schema.
+type BusinessMonthlySnapshotClient struct {
+	config
+}
+
+// NewBusinessMonthlySnapshotClient returns a client for the BusinessMonthlySnapshot from the given config.
+func NewBusinessMonthlySnapshotClient(c config) *BusinessMonthlySnapshotClient {
+	return &BusinessMonthlySnapshotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `businessmonthlysnapshot.Hooks(f(g(h())))`.
+func (c *BusinessMonthlySnapshotClient) Use(hooks ...Hook) {
+	c.hooks.BusinessMonthlySnapshot = append(c.hooks.BusinessMonthlySnapshot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `businessmonthlysnapshot.Intercept(f(g(h())))`.
+func (c *BusinessMonthlySnapshotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BusinessMonthlySnapshot = append(c.inters.BusinessMonthlySnapshot, interceptors...)
+}
+
+// Create returns a builder for creating a BusinessMonthlySnapshot entity.
+func (c *BusinessMonthlySnapshotClient) Create() *BusinessMonthlySnapshotCreate {
+	mutation := newBusinessMonthlySnapshotMutation(c.config, OpCreate)
+	return &BusinessMonthlySnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BusinessMonthlySnapshot entities.
+func (c *BusinessMonthlySnapshotClient) CreateBulk(builders ...*BusinessMonthlySnapshotCreate) *BusinessMonthlySnapshotCreateBulk {
+	return &BusinessMonthlySnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BusinessMonthlySnapshotClient) MapCreateBulk(slice any, setFunc func(*BusinessMonthlySnapshotCreate, int)) *BusinessMonthlySnapshotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BusinessMonthlySnapshotCreateBulk{err: fmt.Errorf("calling to BusinessMonthlySnapshotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BusinessMonthlySnapshotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BusinessMonthlySnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BusinessMonthlySnapshot.
+func (c *BusinessMonthlySnapshotClient) Update() *BusinessMonthlySnapshotUpdate {
+	mutation := newBusinessMonthlySnapshotMutation(c.config, OpUpdate)
+	return &BusinessMonthlySnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BusinessMonthlySnapshotClient) UpdateOne(_m *BusinessMonthlySnapshot) *BusinessMonthlySnapshotUpdateOne {
+	mutation := newBusinessMonthlySnapshotMutation(c.config, OpUpdateOne, withBusinessMonthlySnapshot(_m))
+	return &BusinessMonthlySnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BusinessMonthlySnapshotClient) UpdateOneID(id int64) *BusinessMonthlySnapshotUpdateOne {
+	mutation := newBusinessMonthlySnapshotMutation(c.config, OpUpdateOne, withBusinessMonthlySnapshotID(id))
+	return &BusinessMonthlySnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BusinessMonthlySnapshot.
+func (c *BusinessMonthlySnapshotClient) Delete() *BusinessMonthlySnapshotDelete {
+	mutation := newBusinessMonthlySnapshotMutation(c.config, OpDelete)
+	return &BusinessMonthlySnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BusinessMonthlySnapshotClient) DeleteOne(_m *BusinessMonthlySnapshot) *BusinessMonthlySnapshotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BusinessMonthlySnapshotClient) DeleteOneID(id int64) *BusinessMonthlySnapshotDeleteOne {
+	builder := c.Delete().Where(businessmonthlysnapshot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BusinessMonthlySnapshotDeleteOne{builder}
+}
+
+// Query returns a query builder for BusinessMonthlySnapshot.
+func (c *BusinessMonthlySnapshotClient) Query() *BusinessMonthlySnapshotQuery {
+	return &BusinessMonthlySnapshotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBusinessMonthlySnapshot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BusinessMonthlySnapshot entity by its id.
+func (c *BusinessMonthlySnapshotClient) Get(ctx context.Context, id int64) (*BusinessMonthlySnapshot, error) {
+	return c.Query().Where(businessmonthlysnapshot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BusinessMonthlySnapshotClient) GetX(ctx context.Context, id int64) *BusinessMonthlySnapshot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *BusinessMonthlySnapshotClient) Hooks() []Hook {
+	return c.hooks.BusinessMonthlySnapshot
+}
+
+// Interceptors returns the client interceptors.
+func (c *BusinessMonthlySnapshotClient) Interceptors() []Interceptor {
+	return c.inters.BusinessMonthlySnapshot
+}
+
+func (c *BusinessMonthlySnapshotClient) mutate(ctx context.Context, m *BusinessMonthlySnapshotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BusinessMonthlySnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BusinessMonthlySnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BusinessMonthlySnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BusinessMonthlySnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BusinessMonthlySnapshot mutation op: %q", m.Op())
+	}
+}
+
+// BusinessMonthlySnapshotItemClient is a client for the BusinessMonthlySnapshotItem schema.
+type BusinessMonthlySnapshotItemClient struct {
+	config
+}
+
+// NewBusinessMonthlySnapshotItemClient returns a client for the BusinessMonthlySnapshotItem from the given config.
+func NewBusinessMonthlySnapshotItemClient(c config) *BusinessMonthlySnapshotItemClient {
+	return &BusinessMonthlySnapshotItemClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `businessmonthlysnapshotitem.Hooks(f(g(h())))`.
+func (c *BusinessMonthlySnapshotItemClient) Use(hooks ...Hook) {
+	c.hooks.BusinessMonthlySnapshotItem = append(c.hooks.BusinessMonthlySnapshotItem, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `businessmonthlysnapshotitem.Intercept(f(g(h())))`.
+func (c *BusinessMonthlySnapshotItemClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BusinessMonthlySnapshotItem = append(c.inters.BusinessMonthlySnapshotItem, interceptors...)
+}
+
+// Create returns a builder for creating a BusinessMonthlySnapshotItem entity.
+func (c *BusinessMonthlySnapshotItemClient) Create() *BusinessMonthlySnapshotItemCreate {
+	mutation := newBusinessMonthlySnapshotItemMutation(c.config, OpCreate)
+	return &BusinessMonthlySnapshotItemCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BusinessMonthlySnapshotItem entities.
+func (c *BusinessMonthlySnapshotItemClient) CreateBulk(builders ...*BusinessMonthlySnapshotItemCreate) *BusinessMonthlySnapshotItemCreateBulk {
+	return &BusinessMonthlySnapshotItemCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BusinessMonthlySnapshotItemClient) MapCreateBulk(slice any, setFunc func(*BusinessMonthlySnapshotItemCreate, int)) *BusinessMonthlySnapshotItemCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BusinessMonthlySnapshotItemCreateBulk{err: fmt.Errorf("calling to BusinessMonthlySnapshotItemClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BusinessMonthlySnapshotItemCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BusinessMonthlySnapshotItemCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BusinessMonthlySnapshotItem.
+func (c *BusinessMonthlySnapshotItemClient) Update() *BusinessMonthlySnapshotItemUpdate {
+	mutation := newBusinessMonthlySnapshotItemMutation(c.config, OpUpdate)
+	return &BusinessMonthlySnapshotItemUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BusinessMonthlySnapshotItemClient) UpdateOne(_m *BusinessMonthlySnapshotItem) *BusinessMonthlySnapshotItemUpdateOne {
+	mutation := newBusinessMonthlySnapshotItemMutation(c.config, OpUpdateOne, withBusinessMonthlySnapshotItem(_m))
+	return &BusinessMonthlySnapshotItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BusinessMonthlySnapshotItemClient) UpdateOneID(id int64) *BusinessMonthlySnapshotItemUpdateOne {
+	mutation := newBusinessMonthlySnapshotItemMutation(c.config, OpUpdateOne, withBusinessMonthlySnapshotItemID(id))
+	return &BusinessMonthlySnapshotItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BusinessMonthlySnapshotItem.
+func (c *BusinessMonthlySnapshotItemClient) Delete() *BusinessMonthlySnapshotItemDelete {
+	mutation := newBusinessMonthlySnapshotItemMutation(c.config, OpDelete)
+	return &BusinessMonthlySnapshotItemDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BusinessMonthlySnapshotItemClient) DeleteOne(_m *BusinessMonthlySnapshotItem) *BusinessMonthlySnapshotItemDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BusinessMonthlySnapshotItemClient) DeleteOneID(id int64) *BusinessMonthlySnapshotItemDeleteOne {
+	builder := c.Delete().Where(businessmonthlysnapshotitem.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BusinessMonthlySnapshotItemDeleteOne{builder}
+}
+
+// Query returns a query builder for BusinessMonthlySnapshotItem.
+func (c *BusinessMonthlySnapshotItemClient) Query() *BusinessMonthlySnapshotItemQuery {
+	return &BusinessMonthlySnapshotItemQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBusinessMonthlySnapshotItem},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BusinessMonthlySnapshotItem entity by its id.
+func (c *BusinessMonthlySnapshotItemClient) Get(ctx context.Context, id int64) (*BusinessMonthlySnapshotItem, error) {
+	return c.Query().Where(businessmonthlysnapshotitem.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BusinessMonthlySnapshotItemClient) GetX(ctx context.Context, id int64) *BusinessMonthlySnapshotItem {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *BusinessMonthlySnapshotItemClient) Hooks() []Hook {
+	return c.hooks.BusinessMonthlySnapshotItem
+}
+
+// Interceptors returns the client interceptors.
+func (c *BusinessMonthlySnapshotItemClient) Interceptors() []Interceptor {
+	return c.inters.BusinessMonthlySnapshotItem
+}
+
+func (c *BusinessMonthlySnapshotItemClient) mutate(ctx context.Context, m *BusinessMonthlySnapshotItemMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BusinessMonthlySnapshotItemCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BusinessMonthlySnapshotItemUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BusinessMonthlySnapshotItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BusinessMonthlySnapshotItemDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BusinessMonthlySnapshotItem mutation op: %q", m.Op())
+	}
+}
+
+// BusinessPricingRuleClient is a client for the BusinessPricingRule schema.
+type BusinessPricingRuleClient struct {
+	config
+}
+
+// NewBusinessPricingRuleClient returns a client for the BusinessPricingRule from the given config.
+func NewBusinessPricingRuleClient(c config) *BusinessPricingRuleClient {
+	return &BusinessPricingRuleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `businesspricingrule.Hooks(f(g(h())))`.
+func (c *BusinessPricingRuleClient) Use(hooks ...Hook) {
+	c.hooks.BusinessPricingRule = append(c.hooks.BusinessPricingRule, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `businesspricingrule.Intercept(f(g(h())))`.
+func (c *BusinessPricingRuleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BusinessPricingRule = append(c.inters.BusinessPricingRule, interceptors...)
+}
+
+// Create returns a builder for creating a BusinessPricingRule entity.
+func (c *BusinessPricingRuleClient) Create() *BusinessPricingRuleCreate {
+	mutation := newBusinessPricingRuleMutation(c.config, OpCreate)
+	return &BusinessPricingRuleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BusinessPricingRule entities.
+func (c *BusinessPricingRuleClient) CreateBulk(builders ...*BusinessPricingRuleCreate) *BusinessPricingRuleCreateBulk {
+	return &BusinessPricingRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BusinessPricingRuleClient) MapCreateBulk(slice any, setFunc func(*BusinessPricingRuleCreate, int)) *BusinessPricingRuleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BusinessPricingRuleCreateBulk{err: fmt.Errorf("calling to BusinessPricingRuleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BusinessPricingRuleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BusinessPricingRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BusinessPricingRule.
+func (c *BusinessPricingRuleClient) Update() *BusinessPricingRuleUpdate {
+	mutation := newBusinessPricingRuleMutation(c.config, OpUpdate)
+	return &BusinessPricingRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BusinessPricingRuleClient) UpdateOne(_m *BusinessPricingRule) *BusinessPricingRuleUpdateOne {
+	mutation := newBusinessPricingRuleMutation(c.config, OpUpdateOne, withBusinessPricingRule(_m))
+	return &BusinessPricingRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BusinessPricingRuleClient) UpdateOneID(id int64) *BusinessPricingRuleUpdateOne {
+	mutation := newBusinessPricingRuleMutation(c.config, OpUpdateOne, withBusinessPricingRuleID(id))
+	return &BusinessPricingRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BusinessPricingRule.
+func (c *BusinessPricingRuleClient) Delete() *BusinessPricingRuleDelete {
+	mutation := newBusinessPricingRuleMutation(c.config, OpDelete)
+	return &BusinessPricingRuleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BusinessPricingRuleClient) DeleteOne(_m *BusinessPricingRule) *BusinessPricingRuleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BusinessPricingRuleClient) DeleteOneID(id int64) *BusinessPricingRuleDeleteOne {
+	builder := c.Delete().Where(businesspricingrule.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BusinessPricingRuleDeleteOne{builder}
+}
+
+// Query returns a query builder for BusinessPricingRule.
+func (c *BusinessPricingRuleClient) Query() *BusinessPricingRuleQuery {
+	return &BusinessPricingRuleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBusinessPricingRule},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BusinessPricingRule entity by its id.
+func (c *BusinessPricingRuleClient) Get(ctx context.Context, id int64) (*BusinessPricingRule, error) {
+	return c.Query().Where(businesspricingrule.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BusinessPricingRuleClient) GetX(ctx context.Context, id int64) *BusinessPricingRule {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *BusinessPricingRuleClient) Hooks() []Hook {
+	return c.hooks.BusinessPricingRule
+}
+
+// Interceptors returns the client interceptors.
+func (c *BusinessPricingRuleClient) Interceptors() []Interceptor {
+	return c.inters.BusinessPricingRule
+}
+
+func (c *BusinessPricingRuleClient) mutate(ctx context.Context, m *BusinessPricingRuleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BusinessPricingRuleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BusinessPricingRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BusinessPricingRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BusinessPricingRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BusinessPricingRule mutation op: %q", m.Op())
 	}
 }
 
@@ -6339,7 +7191,9 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
+		AuthIdentityChannel, BusinessAPIKeyConfig, BusinessCostItem,
+		BusinessExchangeRate, BusinessMonthlySnapshot, BusinessMonthlySnapshotItem,
+		BusinessPricingRule, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession,
@@ -6350,7 +7204,9 @@ type (
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
+		AuthIdentityChannel, BusinessAPIKeyConfig, BusinessCostItem,
+		BusinessExchangeRate, BusinessMonthlySnapshot, BusinessMonthlySnapshotItem,
+		BusinessPricingRule, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession,

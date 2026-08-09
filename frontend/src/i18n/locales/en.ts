@@ -385,6 +385,10 @@ export default {
     availableChannels: 'Available Channels',
     subscriptions: 'Subscriptions',
     privateSubscriptions: 'Customer Subscriptions',
+    businessManagement: 'Business',
+    businessDashboard: 'Profitability',
+    businessCosts: 'Cost Ledger',
+    businessReconciliation: 'Reconciliation',
     accounts: 'Accounts',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
@@ -1396,6 +1400,14 @@ export default {
 
   // Admin
   admin: {
+    business: {
+      dashboardTitle: 'Business Profitability',
+      dashboardDescription: 'Current revenue, gross profit, net profit, and locked monthly history',
+      costsTitle: 'Cost Ledger',
+      costsDescription: 'Manage subscription accounts, infrastructure costs, and monthly exchange rates',
+      reconciliationTitle: 'Business Reconciliation',
+      reconciliationDescription: 'Review expiries, pricing, exclusions, and customer subscription links'
+    },
     apiKeys: {
       title: 'API Key Management',
       description: 'Create and maintain API key quotas, rate limits, and concurrency directly as an admin',

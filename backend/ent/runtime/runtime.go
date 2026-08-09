@@ -12,6 +12,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/businessapikeyconfig"
+	"github.com/Wei-Shaw/sub2api/ent/businesscostitem"
+	"github.com/Wei-Shaw/sub2api/ent/businessexchangerate"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshot"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshotitem"
+	"github.com/Wei-Shaw/sub2api/ent/businesspricingrule"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -461,6 +467,468 @@ func init() {
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
 	authidentitychannel.DefaultMetadata = authidentitychannelDescMetadata.Default.(func() map[string]interface{})
+	businessapikeyconfigMixin := schema.BusinessAPIKeyConfig{}.Mixin()
+	businessapikeyconfigMixinFields0 := businessapikeyconfigMixin[0].Fields()
+	_ = businessapikeyconfigMixinFields0
+	businessapikeyconfigFields := schema.BusinessAPIKeyConfig{}.Fields()
+	_ = businessapikeyconfigFields
+	// businessapikeyconfigDescCreatedAt is the schema descriptor for created_at field.
+	businessapikeyconfigDescCreatedAt := businessapikeyconfigMixinFields0[0].Descriptor()
+	// businessapikeyconfig.DefaultCreatedAt holds the default value on creation for the created_at field.
+	businessapikeyconfig.DefaultCreatedAt = businessapikeyconfigDescCreatedAt.Default.(func() time.Time)
+	// businessapikeyconfigDescUpdatedAt is the schema descriptor for updated_at field.
+	businessapikeyconfigDescUpdatedAt := businessapikeyconfigMixinFields0[1].Descriptor()
+	// businessapikeyconfig.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	businessapikeyconfig.DefaultUpdatedAt = businessapikeyconfigDescUpdatedAt.Default.(func() time.Time)
+	// businessapikeyconfig.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	businessapikeyconfig.UpdateDefaultUpdatedAt = businessapikeyconfigDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// businessapikeyconfigDescRevenueExcluded is the schema descriptor for revenue_excluded field.
+	businessapikeyconfigDescRevenueExcluded := businessapikeyconfigFields[1].Descriptor()
+	// businessapikeyconfig.DefaultRevenueExcluded holds the default value on creation for the revenue_excluded field.
+	businessapikeyconfig.DefaultRevenueExcluded = businessapikeyconfigDescRevenueExcluded.Default.(bool)
+	// businessapikeyconfigDescOverrideAmountCents is the schema descriptor for override_amount_cents field.
+	businessapikeyconfigDescOverrideAmountCents := businessapikeyconfigFields[2].Descriptor()
+	// businessapikeyconfig.OverrideAmountCentsValidator is a validator for the "override_amount_cents" field. It is called by the builders before save.
+	businessapikeyconfig.OverrideAmountCentsValidator = businessapikeyconfigDescOverrideAmountCents.Validators[0].(func(int64) error)
+	businesscostitemMixin := schema.BusinessCostItem{}.Mixin()
+	businesscostitemMixinHooks1 := businesscostitemMixin[1].Hooks()
+	businesscostitem.Hooks[0] = businesscostitemMixinHooks1[0]
+	businesscostitemMixinInters1 := businesscostitemMixin[1].Interceptors()
+	businesscostitem.Interceptors[0] = businesscostitemMixinInters1[0]
+	businesscostitemMixinFields0 := businesscostitemMixin[0].Fields()
+	_ = businesscostitemMixinFields0
+	businesscostitemFields := schema.BusinessCostItem{}.Fields()
+	_ = businesscostitemFields
+	// businesscostitemDescCreatedAt is the schema descriptor for created_at field.
+	businesscostitemDescCreatedAt := businesscostitemMixinFields0[0].Descriptor()
+	// businesscostitem.DefaultCreatedAt holds the default value on creation for the created_at field.
+	businesscostitem.DefaultCreatedAt = businesscostitemDescCreatedAt.Default.(func() time.Time)
+	// businesscostitemDescUpdatedAt is the schema descriptor for updated_at field.
+	businesscostitemDescUpdatedAt := businesscostitemMixinFields0[1].Descriptor()
+	// businesscostitem.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	businesscostitem.DefaultUpdatedAt = businesscostitemDescUpdatedAt.Default.(func() time.Time)
+	// businesscostitem.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	businesscostitem.UpdateDefaultUpdatedAt = businesscostitemDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// businesscostitemDescName is the schema descriptor for name field.
+	businesscostitemDescName := businesscostitemFields[0].Descriptor()
+	// businesscostitem.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	businesscostitem.NameValidator = func() func(string) error {
+		validators := businesscostitemDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businesscostitemDescCostClass is the schema descriptor for cost_class field.
+	businesscostitemDescCostClass := businesscostitemFields[1].Descriptor()
+	// businesscostitem.CostClassValidator is a validator for the "cost_class" field. It is called by the builders before save.
+	businesscostitem.CostClassValidator = func() func(string) error {
+		validators := businesscostitemDescCostClass.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(cost_class string) error {
+			for _, fn := range fns {
+				if err := fn(cost_class); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businesscostitemDescCategory is the schema descriptor for category field.
+	businesscostitemDescCategory := businesscostitemFields[2].Descriptor()
+	// businesscostitem.CategoryValidator is a validator for the "category" field. It is called by the builders before save.
+	businesscostitem.CategoryValidator = func() func(string) error {
+		validators := businesscostitemDescCategory.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(category string) error {
+			for _, fn := range fns {
+				if err := fn(category); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businesscostitemDescAmountMinor is the schema descriptor for amount_minor field.
+	businesscostitemDescAmountMinor := businesscostitemFields[3].Descriptor()
+	// businesscostitem.AmountMinorValidator is a validator for the "amount_minor" field. It is called by the builders before save.
+	businesscostitem.AmountMinorValidator = businesscostitemDescAmountMinor.Validators[0].(func(int64) error)
+	// businesscostitemDescCurrency is the schema descriptor for currency field.
+	businesscostitemDescCurrency := businesscostitemFields[4].Descriptor()
+	// businesscostitem.CurrencyValidator is a validator for the "currency" field. It is called by the builders before save.
+	businesscostitem.CurrencyValidator = func() func(string) error {
+		validators := businesscostitemDescCurrency.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(currency string) error {
+			for _, fn := range fns {
+				if err := fn(currency); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businesscostitemDescBillingCycle is the schema descriptor for billing_cycle field.
+	businesscostitemDescBillingCycle := businesscostitemFields[5].Descriptor()
+	// businesscostitem.BillingCycleValidator is a validator for the "billing_cycle" field. It is called by the builders before save.
+	businesscostitem.BillingCycleValidator = func() func(string) error {
+		validators := businesscostitemDescBillingCycle.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(billing_cycle string) error {
+			for _, fn := range fns {
+				if err := fn(billing_cycle); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businesscostitemDescAccountIdentifier is the schema descriptor for account_identifier field.
+	businesscostitemDescAccountIdentifier := businesscostitemFields[9].Descriptor()
+	// businesscostitem.AccountIdentifierValidator is a validator for the "account_identifier" field. It is called by the builders before save.
+	businesscostitem.AccountIdentifierValidator = businesscostitemDescAccountIdentifier.Validators[0].(func(string) error)
+	// businesscostitemDescIsFree is the schema descriptor for is_free field.
+	businesscostitemDescIsFree := businesscostitemFields[10].Descriptor()
+	// businesscostitem.DefaultIsFree holds the default value on creation for the is_free field.
+	businesscostitem.DefaultIsFree = businesscostitemDescIsFree.Default.(bool)
+	// businesscostitemDescActive is the schema descriptor for active field.
+	businesscostitemDescActive := businesscostitemFields[11].Descriptor()
+	// businesscostitem.DefaultActive holds the default value on creation for the active field.
+	businesscostitem.DefaultActive = businesscostitemDescActive.Default.(bool)
+	businessexchangerateMixin := schema.BusinessExchangeRate{}.Mixin()
+	businessexchangerateMixinFields0 := businessexchangerateMixin[0].Fields()
+	_ = businessexchangerateMixinFields0
+	businessexchangerateFields := schema.BusinessExchangeRate{}.Fields()
+	_ = businessexchangerateFields
+	// businessexchangerateDescCreatedAt is the schema descriptor for created_at field.
+	businessexchangerateDescCreatedAt := businessexchangerateMixinFields0[0].Descriptor()
+	// businessexchangerate.DefaultCreatedAt holds the default value on creation for the created_at field.
+	businessexchangerate.DefaultCreatedAt = businessexchangerateDescCreatedAt.Default.(func() time.Time)
+	// businessexchangerateDescUpdatedAt is the schema descriptor for updated_at field.
+	businessexchangerateDescUpdatedAt := businessexchangerateMixinFields0[1].Descriptor()
+	// businessexchangerate.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	businessexchangerate.DefaultUpdatedAt = businessexchangerateDescUpdatedAt.Default.(func() time.Time)
+	// businessexchangerate.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	businessexchangerate.UpdateDefaultUpdatedAt = businessexchangerateDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// businessexchangerateDescCurrency is the schema descriptor for currency field.
+	businessexchangerateDescCurrency := businessexchangerateFields[1].Descriptor()
+	// businessexchangerate.CurrencyValidator is a validator for the "currency" field. It is called by the builders before save.
+	businessexchangerate.CurrencyValidator = func() func(string) error {
+		validators := businessexchangerateDescCurrency.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(currency string) error {
+			for _, fn := range fns {
+				if err := fn(currency); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businessexchangerateDescRateScaled is the schema descriptor for rate_scaled field.
+	businessexchangerateDescRateScaled := businessexchangerateFields[2].Descriptor()
+	// businessexchangerate.RateScaledValidator is a validator for the "rate_scaled" field. It is called by the builders before save.
+	businessexchangerate.RateScaledValidator = businessexchangerateDescRateScaled.Validators[0].(func(int64) error)
+	// businessexchangerateDescSource is the schema descriptor for source field.
+	businessexchangerateDescSource := businessexchangerateFields[3].Descriptor()
+	// businessexchangerate.DefaultSource holds the default value on creation for the source field.
+	businessexchangerate.DefaultSource = businessexchangerateDescSource.Default.(string)
+	// businessexchangerate.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	businessexchangerate.SourceValidator = businessexchangerateDescSource.Validators[0].(func(string) error)
+	businessmonthlysnapshotMixin := schema.BusinessMonthlySnapshot{}.Mixin()
+	businessmonthlysnapshotMixinFields0 := businessmonthlysnapshotMixin[0].Fields()
+	_ = businessmonthlysnapshotMixinFields0
+	businessmonthlysnapshotFields := schema.BusinessMonthlySnapshot{}.Fields()
+	_ = businessmonthlysnapshotFields
+	// businessmonthlysnapshotDescCreatedAt is the schema descriptor for created_at field.
+	businessmonthlysnapshotDescCreatedAt := businessmonthlysnapshotMixinFields0[0].Descriptor()
+	// businessmonthlysnapshot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	businessmonthlysnapshot.DefaultCreatedAt = businessmonthlysnapshotDescCreatedAt.Default.(func() time.Time)
+	// businessmonthlysnapshotDescUpdatedAt is the schema descriptor for updated_at field.
+	businessmonthlysnapshotDescUpdatedAt := businessmonthlysnapshotMixinFields0[1].Descriptor()
+	// businessmonthlysnapshot.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	businessmonthlysnapshot.DefaultUpdatedAt = businessmonthlysnapshotDescUpdatedAt.Default.(func() time.Time)
+	// businessmonthlysnapshot.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	businessmonthlysnapshot.UpdateDefaultUpdatedAt = businessmonthlysnapshotDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// businessmonthlysnapshotDescStatus is the schema descriptor for status field.
+	businessmonthlysnapshotDescStatus := businessmonthlysnapshotFields[1].Descriptor()
+	// businessmonthlysnapshot.DefaultStatus holds the default value on creation for the status field.
+	businessmonthlysnapshot.DefaultStatus = businessmonthlysnapshotDescStatus.Default.(string)
+	// businessmonthlysnapshot.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	businessmonthlysnapshot.StatusValidator = businessmonthlysnapshotDescStatus.Validators[0].(func(string) error)
+	// businessmonthlysnapshotDescDataQuality is the schema descriptor for data_quality field.
+	businessmonthlysnapshotDescDataQuality := businessmonthlysnapshotFields[2].Descriptor()
+	// businessmonthlysnapshot.DataQualityValidator is a validator for the "data_quality" field. It is called by the builders before save.
+	businessmonthlysnapshot.DataQualityValidator = func() func(string) error {
+		validators := businessmonthlysnapshotDescDataQuality.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(data_quality string) error {
+			for _, fn := range fns {
+				if err := fn(data_quality); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businessmonthlysnapshotDescAPIKeyCount is the schema descriptor for api_key_count field.
+	businessmonthlysnapshotDescAPIKeyCount := businessmonthlysnapshotFields[3].Descriptor()
+	// businessmonthlysnapshot.DefaultAPIKeyCount holds the default value on creation for the api_key_count field.
+	businessmonthlysnapshot.DefaultAPIKeyCount = businessmonthlysnapshotDescAPIKeyCount.Default.(int)
+	// businessmonthlysnapshot.APIKeyCountValidator is a validator for the "api_key_count" field. It is called by the builders before save.
+	businessmonthlysnapshot.APIKeyCountValidator = businessmonthlysnapshotDescAPIKeyCount.Validators[0].(func(int) error)
+	// businessmonthlysnapshotDescPrivateSubscriptionCount is the schema descriptor for private_subscription_count field.
+	businessmonthlysnapshotDescPrivateSubscriptionCount := businessmonthlysnapshotFields[4].Descriptor()
+	// businessmonthlysnapshot.DefaultPrivateSubscriptionCount holds the default value on creation for the private_subscription_count field.
+	businessmonthlysnapshot.DefaultPrivateSubscriptionCount = businessmonthlysnapshotDescPrivateSubscriptionCount.Default.(int)
+	// businessmonthlysnapshot.PrivateSubscriptionCountValidator is a validator for the "private_subscription_count" field. It is called by the builders before save.
+	businessmonthlysnapshot.PrivateSubscriptionCountValidator = businessmonthlysnapshotDescPrivateSubscriptionCount.Validators[0].(func(int) error)
+	// businessmonthlysnapshotDescCustomerCount is the schema descriptor for customer_count field.
+	businessmonthlysnapshotDescCustomerCount := businessmonthlysnapshotFields[5].Descriptor()
+	// businessmonthlysnapshot.DefaultCustomerCount holds the default value on creation for the customer_count field.
+	businessmonthlysnapshot.DefaultCustomerCount = businessmonthlysnapshotDescCustomerCount.Default.(int)
+	// businessmonthlysnapshot.CustomerCountValidator is a validator for the "customer_count" field. It is called by the builders before save.
+	businessmonthlysnapshot.CustomerCountValidator = businessmonthlysnapshotDescCustomerCount.Validators[0].(func(int) error)
+	// businessmonthlysnapshotDescExcludedAPIKeyCount is the schema descriptor for excluded_api_key_count field.
+	businessmonthlysnapshotDescExcludedAPIKeyCount := businessmonthlysnapshotFields[6].Descriptor()
+	// businessmonthlysnapshot.DefaultExcludedAPIKeyCount holds the default value on creation for the excluded_api_key_count field.
+	businessmonthlysnapshot.DefaultExcludedAPIKeyCount = businessmonthlysnapshotDescExcludedAPIKeyCount.Default.(int)
+	// businessmonthlysnapshot.ExcludedAPIKeyCountValidator is a validator for the "excluded_api_key_count" field. It is called by the builders before save.
+	businessmonthlysnapshot.ExcludedAPIKeyCountValidator = businessmonthlysnapshotDescExcludedAPIKeyCount.Validators[0].(func(int) error)
+	// businessmonthlysnapshotDescAnomalyCount is the schema descriptor for anomaly_count field.
+	businessmonthlysnapshotDescAnomalyCount := businessmonthlysnapshotFields[7].Descriptor()
+	// businessmonthlysnapshot.DefaultAnomalyCount holds the default value on creation for the anomaly_count field.
+	businessmonthlysnapshot.DefaultAnomalyCount = businessmonthlysnapshotDescAnomalyCount.Default.(int)
+	// businessmonthlysnapshot.AnomalyCountValidator is a validator for the "anomaly_count" field. It is called by the builders before save.
+	businessmonthlysnapshot.AnomalyCountValidator = businessmonthlysnapshotDescAnomalyCount.Validators[0].(func(int) error)
+	// businessmonthlysnapshotDescAPIKeyRevenueCents is the schema descriptor for api_key_revenue_cents field.
+	businessmonthlysnapshotDescAPIKeyRevenueCents := businessmonthlysnapshotFields[8].Descriptor()
+	// businessmonthlysnapshot.DefaultAPIKeyRevenueCents holds the default value on creation for the api_key_revenue_cents field.
+	businessmonthlysnapshot.DefaultAPIKeyRevenueCents = businessmonthlysnapshotDescAPIKeyRevenueCents.Default.(int64)
+	// businessmonthlysnapshotDescPrivateSubscriptionRevenueCents is the schema descriptor for private_subscription_revenue_cents field.
+	businessmonthlysnapshotDescPrivateSubscriptionRevenueCents := businessmonthlysnapshotFields[9].Descriptor()
+	// businessmonthlysnapshot.DefaultPrivateSubscriptionRevenueCents holds the default value on creation for the private_subscription_revenue_cents field.
+	businessmonthlysnapshot.DefaultPrivateSubscriptionRevenueCents = businessmonthlysnapshotDescPrivateSubscriptionRevenueCents.Default.(int64)
+	// businessmonthlysnapshotDescTotalRevenueCents is the schema descriptor for total_revenue_cents field.
+	businessmonthlysnapshotDescTotalRevenueCents := businessmonthlysnapshotFields[10].Descriptor()
+	// businessmonthlysnapshot.DefaultTotalRevenueCents holds the default value on creation for the total_revenue_cents field.
+	businessmonthlysnapshot.DefaultTotalRevenueCents = businessmonthlysnapshotDescTotalRevenueCents.Default.(int64)
+	// businessmonthlysnapshotDescDirectCostCents is the schema descriptor for direct_cost_cents field.
+	businessmonthlysnapshotDescDirectCostCents := businessmonthlysnapshotFields[11].Descriptor()
+	// businessmonthlysnapshot.DefaultDirectCostCents holds the default value on creation for the direct_cost_cents field.
+	businessmonthlysnapshot.DefaultDirectCostCents = businessmonthlysnapshotDescDirectCostCents.Default.(int64)
+	// businessmonthlysnapshotDescOperatingCostCents is the schema descriptor for operating_cost_cents field.
+	businessmonthlysnapshotDescOperatingCostCents := businessmonthlysnapshotFields[12].Descriptor()
+	// businessmonthlysnapshot.DefaultOperatingCostCents holds the default value on creation for the operating_cost_cents field.
+	businessmonthlysnapshot.DefaultOperatingCostCents = businessmonthlysnapshotDescOperatingCostCents.Default.(int64)
+	// businessmonthlysnapshotDescGrossProfitCents is the schema descriptor for gross_profit_cents field.
+	businessmonthlysnapshotDescGrossProfitCents := businessmonthlysnapshotFields[13].Descriptor()
+	// businessmonthlysnapshot.DefaultGrossProfitCents holds the default value on creation for the gross_profit_cents field.
+	businessmonthlysnapshot.DefaultGrossProfitCents = businessmonthlysnapshotDescGrossProfitCents.Default.(int64)
+	// businessmonthlysnapshotDescNetProfitCents is the schema descriptor for net_profit_cents field.
+	businessmonthlysnapshotDescNetProfitCents := businessmonthlysnapshotFields[14].Descriptor()
+	// businessmonthlysnapshot.DefaultNetProfitCents holds the default value on creation for the net_profit_cents field.
+	businessmonthlysnapshot.DefaultNetProfitCents = businessmonthlysnapshotDescNetProfitCents.Default.(int64)
+	// businessmonthlysnapshotDescGrossMarginBps is the schema descriptor for gross_margin_bps field.
+	businessmonthlysnapshotDescGrossMarginBps := businessmonthlysnapshotFields[15].Descriptor()
+	// businessmonthlysnapshot.DefaultGrossMarginBps holds the default value on creation for the gross_margin_bps field.
+	businessmonthlysnapshot.DefaultGrossMarginBps = businessmonthlysnapshotDescGrossMarginBps.Default.(int64)
+	// businessmonthlysnapshotDescNetMarginBps is the schema descriptor for net_margin_bps field.
+	businessmonthlysnapshotDescNetMarginBps := businessmonthlysnapshotFields[16].Descriptor()
+	// businessmonthlysnapshot.DefaultNetMarginBps holds the default value on creation for the net_margin_bps field.
+	businessmonthlysnapshot.DefaultNetMarginBps = businessmonthlysnapshotDescNetMarginBps.Default.(int64)
+	// businessmonthlysnapshotDescCostsComplete is the schema descriptor for costs_complete field.
+	businessmonthlysnapshotDescCostsComplete := businessmonthlysnapshotFields[17].Descriptor()
+	// businessmonthlysnapshot.DefaultCostsComplete holds the default value on creation for the costs_complete field.
+	businessmonthlysnapshot.DefaultCostsComplete = businessmonthlysnapshotDescCostsComplete.Default.(bool)
+	businessmonthlysnapshotitemMixin := schema.BusinessMonthlySnapshotItem{}.Mixin()
+	businessmonthlysnapshotitemMixinFields0 := businessmonthlysnapshotitemMixin[0].Fields()
+	_ = businessmonthlysnapshotitemMixinFields0
+	businessmonthlysnapshotitemFields := schema.BusinessMonthlySnapshotItem{}.Fields()
+	_ = businessmonthlysnapshotitemFields
+	// businessmonthlysnapshotitemDescCreatedAt is the schema descriptor for created_at field.
+	businessmonthlysnapshotitemDescCreatedAt := businessmonthlysnapshotitemMixinFields0[0].Descriptor()
+	// businessmonthlysnapshotitem.DefaultCreatedAt holds the default value on creation for the created_at field.
+	businessmonthlysnapshotitem.DefaultCreatedAt = businessmonthlysnapshotitemDescCreatedAt.Default.(func() time.Time)
+	// businessmonthlysnapshotitemDescUpdatedAt is the schema descriptor for updated_at field.
+	businessmonthlysnapshotitemDescUpdatedAt := businessmonthlysnapshotitemMixinFields0[1].Descriptor()
+	// businessmonthlysnapshotitem.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	businessmonthlysnapshotitem.DefaultUpdatedAt = businessmonthlysnapshotitemDescUpdatedAt.Default.(func() time.Time)
+	// businessmonthlysnapshotitem.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	businessmonthlysnapshotitem.UpdateDefaultUpdatedAt = businessmonthlysnapshotitemDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// businessmonthlysnapshotitemDescItemType is the schema descriptor for item_type field.
+	businessmonthlysnapshotitemDescItemType := businessmonthlysnapshotitemFields[1].Descriptor()
+	// businessmonthlysnapshotitem.ItemTypeValidator is a validator for the "item_type" field. It is called by the builders before save.
+	businessmonthlysnapshotitem.ItemTypeValidator = func() func(string) error {
+		validators := businessmonthlysnapshotitemDescItemType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(item_type string) error {
+			for _, fn := range fns {
+				if err := fn(item_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businessmonthlysnapshotitemDescSourceType is the schema descriptor for source_type field.
+	businessmonthlysnapshotitemDescSourceType := businessmonthlysnapshotitemFields[2].Descriptor()
+	// businessmonthlysnapshotitem.SourceTypeValidator is a validator for the "source_type" field. It is called by the builders before save.
+	businessmonthlysnapshotitem.SourceTypeValidator = func() func(string) error {
+		validators := businessmonthlysnapshotitemDescSourceType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(source_type string) error {
+			for _, fn := range fns {
+				if err := fn(source_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businessmonthlysnapshotitemDescName is the schema descriptor for name field.
+	businessmonthlysnapshotitemDescName := businessmonthlysnapshotitemFields[4].Descriptor()
+	// businessmonthlysnapshotitem.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	businessmonthlysnapshotitem.NameValidator = func() func(string) error {
+		validators := businessmonthlysnapshotitemDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businessmonthlysnapshotitemDescCategory is the schema descriptor for category field.
+	businessmonthlysnapshotitemDescCategory := businessmonthlysnapshotitemFields[5].Descriptor()
+	// businessmonthlysnapshotitem.CategoryValidator is a validator for the "category" field. It is called by the builders before save.
+	businessmonthlysnapshotitem.CategoryValidator = businessmonthlysnapshotitemDescCategory.Validators[0].(func(string) error)
+	// businessmonthlysnapshotitemDescTier is the schema descriptor for tier field.
+	businessmonthlysnapshotitemDescTier := businessmonthlysnapshotitemFields[6].Descriptor()
+	// businessmonthlysnapshotitem.TierValidator is a validator for the "tier" field. It is called by the builders before save.
+	businessmonthlysnapshotitem.TierValidator = businessmonthlysnapshotitemDescTier.Validators[0].(func(string) error)
+	// businessmonthlysnapshotitemDescOriginalAmountMinor is the schema descriptor for original_amount_minor field.
+	businessmonthlysnapshotitemDescOriginalAmountMinor := businessmonthlysnapshotitemFields[7].Descriptor()
+	// businessmonthlysnapshotitem.DefaultOriginalAmountMinor holds the default value on creation for the original_amount_minor field.
+	businessmonthlysnapshotitem.DefaultOriginalAmountMinor = businessmonthlysnapshotitemDescOriginalAmountMinor.Default.(int64)
+	// businessmonthlysnapshotitemDescCurrency is the schema descriptor for currency field.
+	businessmonthlysnapshotitemDescCurrency := businessmonthlysnapshotitemFields[8].Descriptor()
+	// businessmonthlysnapshotitem.CurrencyValidator is a validator for the "currency" field. It is called by the builders before save.
+	businessmonthlysnapshotitem.CurrencyValidator = func() func(string) error {
+		validators := businessmonthlysnapshotitemDescCurrency.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(currency string) error {
+			for _, fn := range fns {
+				if err := fn(currency); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businessmonthlysnapshotitemDescRateScaled is the schema descriptor for rate_scaled field.
+	businessmonthlysnapshotitemDescRateScaled := businessmonthlysnapshotitemFields[9].Descriptor()
+	// businessmonthlysnapshotitem.DefaultRateScaled holds the default value on creation for the rate_scaled field.
+	businessmonthlysnapshotitem.DefaultRateScaled = businessmonthlysnapshotitemDescRateScaled.Default.(int64)
+	// businessmonthlysnapshotitem.RateScaledValidator is a validator for the "rate_scaled" field. It is called by the builders before save.
+	businessmonthlysnapshotitem.RateScaledValidator = businessmonthlysnapshotitemDescRateScaled.Validators[0].(func(int64) error)
+	// businessmonthlysnapshotitemDescAmountCnyCents is the schema descriptor for amount_cny_cents field.
+	businessmonthlysnapshotitemDescAmountCnyCents := businessmonthlysnapshotitemFields[10].Descriptor()
+	// businessmonthlysnapshotitem.DefaultAmountCnyCents holds the default value on creation for the amount_cny_cents field.
+	businessmonthlysnapshotitem.DefaultAmountCnyCents = businessmonthlysnapshotitemDescAmountCnyCents.Default.(int64)
+	// businessmonthlysnapshotitemDescIncluded is the schema descriptor for included field.
+	businessmonthlysnapshotitemDescIncluded := businessmonthlysnapshotitemFields[13].Descriptor()
+	// businessmonthlysnapshotitem.DefaultIncluded holds the default value on creation for the included field.
+	businessmonthlysnapshotitem.DefaultIncluded = businessmonthlysnapshotitemDescIncluded.Default.(bool)
+	// businessmonthlysnapshotitemDescGroupName is the schema descriptor for group_name field.
+	businessmonthlysnapshotitemDescGroupName := businessmonthlysnapshotitemFields[15].Descriptor()
+	// businessmonthlysnapshotitem.GroupNameValidator is a validator for the "group_name" field. It is called by the builders before save.
+	businessmonthlysnapshotitem.GroupNameValidator = businessmonthlysnapshotitemDescGroupName.Validators[0].(func(string) error)
+	// businessmonthlysnapshotitemDescUserEmail is the schema descriptor for user_email field.
+	businessmonthlysnapshotitemDescUserEmail := businessmonthlysnapshotitemFields[16].Descriptor()
+	// businessmonthlysnapshotitem.UserEmailValidator is a validator for the "user_email" field. It is called by the builders before save.
+	businessmonthlysnapshotitem.UserEmailValidator = businessmonthlysnapshotitemDescUserEmail.Validators[0].(func(string) error)
+	businesspricingruleMixin := schema.BusinessPricingRule{}.Mixin()
+	businesspricingruleMixinFields0 := businesspricingruleMixin[0].Fields()
+	_ = businesspricingruleMixinFields0
+	businesspricingruleFields := schema.BusinessPricingRule{}.Fields()
+	_ = businesspricingruleFields
+	// businesspricingruleDescCreatedAt is the schema descriptor for created_at field.
+	businesspricingruleDescCreatedAt := businesspricingruleMixinFields0[0].Descriptor()
+	// businesspricingrule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	businesspricingrule.DefaultCreatedAt = businesspricingruleDescCreatedAt.Default.(func() time.Time)
+	// businesspricingruleDescUpdatedAt is the schema descriptor for updated_at field.
+	businesspricingruleDescUpdatedAt := businesspricingruleMixinFields0[1].Descriptor()
+	// businesspricingrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	businesspricingrule.DefaultUpdatedAt = businesspricingruleDescUpdatedAt.Default.(func() time.Time)
+	// businesspricingrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	businesspricingrule.UpdateDefaultUpdatedAt = businesspricingruleDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// businesspricingruleDescTier is the schema descriptor for tier field.
+	businesspricingruleDescTier := businesspricingruleFields[1].Descriptor()
+	// businesspricingrule.TierValidator is a validator for the "tier" field. It is called by the builders before save.
+	businesspricingrule.TierValidator = func() func(string) error {
+		validators := businesspricingruleDescTier.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(tier string) error {
+			for _, fn := range fns {
+				if err := fn(tier); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// businesspricingruleDescMonthlyPriceCents is the schema descriptor for monthly_price_cents field.
+	businesspricingruleDescMonthlyPriceCents := businesspricingruleFields[2].Descriptor()
+	// businesspricingrule.MonthlyPriceCentsValidator is a validator for the "monthly_price_cents" field. It is called by the builders before save.
+	businesspricingrule.MonthlyPriceCentsValidator = businesspricingruleDescMonthlyPriceCents.Validators[0].(func(int64) error)
+	// businesspricingruleDescActive is the schema descriptor for active field.
+	businesspricingruleDescActive := businesspricingruleFields[3].Descriptor()
+	// businesspricingrule.DefaultActive holds the default value on creation for the active field.
+	businesspricingrule.DefaultActive = businesspricingruleDescActive.Default.(bool)
 	channelmonitorMixin := schema.ChannelMonitor{}.Mixin()
 	channelmonitorMixinFields0 := channelmonitorMixin[0].Fields()
 	_ = channelmonitorMixinFields0

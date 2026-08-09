@@ -501,6 +501,46 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/business',
+    redirect: '/admin/business/dashboard'
+  },
+  {
+    path: '/admin/business/dashboard',
+    name: 'AdminBusinessDashboard',
+    component: () => import('@/views/admin/BusinessDashboardView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Business Profitability',
+      titleKey: 'admin.business.dashboardTitle',
+      descriptionKey: 'admin.business.dashboardDescription'
+    }
+  },
+  {
+    path: '/admin/business/costs',
+    name: 'AdminBusinessCosts',
+    component: () => import('@/views/admin/BusinessCostsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Business Costs',
+      titleKey: 'admin.business.costsTitle',
+      descriptionKey: 'admin.business.costsDescription'
+    }
+  },
+  {
+    path: '/admin/business/reconciliation',
+    name: 'AdminBusinessReconciliation',
+    component: () => import('@/views/admin/BusinessReconciliationView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Business Reconciliation',
+      titleKey: 'admin.business.reconciliationTitle',
+      descriptionKey: 'admin.business.reconciliationDescription'
+    }
+  },
+  {
     path: '/admin/accounts',
     name: 'AdminAccounts',
     component: () => import('@/views/admin/AccountsView.vue'),
@@ -855,6 +895,7 @@ router.beforeEach(async (to, _from, next) => {
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/private-subscriptions',
+      '/admin/business',
       '/admin/redeem',
       '/subscriptions',
       '/redeem'

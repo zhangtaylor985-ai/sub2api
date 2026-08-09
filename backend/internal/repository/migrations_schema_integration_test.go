@@ -132,6 +132,44 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 		"private_customer_subscriptions_reminder_due_idx",
 	)
 
+	// business profitability: isolated configuration, cost, rate, and immutable close tables (migration 157)
+	for _, table := range []string{
+		"business_pricing_rules",
+		"business_api_key_configs",
+		"business_cost_items",
+		"business_exchange_rates",
+		"business_monthly_snapshots",
+		"business_monthly_snapshot_items",
+	} {
+		var regclass sql.NullString
+		require.NoError(t, tx.QueryRowContext(
+			context.Background(),
+			"SELECT to_regclass('public.' || $1)",
+			table,
+		).Scan(&regclass))
+		require.True(t, regclass.Valid, "expected %s table to exist", table)
+	}
+	requireColumn(t, tx, "business_pricing_rules", "monthly_price_cents", "bigint", 0, false)
+	requireColumn(t, tx, "business_api_key_configs", "revenue_excluded", "boolean", 0, false)
+	requireColumn(t, tx, "business_cost_items", "amount_minor", "bigint", 0, false)
+	requireColumn(t, tx, "business_cost_items", "deleted_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "business_exchange_rates", "rate_scaled", "bigint", 0, false)
+	requireColumn(t, tx, "business_monthly_snapshots", "excluded_api_key_count", "integer", 0, false)
+	requireColumn(t, tx, "business_monthly_snapshots", "anomaly_count", "integer", 0, false)
+	requireColumn(t, tx, "business_monthly_snapshot_items", "included", "boolean", 0, false)
+	requireColumn(t, tx, "business_monthly_snapshot_items", "linked_api_key_id", "bigint", 0, true)
+	requireColumn(t, tx, "business_monthly_snapshot_items", "group_name", "character varying", 160, true)
+	requireColumn(t, tx, "business_monthly_snapshot_items", "user_email", "character varying", 254, true)
+	requireIndex(t, tx, "business_monthly_snapshot_items", "business_monthly_snapshot_items_snapshot_idx")
+	requireConstraintDefinitionContains(
+		t,
+		tx,
+		"business_monthly_snapshots",
+		"business_monthly_snapshots_counts_nonnegative",
+		"excluded_api_key_count >= 0",
+		"anomaly_count >= 0",
+	)
+
 	// orphan_allowed_groups_audit table should exist (migration 013)
 	var orphanAuditRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.orphan_allowed_groups_audit')").Scan(&orphanAuditRegclass))

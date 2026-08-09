@@ -175,6 +175,13 @@ func ProvidePrivateSubscriptionReminderService(
 	return svc
 }
 
+// ProvideBusinessSnapshotScheduler starts the Beijing-time monthly close checker.
+func ProvideBusinessSnapshotScheduler(businessService *BusinessService) *BusinessSnapshotScheduler {
+	scheduler := NewBusinessSnapshotScheduler(businessService, defaultBusinessSnapshotCheckInterval)
+	scheduler.Start()
+	return scheduler
+}
+
 // ProvideTimingWheelService creates and starts TimingWheelService
 func ProvideTimingWheelService() (*TimingWheelService, error) {
 	svc, err := NewTimingWheelService()
@@ -471,6 +478,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBillingCacheService,
 	NewAnnouncementService,
 	NewPrivateSubscriptionService,
+	NewBusinessService,
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
@@ -519,6 +527,8 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountExpiryService,
 	ProvideSubscriptionExpiryService,
 	ProvidePrivateSubscriptionReminderService,
+	ProvideBusinessSnapshotScheduler,
+	ProvideBusinessExchangeRateRefresher,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
 	ProvideUsageCleanupService,

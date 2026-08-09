@@ -32,6 +32,7 @@ import channelMonitorTemplateAPI from './channelMonitorTemplate'
 import adminPaymentAPI from './payment'
 import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
+import businessAPI from './business'
 
 /**
  * Unified admin API object for convenient access
@@ -65,7 +66,8 @@ export const adminAPI = {
   channelMonitorTemplate: channelMonitorTemplateAPI,
   payment: adminPaymentAPI,
   affiliates: affiliatesAPI,
-  riskControl: riskControlAPI
+  riskControl: riskControlAPI,
+  business: businessAPI
 }
 
 export {
@@ -97,7 +99,8 @@ export {
   channelMonitorTemplateAPI,
   adminPaymentAPI,
   affiliatesAPI,
-  riskControlAPI
+  riskControlAPI,
+  businessAPI
 }
 
 export default adminAPI
@@ -114,3 +117,13 @@ export type {
   PrivateSubscriptionStatus,
   PrivateSubscriptionSummary
 } from './privateSubscriptions'
+export type {
+  BusinessReport,
+  BusinessSummary,
+  BusinessHistoryPoint,
+  BusinessCostItem,
+  BusinessCostPayload,
+  BusinessPricingRule,
+  BusinessReferenceData,
+  BusinessReconciliationResult
+} from './business'

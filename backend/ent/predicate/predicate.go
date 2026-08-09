@@ -27,6 +27,24 @@ type AuthIdentity func(*sql.Selector)
 // AuthIdentityChannel is the predicate function for authidentitychannel builders.
 type AuthIdentityChannel func(*sql.Selector)
 
+// BusinessAPIKeyConfig is the predicate function for businessapikeyconfig builders.
+type BusinessAPIKeyConfig func(*sql.Selector)
+
+// BusinessCostItem is the predicate function for businesscostitem builders.
+type BusinessCostItem func(*sql.Selector)
+
+// BusinessExchangeRate is the predicate function for businessexchangerate builders.
+type BusinessExchangeRate func(*sql.Selector)
+
+// BusinessMonthlySnapshot is the predicate function for businessmonthlysnapshot builders.
+type BusinessMonthlySnapshot func(*sql.Selector)
+
+// BusinessMonthlySnapshotItem is the predicate function for businessmonthlysnapshotitem builders.
+type BusinessMonthlySnapshotItem func(*sql.Selector)
+
+// BusinessPricingRule is the predicate function for businesspricingrule builders.
+type BusinessPricingRule func(*sql.Selector)
+
 // ChannelMonitor is the predicate function for channelmonitor builders.
 type ChannelMonitor func(*sql.Selector)
 

@@ -19,6 +19,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/businessapikeyconfig"
+	"github.com/Wei-Shaw/sub2api/ent/businesscostitem"
+	"github.com/Wei-Shaw/sub2api/ent/businessexchangerate"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshot"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshotitem"
+	"github.com/Wei-Shaw/sub2api/ent/businesspricingrule"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -115,6 +121,12 @@ func checkColumn(t, c string) error {
 			announcementread.Table:              announcementread.ValidColumn,
 			authidentity.Table:                  authidentity.ValidColumn,
 			authidentitychannel.Table:           authidentitychannel.ValidColumn,
+			businessapikeyconfig.Table:          businessapikeyconfig.ValidColumn,
+			businesscostitem.Table:              businesscostitem.ValidColumn,
+			businessexchangerate.Table:          businessexchangerate.ValidColumn,
+			businessmonthlysnapshot.Table:       businessmonthlysnapshot.ValidColumn,
+			businessmonthlysnapshotitem.Table:   businessmonthlysnapshotitem.ValidColumn,
+			businesspricingrule.Table:           businesspricingrule.ValidColumn,
 			channelmonitor.Table:                channelmonitor.ValidColumn,
 			channelmonitordailyrollup.Table:     channelmonitordailyrollup.ValidColumn,
 			channelmonitorhistory.Table:         channelmonitorhistory.ValidColumn,

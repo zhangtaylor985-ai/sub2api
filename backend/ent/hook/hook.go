@@ -93,6 +93,78 @@ func (f AuthIdentityChannelFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuthIdentityChannelMutation", m)
 }
 
+// The BusinessAPIKeyConfigFunc type is an adapter to allow the use of ordinary
+// function as BusinessAPIKeyConfig mutator.
+type BusinessAPIKeyConfigFunc func(context.Context, *ent.BusinessAPIKeyConfigMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BusinessAPIKeyConfigFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BusinessAPIKeyConfigMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BusinessAPIKeyConfigMutation", m)
+}
+
+// The BusinessCostItemFunc type is an adapter to allow the use of ordinary
+// function as BusinessCostItem mutator.
+type BusinessCostItemFunc func(context.Context, *ent.BusinessCostItemMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BusinessCostItemFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BusinessCostItemMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BusinessCostItemMutation", m)
+}
+
+// The BusinessExchangeRateFunc type is an adapter to allow the use of ordinary
+// function as BusinessExchangeRate mutator.
+type BusinessExchangeRateFunc func(context.Context, *ent.BusinessExchangeRateMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BusinessExchangeRateFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BusinessExchangeRateMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BusinessExchangeRateMutation", m)
+}
+
+// The BusinessMonthlySnapshotFunc type is an adapter to allow the use of ordinary
+// function as BusinessMonthlySnapshot mutator.
+type BusinessMonthlySnapshotFunc func(context.Context, *ent.BusinessMonthlySnapshotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BusinessMonthlySnapshotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BusinessMonthlySnapshotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BusinessMonthlySnapshotMutation", m)
+}
+
+// The BusinessMonthlySnapshotItemFunc type is an adapter to allow the use of ordinary
+// function as BusinessMonthlySnapshotItem mutator.
+type BusinessMonthlySnapshotItemFunc func(context.Context, *ent.BusinessMonthlySnapshotItemMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BusinessMonthlySnapshotItemFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BusinessMonthlySnapshotItemMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BusinessMonthlySnapshotItemMutation", m)
+}
+
+// The BusinessPricingRuleFunc type is an adapter to allow the use of ordinary
+// function as BusinessPricingRule mutator.
+type BusinessPricingRuleFunc func(context.Context, *ent.BusinessPricingRuleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BusinessPricingRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BusinessPricingRuleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BusinessPricingRuleMutation", m)
+}
+
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary
 // function as ChannelMonitor mutator.
 type ChannelMonitorFunc func(context.Context, *ent.ChannelMonitorMutation) (ent.Value, error)

@@ -71,6 +71,9 @@ func RegisterAdminRoutes(
 		// 私下客户订阅管理（与现有计费订阅隔离）
 		registerPrivateSubscriptionRoutes(admin, h)
 
+		// 经营看板、成本、对账与月度锁账
+		registerBusinessRoutes(admin, h)
+
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
 
@@ -100,6 +103,35 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerBusinessRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	business := admin.Group("/business")
+	{
+		business.GET("/dashboard/current", h.Admin.Business.Current)
+		business.GET("/dashboard/history", h.Admin.Business.History)
+		business.GET("/dashboard/months/:month", h.Admin.Business.Month)
+
+		business.GET("/costs", h.Admin.Business.ListCosts)
+		business.POST("/costs", h.Admin.Business.CreateCost)
+		business.PUT("/costs/:id", h.Admin.Business.UpdateCost)
+		business.DELETE("/costs/:id", h.Admin.Business.DeleteCost)
+
+		business.GET("/pricing-rules", h.Admin.Business.ListPricingRules)
+		business.POST("/pricing-rules", h.Admin.Business.UpsertPricingRule)
+		business.PUT("/pricing-rules", h.Admin.Business.UpsertPricingRule)
+
+		business.GET("/exchange-rates/:month", h.Admin.Business.ListExchangeRates)
+		business.PUT("/exchange-rates/:month", h.Admin.Business.UpsertExchangeRate)
+		business.POST("/exchange-rates/refresh", h.Admin.Business.RefreshExchangeRate)
+
+		business.GET("/api-key-configs/:api_key_id", h.Admin.Business.GetAPIKeyConfig)
+		business.PUT("/api-key-configs/:api_key_id", h.Admin.Business.UpsertAPIKeyConfig)
+		business.GET("/references", h.Admin.Business.References)
+		business.GET("/reconciliation", h.Admin.Business.Reconciliation)
+		business.POST("/initialize", h.Admin.Business.InitializeDefaults)
+		business.POST("/snapshots/:month/close", h.Admin.Business.CloseMonth)
 	}
 }
 

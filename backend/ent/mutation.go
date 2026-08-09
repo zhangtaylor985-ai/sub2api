@@ -19,6 +19,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/businessapikeyconfig"
+	"github.com/Wei-Shaw/sub2api/ent/businesscostitem"
+	"github.com/Wei-Shaw/sub2api/ent/businessexchangerate"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshot"
+	"github.com/Wei-Shaw/sub2api/ent/businessmonthlysnapshotitem"
+	"github.com/Wei-Shaw/sub2api/ent/businesspricingrule"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -68,6 +74,12 @@ const (
 	TypeAnnouncementRead              = "AnnouncementRead"
 	TypeAuthIdentity                  = "AuthIdentity"
 	TypeAuthIdentityChannel           = "AuthIdentityChannel"
+	TypeBusinessAPIKeyConfig          = "BusinessAPIKeyConfig"
+	TypeBusinessCostItem              = "BusinessCostItem"
+	TypeBusinessExchangeRate          = "BusinessExchangeRate"
+	TypeBusinessMonthlySnapshot       = "BusinessMonthlySnapshot"
+	TypeBusinessMonthlySnapshotItem   = "BusinessMonthlySnapshotItem"
+	TypeBusinessPricingRule           = "BusinessPricingRule"
 	TypeChannelMonitor                = "ChannelMonitor"
 	TypeChannelMonitorDailyRollup     = "ChannelMonitorDailyRollup"
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
@@ -9188,6 +9200,7283 @@ func (m *AuthIdentityChannelMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AuthIdentityChannel edge %s", name)
+}
+
+// BusinessAPIKeyConfigMutation represents an operation that mutates the BusinessAPIKeyConfig nodes in the graph.
+type BusinessAPIKeyConfigMutation struct {
+	config
+	op                         Op
+	typ                        string
+	id                         *int64
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	api_key_id                 *int64
+	addapi_key_id              *int64
+	revenue_excluded           *bool
+	override_amount_cents      *int64
+	addoverride_amount_cents   *int64
+	private_subscription_id    *int64
+	addprivate_subscription_id *int64
+	reason                     *string
+	clearedFields              map[string]struct{}
+	done                       bool
+	oldValue                   func(context.Context) (*BusinessAPIKeyConfig, error)
+	predicates                 []predicate.BusinessAPIKeyConfig
+}
+
+var _ ent.Mutation = (*BusinessAPIKeyConfigMutation)(nil)
+
+// businessapikeyconfigOption allows management of the mutation configuration using functional options.
+type businessapikeyconfigOption func(*BusinessAPIKeyConfigMutation)
+
+// newBusinessAPIKeyConfigMutation creates new mutation for the BusinessAPIKeyConfig entity.
+func newBusinessAPIKeyConfigMutation(c config, op Op, opts ...businessapikeyconfigOption) *BusinessAPIKeyConfigMutation {
+	m := &BusinessAPIKeyConfigMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBusinessAPIKeyConfig,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBusinessAPIKeyConfigID sets the ID field of the mutation.
+func withBusinessAPIKeyConfigID(id int64) businessapikeyconfigOption {
+	return func(m *BusinessAPIKeyConfigMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BusinessAPIKeyConfig
+		)
+		m.oldValue = func(ctx context.Context) (*BusinessAPIKeyConfig, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BusinessAPIKeyConfig.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBusinessAPIKeyConfig sets the old BusinessAPIKeyConfig of the mutation.
+func withBusinessAPIKeyConfig(node *BusinessAPIKeyConfig) businessapikeyconfigOption {
+	return func(m *BusinessAPIKeyConfigMutation) {
+		m.oldValue = func(context.Context) (*BusinessAPIKeyConfig, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BusinessAPIKeyConfigMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BusinessAPIKeyConfigMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BusinessAPIKeyConfigMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BusinessAPIKeyConfigMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BusinessAPIKeyConfig.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BusinessAPIKeyConfigMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BusinessAPIKeyConfigMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BusinessAPIKeyConfig entity.
+// If the BusinessAPIKeyConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessAPIKeyConfigMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BusinessAPIKeyConfigMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BusinessAPIKeyConfigMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BusinessAPIKeyConfigMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BusinessAPIKeyConfig entity.
+// If the BusinessAPIKeyConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessAPIKeyConfigMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BusinessAPIKeyConfigMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *BusinessAPIKeyConfigMutation) SetAPIKeyID(i int64) {
+	m.api_key_id = &i
+	m.addapi_key_id = nil
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *BusinessAPIKeyConfigMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the BusinessAPIKeyConfig entity.
+// If the BusinessAPIKeyConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessAPIKeyConfigMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// AddAPIKeyID adds i to the "api_key_id" field.
+func (m *BusinessAPIKeyConfigMutation) AddAPIKeyID(i int64) {
+	if m.addapi_key_id != nil {
+		*m.addapi_key_id += i
+	} else {
+		m.addapi_key_id = &i
+	}
+}
+
+// AddedAPIKeyID returns the value that was added to the "api_key_id" field in this mutation.
+func (m *BusinessAPIKeyConfigMutation) AddedAPIKeyID() (r int64, exists bool) {
+	v := m.addapi_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *BusinessAPIKeyConfigMutation) ResetAPIKeyID() {
+	m.api_key_id = nil
+	m.addapi_key_id = nil
+}
+
+// SetRevenueExcluded sets the "revenue_excluded" field.
+func (m *BusinessAPIKeyConfigMutation) SetRevenueExcluded(b bool) {
+	m.revenue_excluded = &b
+}
+
+// RevenueExcluded returns the value of the "revenue_excluded" field in the mutation.
+func (m *BusinessAPIKeyConfigMutation) RevenueExcluded() (r bool, exists bool) {
+	v := m.revenue_excluded
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevenueExcluded returns the old "revenue_excluded" field's value of the BusinessAPIKeyConfig entity.
+// If the BusinessAPIKeyConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessAPIKeyConfigMutation) OldRevenueExcluded(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevenueExcluded is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevenueExcluded requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevenueExcluded: %w", err)
+	}
+	return oldValue.RevenueExcluded, nil
+}
+
+// ResetRevenueExcluded resets all changes to the "revenue_excluded" field.
+func (m *BusinessAPIKeyConfigMutation) ResetRevenueExcluded() {
+	m.revenue_excluded = nil
+}
+
+// SetOverrideAmountCents sets the "override_amount_cents" field.
+func (m *BusinessAPIKeyConfigMutation) SetOverrideAmountCents(i int64) {
+	m.override_amount_cents = &i
+	m.addoverride_amount_cents = nil
+}
+
+// OverrideAmountCents returns the value of the "override_amount_cents" field in the mutation.
+func (m *BusinessAPIKeyConfigMutation) OverrideAmountCents() (r int64, exists bool) {
+	v := m.override_amount_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOverrideAmountCents returns the old "override_amount_cents" field's value of the BusinessAPIKeyConfig entity.
+// If the BusinessAPIKeyConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessAPIKeyConfigMutation) OldOverrideAmountCents(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOverrideAmountCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOverrideAmountCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOverrideAmountCents: %w", err)
+	}
+	return oldValue.OverrideAmountCents, nil
+}
+
+// AddOverrideAmountCents adds i to the "override_amount_cents" field.
+func (m *BusinessAPIKeyConfigMutation) AddOverrideAmountCents(i int64) {
+	if m.addoverride_amount_cents != nil {
+		*m.addoverride_amount_cents += i
+	} else {
+		m.addoverride_amount_cents = &i
+	}
+}
+
+// AddedOverrideAmountCents returns the value that was added to the "override_amount_cents" field in this mutation.
+func (m *BusinessAPIKeyConfigMutation) AddedOverrideAmountCents() (r int64, exists bool) {
+	v := m.addoverride_amount_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOverrideAmountCents clears the value of the "override_amount_cents" field.
+func (m *BusinessAPIKeyConfigMutation) ClearOverrideAmountCents() {
+	m.override_amount_cents = nil
+	m.addoverride_amount_cents = nil
+	m.clearedFields[businessapikeyconfig.FieldOverrideAmountCents] = struct{}{}
+}
+
+// OverrideAmountCentsCleared returns if the "override_amount_cents" field was cleared in this mutation.
+func (m *BusinessAPIKeyConfigMutation) OverrideAmountCentsCleared() bool {
+	_, ok := m.clearedFields[businessapikeyconfig.FieldOverrideAmountCents]
+	return ok
+}
+
+// ResetOverrideAmountCents resets all changes to the "override_amount_cents" field.
+func (m *BusinessAPIKeyConfigMutation) ResetOverrideAmountCents() {
+	m.override_amount_cents = nil
+	m.addoverride_amount_cents = nil
+	delete(m.clearedFields, businessapikeyconfig.FieldOverrideAmountCents)
+}
+
+// SetPrivateSubscriptionID sets the "private_subscription_id" field.
+func (m *BusinessAPIKeyConfigMutation) SetPrivateSubscriptionID(i int64) {
+	m.private_subscription_id = &i
+	m.addprivate_subscription_id = nil
+}
+
+// PrivateSubscriptionID returns the value of the "private_subscription_id" field in the mutation.
+func (m *BusinessAPIKeyConfigMutation) PrivateSubscriptionID() (r int64, exists bool) {
+	v := m.private_subscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrivateSubscriptionID returns the old "private_subscription_id" field's value of the BusinessAPIKeyConfig entity.
+// If the BusinessAPIKeyConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessAPIKeyConfigMutation) OldPrivateSubscriptionID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrivateSubscriptionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrivateSubscriptionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrivateSubscriptionID: %w", err)
+	}
+	return oldValue.PrivateSubscriptionID, nil
+}
+
+// AddPrivateSubscriptionID adds i to the "private_subscription_id" field.
+func (m *BusinessAPIKeyConfigMutation) AddPrivateSubscriptionID(i int64) {
+	if m.addprivate_subscription_id != nil {
+		*m.addprivate_subscription_id += i
+	} else {
+		m.addprivate_subscription_id = &i
+	}
+}
+
+// AddedPrivateSubscriptionID returns the value that was added to the "private_subscription_id" field in this mutation.
+func (m *BusinessAPIKeyConfigMutation) AddedPrivateSubscriptionID() (r int64, exists bool) {
+	v := m.addprivate_subscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPrivateSubscriptionID clears the value of the "private_subscription_id" field.
+func (m *BusinessAPIKeyConfigMutation) ClearPrivateSubscriptionID() {
+	m.private_subscription_id = nil
+	m.addprivate_subscription_id = nil
+	m.clearedFields[businessapikeyconfig.FieldPrivateSubscriptionID] = struct{}{}
+}
+
+// PrivateSubscriptionIDCleared returns if the "private_subscription_id" field was cleared in this mutation.
+func (m *BusinessAPIKeyConfigMutation) PrivateSubscriptionIDCleared() bool {
+	_, ok := m.clearedFields[businessapikeyconfig.FieldPrivateSubscriptionID]
+	return ok
+}
+
+// ResetPrivateSubscriptionID resets all changes to the "private_subscription_id" field.
+func (m *BusinessAPIKeyConfigMutation) ResetPrivateSubscriptionID() {
+	m.private_subscription_id = nil
+	m.addprivate_subscription_id = nil
+	delete(m.clearedFields, businessapikeyconfig.FieldPrivateSubscriptionID)
+}
+
+// SetReason sets the "reason" field.
+func (m *BusinessAPIKeyConfigMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *BusinessAPIKeyConfigMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the BusinessAPIKeyConfig entity.
+// If the BusinessAPIKeyConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessAPIKeyConfigMutation) OldReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ClearReason clears the value of the "reason" field.
+func (m *BusinessAPIKeyConfigMutation) ClearReason() {
+	m.reason = nil
+	m.clearedFields[businessapikeyconfig.FieldReason] = struct{}{}
+}
+
+// ReasonCleared returns if the "reason" field was cleared in this mutation.
+func (m *BusinessAPIKeyConfigMutation) ReasonCleared() bool {
+	_, ok := m.clearedFields[businessapikeyconfig.FieldReason]
+	return ok
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *BusinessAPIKeyConfigMutation) ResetReason() {
+	m.reason = nil
+	delete(m.clearedFields, businessapikeyconfig.FieldReason)
+}
+
+// Where appends a list predicates to the BusinessAPIKeyConfigMutation builder.
+func (m *BusinessAPIKeyConfigMutation) Where(ps ...predicate.BusinessAPIKeyConfig) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BusinessAPIKeyConfigMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BusinessAPIKeyConfigMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BusinessAPIKeyConfig, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BusinessAPIKeyConfigMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BusinessAPIKeyConfigMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BusinessAPIKeyConfig).
+func (m *BusinessAPIKeyConfigMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BusinessAPIKeyConfigMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.created_at != nil {
+		fields = append(fields, businessapikeyconfig.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, businessapikeyconfig.FieldUpdatedAt)
+	}
+	if m.api_key_id != nil {
+		fields = append(fields, businessapikeyconfig.FieldAPIKeyID)
+	}
+	if m.revenue_excluded != nil {
+		fields = append(fields, businessapikeyconfig.FieldRevenueExcluded)
+	}
+	if m.override_amount_cents != nil {
+		fields = append(fields, businessapikeyconfig.FieldOverrideAmountCents)
+	}
+	if m.private_subscription_id != nil {
+		fields = append(fields, businessapikeyconfig.FieldPrivateSubscriptionID)
+	}
+	if m.reason != nil {
+		fields = append(fields, businessapikeyconfig.FieldReason)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BusinessAPIKeyConfigMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case businessapikeyconfig.FieldCreatedAt:
+		return m.CreatedAt()
+	case businessapikeyconfig.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case businessapikeyconfig.FieldAPIKeyID:
+		return m.APIKeyID()
+	case businessapikeyconfig.FieldRevenueExcluded:
+		return m.RevenueExcluded()
+	case businessapikeyconfig.FieldOverrideAmountCents:
+		return m.OverrideAmountCents()
+	case businessapikeyconfig.FieldPrivateSubscriptionID:
+		return m.PrivateSubscriptionID()
+	case businessapikeyconfig.FieldReason:
+		return m.Reason()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BusinessAPIKeyConfigMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case businessapikeyconfig.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case businessapikeyconfig.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case businessapikeyconfig.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case businessapikeyconfig.FieldRevenueExcluded:
+		return m.OldRevenueExcluded(ctx)
+	case businessapikeyconfig.FieldOverrideAmountCents:
+		return m.OldOverrideAmountCents(ctx)
+	case businessapikeyconfig.FieldPrivateSubscriptionID:
+		return m.OldPrivateSubscriptionID(ctx)
+	case businessapikeyconfig.FieldReason:
+		return m.OldReason(ctx)
+	}
+	return nil, fmt.Errorf("unknown BusinessAPIKeyConfig field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessAPIKeyConfigMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case businessapikeyconfig.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case businessapikeyconfig.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case businessapikeyconfig.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case businessapikeyconfig.FieldRevenueExcluded:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevenueExcluded(v)
+		return nil
+	case businessapikeyconfig.FieldOverrideAmountCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOverrideAmountCents(v)
+		return nil
+	case businessapikeyconfig.FieldPrivateSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrivateSubscriptionID(v)
+		return nil
+	case businessapikeyconfig.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessAPIKeyConfig field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BusinessAPIKeyConfigMutation) AddedFields() []string {
+	var fields []string
+	if m.addapi_key_id != nil {
+		fields = append(fields, businessapikeyconfig.FieldAPIKeyID)
+	}
+	if m.addoverride_amount_cents != nil {
+		fields = append(fields, businessapikeyconfig.FieldOverrideAmountCents)
+	}
+	if m.addprivate_subscription_id != nil {
+		fields = append(fields, businessapikeyconfig.FieldPrivateSubscriptionID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BusinessAPIKeyConfigMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case businessapikeyconfig.FieldAPIKeyID:
+		return m.AddedAPIKeyID()
+	case businessapikeyconfig.FieldOverrideAmountCents:
+		return m.AddedOverrideAmountCents()
+	case businessapikeyconfig.FieldPrivateSubscriptionID:
+		return m.AddedPrivateSubscriptionID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessAPIKeyConfigMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case businessapikeyconfig.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyID(v)
+		return nil
+	case businessapikeyconfig.FieldOverrideAmountCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOverrideAmountCents(v)
+		return nil
+	case businessapikeyconfig.FieldPrivateSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPrivateSubscriptionID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessAPIKeyConfig numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BusinessAPIKeyConfigMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(businessapikeyconfig.FieldOverrideAmountCents) {
+		fields = append(fields, businessapikeyconfig.FieldOverrideAmountCents)
+	}
+	if m.FieldCleared(businessapikeyconfig.FieldPrivateSubscriptionID) {
+		fields = append(fields, businessapikeyconfig.FieldPrivateSubscriptionID)
+	}
+	if m.FieldCleared(businessapikeyconfig.FieldReason) {
+		fields = append(fields, businessapikeyconfig.FieldReason)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BusinessAPIKeyConfigMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BusinessAPIKeyConfigMutation) ClearField(name string) error {
+	switch name {
+	case businessapikeyconfig.FieldOverrideAmountCents:
+		m.ClearOverrideAmountCents()
+		return nil
+	case businessapikeyconfig.FieldPrivateSubscriptionID:
+		m.ClearPrivateSubscriptionID()
+		return nil
+	case businessapikeyconfig.FieldReason:
+		m.ClearReason()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessAPIKeyConfig nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BusinessAPIKeyConfigMutation) ResetField(name string) error {
+	switch name {
+	case businessapikeyconfig.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case businessapikeyconfig.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case businessapikeyconfig.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case businessapikeyconfig.FieldRevenueExcluded:
+		m.ResetRevenueExcluded()
+		return nil
+	case businessapikeyconfig.FieldOverrideAmountCents:
+		m.ResetOverrideAmountCents()
+		return nil
+	case businessapikeyconfig.FieldPrivateSubscriptionID:
+		m.ResetPrivateSubscriptionID()
+		return nil
+	case businessapikeyconfig.FieldReason:
+		m.ResetReason()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessAPIKeyConfig field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BusinessAPIKeyConfigMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BusinessAPIKeyConfigMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BusinessAPIKeyConfigMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BusinessAPIKeyConfigMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BusinessAPIKeyConfigMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BusinessAPIKeyConfigMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BusinessAPIKeyConfigMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown BusinessAPIKeyConfig unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BusinessAPIKeyConfigMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown BusinessAPIKeyConfig edge %s", name)
+}
+
+// BusinessCostItemMutation represents an operation that mutates the BusinessCostItem nodes in the graph.
+type BusinessCostItemMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int64
+	created_at         *time.Time
+	updated_at         *time.Time
+	deleted_at         *time.Time
+	name               *string
+	cost_class         *string
+	category           *string
+	amount_minor       *int64
+	addamount_minor    *int64
+	currency           *string
+	billing_cycle      *string
+	starts_on          *time.Time
+	ends_on            *time.Time
+	account_id         *int64
+	addaccount_id      *int64
+	account_identifier *string
+	is_free            *bool
+	active             *bool
+	notes              *string
+	clearedFields      map[string]struct{}
+	done               bool
+	oldValue           func(context.Context) (*BusinessCostItem, error)
+	predicates         []predicate.BusinessCostItem
+}
+
+var _ ent.Mutation = (*BusinessCostItemMutation)(nil)
+
+// businesscostitemOption allows management of the mutation configuration using functional options.
+type businesscostitemOption func(*BusinessCostItemMutation)
+
+// newBusinessCostItemMutation creates new mutation for the BusinessCostItem entity.
+func newBusinessCostItemMutation(c config, op Op, opts ...businesscostitemOption) *BusinessCostItemMutation {
+	m := &BusinessCostItemMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBusinessCostItem,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBusinessCostItemID sets the ID field of the mutation.
+func withBusinessCostItemID(id int64) businesscostitemOption {
+	return func(m *BusinessCostItemMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BusinessCostItem
+		)
+		m.oldValue = func(ctx context.Context) (*BusinessCostItem, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BusinessCostItem.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBusinessCostItem sets the old BusinessCostItem of the mutation.
+func withBusinessCostItem(node *BusinessCostItem) businesscostitemOption {
+	return func(m *BusinessCostItemMutation) {
+		m.oldValue = func(context.Context) (*BusinessCostItem, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BusinessCostItemMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BusinessCostItemMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BusinessCostItemMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BusinessCostItemMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BusinessCostItem.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BusinessCostItemMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BusinessCostItemMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BusinessCostItemMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BusinessCostItemMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BusinessCostItemMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BusinessCostItemMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *BusinessCostItemMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *BusinessCostItemMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *BusinessCostItemMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[businesscostitem.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *BusinessCostItemMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[businesscostitem.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *BusinessCostItemMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, businesscostitem.FieldDeletedAt)
+}
+
+// SetName sets the "name" field.
+func (m *BusinessCostItemMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *BusinessCostItemMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *BusinessCostItemMutation) ResetName() {
+	m.name = nil
+}
+
+// SetCostClass sets the "cost_class" field.
+func (m *BusinessCostItemMutation) SetCostClass(s string) {
+	m.cost_class = &s
+}
+
+// CostClass returns the value of the "cost_class" field in the mutation.
+func (m *BusinessCostItemMutation) CostClass() (r string, exists bool) {
+	v := m.cost_class
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCostClass returns the old "cost_class" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldCostClass(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCostClass is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCostClass requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCostClass: %w", err)
+	}
+	return oldValue.CostClass, nil
+}
+
+// ResetCostClass resets all changes to the "cost_class" field.
+func (m *BusinessCostItemMutation) ResetCostClass() {
+	m.cost_class = nil
+}
+
+// SetCategory sets the "category" field.
+func (m *BusinessCostItemMutation) SetCategory(s string) {
+	m.category = &s
+}
+
+// Category returns the value of the "category" field in the mutation.
+func (m *BusinessCostItemMutation) Category() (r string, exists bool) {
+	v := m.category
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCategory returns the old "category" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldCategory(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCategory is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCategory requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCategory: %w", err)
+	}
+	return oldValue.Category, nil
+}
+
+// ResetCategory resets all changes to the "category" field.
+func (m *BusinessCostItemMutation) ResetCategory() {
+	m.category = nil
+}
+
+// SetAmountMinor sets the "amount_minor" field.
+func (m *BusinessCostItemMutation) SetAmountMinor(i int64) {
+	m.amount_minor = &i
+	m.addamount_minor = nil
+}
+
+// AmountMinor returns the value of the "amount_minor" field in the mutation.
+func (m *BusinessCostItemMutation) AmountMinor() (r int64, exists bool) {
+	v := m.amount_minor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAmountMinor returns the old "amount_minor" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldAmountMinor(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAmountMinor is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAmountMinor requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAmountMinor: %w", err)
+	}
+	return oldValue.AmountMinor, nil
+}
+
+// AddAmountMinor adds i to the "amount_minor" field.
+func (m *BusinessCostItemMutation) AddAmountMinor(i int64) {
+	if m.addamount_minor != nil {
+		*m.addamount_minor += i
+	} else {
+		m.addamount_minor = &i
+	}
+}
+
+// AddedAmountMinor returns the value that was added to the "amount_minor" field in this mutation.
+func (m *BusinessCostItemMutation) AddedAmountMinor() (r int64, exists bool) {
+	v := m.addamount_minor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAmountMinor resets all changes to the "amount_minor" field.
+func (m *BusinessCostItemMutation) ResetAmountMinor() {
+	m.amount_minor = nil
+	m.addamount_minor = nil
+}
+
+// SetCurrency sets the "currency" field.
+func (m *BusinessCostItemMutation) SetCurrency(s string) {
+	m.currency = &s
+}
+
+// Currency returns the value of the "currency" field in the mutation.
+func (m *BusinessCostItemMutation) Currency() (r string, exists bool) {
+	v := m.currency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrency returns the old "currency" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldCurrency(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrency: %w", err)
+	}
+	return oldValue.Currency, nil
+}
+
+// ResetCurrency resets all changes to the "currency" field.
+func (m *BusinessCostItemMutation) ResetCurrency() {
+	m.currency = nil
+}
+
+// SetBillingCycle sets the "billing_cycle" field.
+func (m *BusinessCostItemMutation) SetBillingCycle(s string) {
+	m.billing_cycle = &s
+}
+
+// BillingCycle returns the value of the "billing_cycle" field in the mutation.
+func (m *BusinessCostItemMutation) BillingCycle() (r string, exists bool) {
+	v := m.billing_cycle
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBillingCycle returns the old "billing_cycle" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldBillingCycle(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBillingCycle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBillingCycle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBillingCycle: %w", err)
+	}
+	return oldValue.BillingCycle, nil
+}
+
+// ResetBillingCycle resets all changes to the "billing_cycle" field.
+func (m *BusinessCostItemMutation) ResetBillingCycle() {
+	m.billing_cycle = nil
+}
+
+// SetStartsOn sets the "starts_on" field.
+func (m *BusinessCostItemMutation) SetStartsOn(t time.Time) {
+	m.starts_on = &t
+}
+
+// StartsOn returns the value of the "starts_on" field in the mutation.
+func (m *BusinessCostItemMutation) StartsOn() (r time.Time, exists bool) {
+	v := m.starts_on
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStartsOn returns the old "starts_on" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldStartsOn(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartsOn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartsOn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartsOn: %w", err)
+	}
+	return oldValue.StartsOn, nil
+}
+
+// ResetStartsOn resets all changes to the "starts_on" field.
+func (m *BusinessCostItemMutation) ResetStartsOn() {
+	m.starts_on = nil
+}
+
+// SetEndsOn sets the "ends_on" field.
+func (m *BusinessCostItemMutation) SetEndsOn(t time.Time) {
+	m.ends_on = &t
+}
+
+// EndsOn returns the value of the "ends_on" field in the mutation.
+func (m *BusinessCostItemMutation) EndsOn() (r time.Time, exists bool) {
+	v := m.ends_on
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEndsOn returns the old "ends_on" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldEndsOn(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEndsOn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEndsOn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEndsOn: %w", err)
+	}
+	return oldValue.EndsOn, nil
+}
+
+// ClearEndsOn clears the value of the "ends_on" field.
+func (m *BusinessCostItemMutation) ClearEndsOn() {
+	m.ends_on = nil
+	m.clearedFields[businesscostitem.FieldEndsOn] = struct{}{}
+}
+
+// EndsOnCleared returns if the "ends_on" field was cleared in this mutation.
+func (m *BusinessCostItemMutation) EndsOnCleared() bool {
+	_, ok := m.clearedFields[businesscostitem.FieldEndsOn]
+	return ok
+}
+
+// ResetEndsOn resets all changes to the "ends_on" field.
+func (m *BusinessCostItemMutation) ResetEndsOn() {
+	m.ends_on = nil
+	delete(m.clearedFields, businesscostitem.FieldEndsOn)
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *BusinessCostItemMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *BusinessCostItemMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldAccountID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *BusinessCostItemMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *BusinessCostItemMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearAccountID clears the value of the "account_id" field.
+func (m *BusinessCostItemMutation) ClearAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+	m.clearedFields[businesscostitem.FieldAccountID] = struct{}{}
+}
+
+// AccountIDCleared returns if the "account_id" field was cleared in this mutation.
+func (m *BusinessCostItemMutation) AccountIDCleared() bool {
+	_, ok := m.clearedFields[businesscostitem.FieldAccountID]
+	return ok
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *BusinessCostItemMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+	delete(m.clearedFields, businesscostitem.FieldAccountID)
+}
+
+// SetAccountIdentifier sets the "account_identifier" field.
+func (m *BusinessCostItemMutation) SetAccountIdentifier(s string) {
+	m.account_identifier = &s
+}
+
+// AccountIdentifier returns the value of the "account_identifier" field in the mutation.
+func (m *BusinessCostItemMutation) AccountIdentifier() (r string, exists bool) {
+	v := m.account_identifier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountIdentifier returns the old "account_identifier" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldAccountIdentifier(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountIdentifier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountIdentifier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountIdentifier: %w", err)
+	}
+	return oldValue.AccountIdentifier, nil
+}
+
+// ClearAccountIdentifier clears the value of the "account_identifier" field.
+func (m *BusinessCostItemMutation) ClearAccountIdentifier() {
+	m.account_identifier = nil
+	m.clearedFields[businesscostitem.FieldAccountIdentifier] = struct{}{}
+}
+
+// AccountIdentifierCleared returns if the "account_identifier" field was cleared in this mutation.
+func (m *BusinessCostItemMutation) AccountIdentifierCleared() bool {
+	_, ok := m.clearedFields[businesscostitem.FieldAccountIdentifier]
+	return ok
+}
+
+// ResetAccountIdentifier resets all changes to the "account_identifier" field.
+func (m *BusinessCostItemMutation) ResetAccountIdentifier() {
+	m.account_identifier = nil
+	delete(m.clearedFields, businesscostitem.FieldAccountIdentifier)
+}
+
+// SetIsFree sets the "is_free" field.
+func (m *BusinessCostItemMutation) SetIsFree(b bool) {
+	m.is_free = &b
+}
+
+// IsFree returns the value of the "is_free" field in the mutation.
+func (m *BusinessCostItemMutation) IsFree() (r bool, exists bool) {
+	v := m.is_free
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsFree returns the old "is_free" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldIsFree(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsFree is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsFree requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsFree: %w", err)
+	}
+	return oldValue.IsFree, nil
+}
+
+// ResetIsFree resets all changes to the "is_free" field.
+func (m *BusinessCostItemMutation) ResetIsFree() {
+	m.is_free = nil
+}
+
+// SetActive sets the "active" field.
+func (m *BusinessCostItemMutation) SetActive(b bool) {
+	m.active = &b
+}
+
+// Active returns the value of the "active" field in the mutation.
+func (m *BusinessCostItemMutation) Active() (r bool, exists bool) {
+	v := m.active
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActive returns the old "active" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldActive(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActive: %w", err)
+	}
+	return oldValue.Active, nil
+}
+
+// ResetActive resets all changes to the "active" field.
+func (m *BusinessCostItemMutation) ResetActive() {
+	m.active = nil
+}
+
+// SetNotes sets the "notes" field.
+func (m *BusinessCostItemMutation) SetNotes(s string) {
+	m.notes = &s
+}
+
+// Notes returns the value of the "notes" field in the mutation.
+func (m *BusinessCostItemMutation) Notes() (r string, exists bool) {
+	v := m.notes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotes returns the old "notes" field's value of the BusinessCostItem entity.
+// If the BusinessCostItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessCostItemMutation) OldNotes(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotes: %w", err)
+	}
+	return oldValue.Notes, nil
+}
+
+// ClearNotes clears the value of the "notes" field.
+func (m *BusinessCostItemMutation) ClearNotes() {
+	m.notes = nil
+	m.clearedFields[businesscostitem.FieldNotes] = struct{}{}
+}
+
+// NotesCleared returns if the "notes" field was cleared in this mutation.
+func (m *BusinessCostItemMutation) NotesCleared() bool {
+	_, ok := m.clearedFields[businesscostitem.FieldNotes]
+	return ok
+}
+
+// ResetNotes resets all changes to the "notes" field.
+func (m *BusinessCostItemMutation) ResetNotes() {
+	m.notes = nil
+	delete(m.clearedFields, businesscostitem.FieldNotes)
+}
+
+// Where appends a list predicates to the BusinessCostItemMutation builder.
+func (m *BusinessCostItemMutation) Where(ps ...predicate.BusinessCostItem) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BusinessCostItemMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BusinessCostItemMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BusinessCostItem, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BusinessCostItemMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BusinessCostItemMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BusinessCostItem).
+func (m *BusinessCostItemMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BusinessCostItemMutation) Fields() []string {
+	fields := make([]string, 0, 16)
+	if m.created_at != nil {
+		fields = append(fields, businesscostitem.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, businesscostitem.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, businesscostitem.FieldDeletedAt)
+	}
+	if m.name != nil {
+		fields = append(fields, businesscostitem.FieldName)
+	}
+	if m.cost_class != nil {
+		fields = append(fields, businesscostitem.FieldCostClass)
+	}
+	if m.category != nil {
+		fields = append(fields, businesscostitem.FieldCategory)
+	}
+	if m.amount_minor != nil {
+		fields = append(fields, businesscostitem.FieldAmountMinor)
+	}
+	if m.currency != nil {
+		fields = append(fields, businesscostitem.FieldCurrency)
+	}
+	if m.billing_cycle != nil {
+		fields = append(fields, businesscostitem.FieldBillingCycle)
+	}
+	if m.starts_on != nil {
+		fields = append(fields, businesscostitem.FieldStartsOn)
+	}
+	if m.ends_on != nil {
+		fields = append(fields, businesscostitem.FieldEndsOn)
+	}
+	if m.account_id != nil {
+		fields = append(fields, businesscostitem.FieldAccountID)
+	}
+	if m.account_identifier != nil {
+		fields = append(fields, businesscostitem.FieldAccountIdentifier)
+	}
+	if m.is_free != nil {
+		fields = append(fields, businesscostitem.FieldIsFree)
+	}
+	if m.active != nil {
+		fields = append(fields, businesscostitem.FieldActive)
+	}
+	if m.notes != nil {
+		fields = append(fields, businesscostitem.FieldNotes)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BusinessCostItemMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case businesscostitem.FieldCreatedAt:
+		return m.CreatedAt()
+	case businesscostitem.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case businesscostitem.FieldDeletedAt:
+		return m.DeletedAt()
+	case businesscostitem.FieldName:
+		return m.Name()
+	case businesscostitem.FieldCostClass:
+		return m.CostClass()
+	case businesscostitem.FieldCategory:
+		return m.Category()
+	case businesscostitem.FieldAmountMinor:
+		return m.AmountMinor()
+	case businesscostitem.FieldCurrency:
+		return m.Currency()
+	case businesscostitem.FieldBillingCycle:
+		return m.BillingCycle()
+	case businesscostitem.FieldStartsOn:
+		return m.StartsOn()
+	case businesscostitem.FieldEndsOn:
+		return m.EndsOn()
+	case businesscostitem.FieldAccountID:
+		return m.AccountID()
+	case businesscostitem.FieldAccountIdentifier:
+		return m.AccountIdentifier()
+	case businesscostitem.FieldIsFree:
+		return m.IsFree()
+	case businesscostitem.FieldActive:
+		return m.Active()
+	case businesscostitem.FieldNotes:
+		return m.Notes()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BusinessCostItemMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case businesscostitem.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case businesscostitem.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case businesscostitem.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case businesscostitem.FieldName:
+		return m.OldName(ctx)
+	case businesscostitem.FieldCostClass:
+		return m.OldCostClass(ctx)
+	case businesscostitem.FieldCategory:
+		return m.OldCategory(ctx)
+	case businesscostitem.FieldAmountMinor:
+		return m.OldAmountMinor(ctx)
+	case businesscostitem.FieldCurrency:
+		return m.OldCurrency(ctx)
+	case businesscostitem.FieldBillingCycle:
+		return m.OldBillingCycle(ctx)
+	case businesscostitem.FieldStartsOn:
+		return m.OldStartsOn(ctx)
+	case businesscostitem.FieldEndsOn:
+		return m.OldEndsOn(ctx)
+	case businesscostitem.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case businesscostitem.FieldAccountIdentifier:
+		return m.OldAccountIdentifier(ctx)
+	case businesscostitem.FieldIsFree:
+		return m.OldIsFree(ctx)
+	case businesscostitem.FieldActive:
+		return m.OldActive(ctx)
+	case businesscostitem.FieldNotes:
+		return m.OldNotes(ctx)
+	}
+	return nil, fmt.Errorf("unknown BusinessCostItem field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessCostItemMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case businesscostitem.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case businesscostitem.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case businesscostitem.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case businesscostitem.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case businesscostitem.FieldCostClass:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCostClass(v)
+		return nil
+	case businesscostitem.FieldCategory:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCategory(v)
+		return nil
+	case businesscostitem.FieldAmountMinor:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAmountMinor(v)
+		return nil
+	case businesscostitem.FieldCurrency:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrency(v)
+		return nil
+	case businesscostitem.FieldBillingCycle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBillingCycle(v)
+		return nil
+	case businesscostitem.FieldStartsOn:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStartsOn(v)
+		return nil
+	case businesscostitem.FieldEndsOn:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEndsOn(v)
+		return nil
+	case businesscostitem.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case businesscostitem.FieldAccountIdentifier:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountIdentifier(v)
+		return nil
+	case businesscostitem.FieldIsFree:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsFree(v)
+		return nil
+	case businesscostitem.FieldActive:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActive(v)
+		return nil
+	case businesscostitem.FieldNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessCostItem field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BusinessCostItemMutation) AddedFields() []string {
+	var fields []string
+	if m.addamount_minor != nil {
+		fields = append(fields, businesscostitem.FieldAmountMinor)
+	}
+	if m.addaccount_id != nil {
+		fields = append(fields, businesscostitem.FieldAccountID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BusinessCostItemMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case businesscostitem.FieldAmountMinor:
+		return m.AddedAmountMinor()
+	case businesscostitem.FieldAccountID:
+		return m.AddedAccountID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessCostItemMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case businesscostitem.FieldAmountMinor:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAmountMinor(v)
+		return nil
+	case businesscostitem.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessCostItem numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BusinessCostItemMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(businesscostitem.FieldDeletedAt) {
+		fields = append(fields, businesscostitem.FieldDeletedAt)
+	}
+	if m.FieldCleared(businesscostitem.FieldEndsOn) {
+		fields = append(fields, businesscostitem.FieldEndsOn)
+	}
+	if m.FieldCleared(businesscostitem.FieldAccountID) {
+		fields = append(fields, businesscostitem.FieldAccountID)
+	}
+	if m.FieldCleared(businesscostitem.FieldAccountIdentifier) {
+		fields = append(fields, businesscostitem.FieldAccountIdentifier)
+	}
+	if m.FieldCleared(businesscostitem.FieldNotes) {
+		fields = append(fields, businesscostitem.FieldNotes)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BusinessCostItemMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BusinessCostItemMutation) ClearField(name string) error {
+	switch name {
+	case businesscostitem.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case businesscostitem.FieldEndsOn:
+		m.ClearEndsOn()
+		return nil
+	case businesscostitem.FieldAccountID:
+		m.ClearAccountID()
+		return nil
+	case businesscostitem.FieldAccountIdentifier:
+		m.ClearAccountIdentifier()
+		return nil
+	case businesscostitem.FieldNotes:
+		m.ClearNotes()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessCostItem nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BusinessCostItemMutation) ResetField(name string) error {
+	switch name {
+	case businesscostitem.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case businesscostitem.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case businesscostitem.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case businesscostitem.FieldName:
+		m.ResetName()
+		return nil
+	case businesscostitem.FieldCostClass:
+		m.ResetCostClass()
+		return nil
+	case businesscostitem.FieldCategory:
+		m.ResetCategory()
+		return nil
+	case businesscostitem.FieldAmountMinor:
+		m.ResetAmountMinor()
+		return nil
+	case businesscostitem.FieldCurrency:
+		m.ResetCurrency()
+		return nil
+	case businesscostitem.FieldBillingCycle:
+		m.ResetBillingCycle()
+		return nil
+	case businesscostitem.FieldStartsOn:
+		m.ResetStartsOn()
+		return nil
+	case businesscostitem.FieldEndsOn:
+		m.ResetEndsOn()
+		return nil
+	case businesscostitem.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case businesscostitem.FieldAccountIdentifier:
+		m.ResetAccountIdentifier()
+		return nil
+	case businesscostitem.FieldIsFree:
+		m.ResetIsFree()
+		return nil
+	case businesscostitem.FieldActive:
+		m.ResetActive()
+		return nil
+	case businesscostitem.FieldNotes:
+		m.ResetNotes()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessCostItem field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BusinessCostItemMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BusinessCostItemMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BusinessCostItemMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BusinessCostItemMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BusinessCostItemMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BusinessCostItemMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BusinessCostItemMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown BusinessCostItem unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BusinessCostItemMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown BusinessCostItem edge %s", name)
+}
+
+// BusinessExchangeRateMutation represents an operation that mutates the BusinessExchangeRate nodes in the graph.
+type BusinessExchangeRateMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *int64
+	created_at     *time.Time
+	updated_at     *time.Time
+	month          *time.Time
+	currency       *string
+	rate_scaled    *int64
+	addrate_scaled *int64
+	source         *string
+	notes          *string
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*BusinessExchangeRate, error)
+	predicates     []predicate.BusinessExchangeRate
+}
+
+var _ ent.Mutation = (*BusinessExchangeRateMutation)(nil)
+
+// businessexchangerateOption allows management of the mutation configuration using functional options.
+type businessexchangerateOption func(*BusinessExchangeRateMutation)
+
+// newBusinessExchangeRateMutation creates new mutation for the BusinessExchangeRate entity.
+func newBusinessExchangeRateMutation(c config, op Op, opts ...businessexchangerateOption) *BusinessExchangeRateMutation {
+	m := &BusinessExchangeRateMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBusinessExchangeRate,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBusinessExchangeRateID sets the ID field of the mutation.
+func withBusinessExchangeRateID(id int64) businessexchangerateOption {
+	return func(m *BusinessExchangeRateMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BusinessExchangeRate
+		)
+		m.oldValue = func(ctx context.Context) (*BusinessExchangeRate, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BusinessExchangeRate.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBusinessExchangeRate sets the old BusinessExchangeRate of the mutation.
+func withBusinessExchangeRate(node *BusinessExchangeRate) businessexchangerateOption {
+	return func(m *BusinessExchangeRateMutation) {
+		m.oldValue = func(context.Context) (*BusinessExchangeRate, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BusinessExchangeRateMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BusinessExchangeRateMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BusinessExchangeRateMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BusinessExchangeRateMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BusinessExchangeRate.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BusinessExchangeRateMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BusinessExchangeRateMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BusinessExchangeRate entity.
+// If the BusinessExchangeRate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessExchangeRateMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BusinessExchangeRateMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BusinessExchangeRateMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BusinessExchangeRateMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BusinessExchangeRate entity.
+// If the BusinessExchangeRate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessExchangeRateMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BusinessExchangeRateMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetMonth sets the "month" field.
+func (m *BusinessExchangeRateMutation) SetMonth(t time.Time) {
+	m.month = &t
+}
+
+// Month returns the value of the "month" field in the mutation.
+func (m *BusinessExchangeRateMutation) Month() (r time.Time, exists bool) {
+	v := m.month
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonth returns the old "month" field's value of the BusinessExchangeRate entity.
+// If the BusinessExchangeRate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessExchangeRateMutation) OldMonth(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonth is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonth requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonth: %w", err)
+	}
+	return oldValue.Month, nil
+}
+
+// ResetMonth resets all changes to the "month" field.
+func (m *BusinessExchangeRateMutation) ResetMonth() {
+	m.month = nil
+}
+
+// SetCurrency sets the "currency" field.
+func (m *BusinessExchangeRateMutation) SetCurrency(s string) {
+	m.currency = &s
+}
+
+// Currency returns the value of the "currency" field in the mutation.
+func (m *BusinessExchangeRateMutation) Currency() (r string, exists bool) {
+	v := m.currency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrency returns the old "currency" field's value of the BusinessExchangeRate entity.
+// If the BusinessExchangeRate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessExchangeRateMutation) OldCurrency(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrency: %w", err)
+	}
+	return oldValue.Currency, nil
+}
+
+// ResetCurrency resets all changes to the "currency" field.
+func (m *BusinessExchangeRateMutation) ResetCurrency() {
+	m.currency = nil
+}
+
+// SetRateScaled sets the "rate_scaled" field.
+func (m *BusinessExchangeRateMutation) SetRateScaled(i int64) {
+	m.rate_scaled = &i
+	m.addrate_scaled = nil
+}
+
+// RateScaled returns the value of the "rate_scaled" field in the mutation.
+func (m *BusinessExchangeRateMutation) RateScaled() (r int64, exists bool) {
+	v := m.rate_scaled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRateScaled returns the old "rate_scaled" field's value of the BusinessExchangeRate entity.
+// If the BusinessExchangeRate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessExchangeRateMutation) OldRateScaled(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRateScaled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRateScaled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRateScaled: %w", err)
+	}
+	return oldValue.RateScaled, nil
+}
+
+// AddRateScaled adds i to the "rate_scaled" field.
+func (m *BusinessExchangeRateMutation) AddRateScaled(i int64) {
+	if m.addrate_scaled != nil {
+		*m.addrate_scaled += i
+	} else {
+		m.addrate_scaled = &i
+	}
+}
+
+// AddedRateScaled returns the value that was added to the "rate_scaled" field in this mutation.
+func (m *BusinessExchangeRateMutation) AddedRateScaled() (r int64, exists bool) {
+	v := m.addrate_scaled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRateScaled resets all changes to the "rate_scaled" field.
+func (m *BusinessExchangeRateMutation) ResetRateScaled() {
+	m.rate_scaled = nil
+	m.addrate_scaled = nil
+}
+
+// SetSource sets the "source" field.
+func (m *BusinessExchangeRateMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *BusinessExchangeRateMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the BusinessExchangeRate entity.
+// If the BusinessExchangeRate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessExchangeRateMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *BusinessExchangeRateMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetNotes sets the "notes" field.
+func (m *BusinessExchangeRateMutation) SetNotes(s string) {
+	m.notes = &s
+}
+
+// Notes returns the value of the "notes" field in the mutation.
+func (m *BusinessExchangeRateMutation) Notes() (r string, exists bool) {
+	v := m.notes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotes returns the old "notes" field's value of the BusinessExchangeRate entity.
+// If the BusinessExchangeRate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessExchangeRateMutation) OldNotes(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotes: %w", err)
+	}
+	return oldValue.Notes, nil
+}
+
+// ClearNotes clears the value of the "notes" field.
+func (m *BusinessExchangeRateMutation) ClearNotes() {
+	m.notes = nil
+	m.clearedFields[businessexchangerate.FieldNotes] = struct{}{}
+}
+
+// NotesCleared returns if the "notes" field was cleared in this mutation.
+func (m *BusinessExchangeRateMutation) NotesCleared() bool {
+	_, ok := m.clearedFields[businessexchangerate.FieldNotes]
+	return ok
+}
+
+// ResetNotes resets all changes to the "notes" field.
+func (m *BusinessExchangeRateMutation) ResetNotes() {
+	m.notes = nil
+	delete(m.clearedFields, businessexchangerate.FieldNotes)
+}
+
+// Where appends a list predicates to the BusinessExchangeRateMutation builder.
+func (m *BusinessExchangeRateMutation) Where(ps ...predicate.BusinessExchangeRate) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BusinessExchangeRateMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BusinessExchangeRateMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BusinessExchangeRate, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BusinessExchangeRateMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BusinessExchangeRateMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BusinessExchangeRate).
+func (m *BusinessExchangeRateMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BusinessExchangeRateMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.created_at != nil {
+		fields = append(fields, businessexchangerate.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, businessexchangerate.FieldUpdatedAt)
+	}
+	if m.month != nil {
+		fields = append(fields, businessexchangerate.FieldMonth)
+	}
+	if m.currency != nil {
+		fields = append(fields, businessexchangerate.FieldCurrency)
+	}
+	if m.rate_scaled != nil {
+		fields = append(fields, businessexchangerate.FieldRateScaled)
+	}
+	if m.source != nil {
+		fields = append(fields, businessexchangerate.FieldSource)
+	}
+	if m.notes != nil {
+		fields = append(fields, businessexchangerate.FieldNotes)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BusinessExchangeRateMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case businessexchangerate.FieldCreatedAt:
+		return m.CreatedAt()
+	case businessexchangerate.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case businessexchangerate.FieldMonth:
+		return m.Month()
+	case businessexchangerate.FieldCurrency:
+		return m.Currency()
+	case businessexchangerate.FieldRateScaled:
+		return m.RateScaled()
+	case businessexchangerate.FieldSource:
+		return m.Source()
+	case businessexchangerate.FieldNotes:
+		return m.Notes()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BusinessExchangeRateMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case businessexchangerate.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case businessexchangerate.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case businessexchangerate.FieldMonth:
+		return m.OldMonth(ctx)
+	case businessexchangerate.FieldCurrency:
+		return m.OldCurrency(ctx)
+	case businessexchangerate.FieldRateScaled:
+		return m.OldRateScaled(ctx)
+	case businessexchangerate.FieldSource:
+		return m.OldSource(ctx)
+	case businessexchangerate.FieldNotes:
+		return m.OldNotes(ctx)
+	}
+	return nil, fmt.Errorf("unknown BusinessExchangeRate field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessExchangeRateMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case businessexchangerate.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case businessexchangerate.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case businessexchangerate.FieldMonth:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonth(v)
+		return nil
+	case businessexchangerate.FieldCurrency:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrency(v)
+		return nil
+	case businessexchangerate.FieldRateScaled:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRateScaled(v)
+		return nil
+	case businessexchangerate.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case businessexchangerate.FieldNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessExchangeRate field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BusinessExchangeRateMutation) AddedFields() []string {
+	var fields []string
+	if m.addrate_scaled != nil {
+		fields = append(fields, businessexchangerate.FieldRateScaled)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BusinessExchangeRateMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case businessexchangerate.FieldRateScaled:
+		return m.AddedRateScaled()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessExchangeRateMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case businessexchangerate.FieldRateScaled:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRateScaled(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessExchangeRate numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BusinessExchangeRateMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(businessexchangerate.FieldNotes) {
+		fields = append(fields, businessexchangerate.FieldNotes)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BusinessExchangeRateMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BusinessExchangeRateMutation) ClearField(name string) error {
+	switch name {
+	case businessexchangerate.FieldNotes:
+		m.ClearNotes()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessExchangeRate nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BusinessExchangeRateMutation) ResetField(name string) error {
+	switch name {
+	case businessexchangerate.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case businessexchangerate.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case businessexchangerate.FieldMonth:
+		m.ResetMonth()
+		return nil
+	case businessexchangerate.FieldCurrency:
+		m.ResetCurrency()
+		return nil
+	case businessexchangerate.FieldRateScaled:
+		m.ResetRateScaled()
+		return nil
+	case businessexchangerate.FieldSource:
+		m.ResetSource()
+		return nil
+	case businessexchangerate.FieldNotes:
+		m.ResetNotes()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessExchangeRate field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BusinessExchangeRateMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BusinessExchangeRateMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BusinessExchangeRateMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BusinessExchangeRateMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BusinessExchangeRateMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BusinessExchangeRateMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BusinessExchangeRateMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown BusinessExchangeRate unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BusinessExchangeRateMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown BusinessExchangeRate edge %s", name)
+}
+
+// BusinessMonthlySnapshotMutation represents an operation that mutates the BusinessMonthlySnapshot nodes in the graph.
+type BusinessMonthlySnapshotMutation struct {
+	config
+	op                                    Op
+	typ                                   string
+	id                                    *int64
+	created_at                            *time.Time
+	updated_at                            *time.Time
+	month                                 *time.Time
+	status                                *string
+	data_quality                          *string
+	api_key_count                         *int
+	addapi_key_count                      *int
+	private_subscription_count            *int
+	addprivate_subscription_count         *int
+	customer_count                        *int
+	addcustomer_count                     *int
+	excluded_api_key_count                *int
+	addexcluded_api_key_count             *int
+	anomaly_count                         *int
+	addanomaly_count                      *int
+	api_key_revenue_cents                 *int64
+	addapi_key_revenue_cents              *int64
+	private_subscription_revenue_cents    *int64
+	addprivate_subscription_revenue_cents *int64
+	total_revenue_cents                   *int64
+	addtotal_revenue_cents                *int64
+	direct_cost_cents                     *int64
+	adddirect_cost_cents                  *int64
+	operating_cost_cents                  *int64
+	addoperating_cost_cents               *int64
+	gross_profit_cents                    *int64
+	addgross_profit_cents                 *int64
+	net_profit_cents                      *int64
+	addnet_profit_cents                   *int64
+	gross_margin_bps                      *int64
+	addgross_margin_bps                   *int64
+	net_margin_bps                        *int64
+	addnet_margin_bps                     *int64
+	costs_complete                        *bool
+	notes                                 *string
+	closed_at                             *time.Time
+	closed_by                             *int64
+	addclosed_by                          *int64
+	clearedFields                         map[string]struct{}
+	done                                  bool
+	oldValue                              func(context.Context) (*BusinessMonthlySnapshot, error)
+	predicates                            []predicate.BusinessMonthlySnapshot
+}
+
+var _ ent.Mutation = (*BusinessMonthlySnapshotMutation)(nil)
+
+// businessmonthlysnapshotOption allows management of the mutation configuration using functional options.
+type businessmonthlysnapshotOption func(*BusinessMonthlySnapshotMutation)
+
+// newBusinessMonthlySnapshotMutation creates new mutation for the BusinessMonthlySnapshot entity.
+func newBusinessMonthlySnapshotMutation(c config, op Op, opts ...businessmonthlysnapshotOption) *BusinessMonthlySnapshotMutation {
+	m := &BusinessMonthlySnapshotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBusinessMonthlySnapshot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBusinessMonthlySnapshotID sets the ID field of the mutation.
+func withBusinessMonthlySnapshotID(id int64) businessmonthlysnapshotOption {
+	return func(m *BusinessMonthlySnapshotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BusinessMonthlySnapshot
+		)
+		m.oldValue = func(ctx context.Context) (*BusinessMonthlySnapshot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BusinessMonthlySnapshot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBusinessMonthlySnapshot sets the old BusinessMonthlySnapshot of the mutation.
+func withBusinessMonthlySnapshot(node *BusinessMonthlySnapshot) businessmonthlysnapshotOption {
+	return func(m *BusinessMonthlySnapshotMutation) {
+		m.oldValue = func(context.Context) (*BusinessMonthlySnapshot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BusinessMonthlySnapshotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BusinessMonthlySnapshotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BusinessMonthlySnapshotMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BusinessMonthlySnapshotMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BusinessMonthlySnapshot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BusinessMonthlySnapshotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BusinessMonthlySnapshotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BusinessMonthlySnapshotMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BusinessMonthlySnapshotMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetMonth sets the "month" field.
+func (m *BusinessMonthlySnapshotMutation) SetMonth(t time.Time) {
+	m.month = &t
+}
+
+// Month returns the value of the "month" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) Month() (r time.Time, exists bool) {
+	v := m.month
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonth returns the old "month" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldMonth(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonth is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonth requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonth: %w", err)
+	}
+	return oldValue.Month, nil
+}
+
+// ResetMonth resets all changes to the "month" field.
+func (m *BusinessMonthlySnapshotMutation) ResetMonth() {
+	m.month = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *BusinessMonthlySnapshotMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *BusinessMonthlySnapshotMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetDataQuality sets the "data_quality" field.
+func (m *BusinessMonthlySnapshotMutation) SetDataQuality(s string) {
+	m.data_quality = &s
+}
+
+// DataQuality returns the value of the "data_quality" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) DataQuality() (r string, exists bool) {
+	v := m.data_quality
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDataQuality returns the old "data_quality" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldDataQuality(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDataQuality is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDataQuality requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDataQuality: %w", err)
+	}
+	return oldValue.DataQuality, nil
+}
+
+// ResetDataQuality resets all changes to the "data_quality" field.
+func (m *BusinessMonthlySnapshotMutation) ResetDataQuality() {
+	m.data_quality = nil
+}
+
+// SetAPIKeyCount sets the "api_key_count" field.
+func (m *BusinessMonthlySnapshotMutation) SetAPIKeyCount(i int) {
+	m.api_key_count = &i
+	m.addapi_key_count = nil
+}
+
+// APIKeyCount returns the value of the "api_key_count" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) APIKeyCount() (r int, exists bool) {
+	v := m.api_key_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyCount returns the old "api_key_count" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldAPIKeyCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyCount: %w", err)
+	}
+	return oldValue.APIKeyCount, nil
+}
+
+// AddAPIKeyCount adds i to the "api_key_count" field.
+func (m *BusinessMonthlySnapshotMutation) AddAPIKeyCount(i int) {
+	if m.addapi_key_count != nil {
+		*m.addapi_key_count += i
+	} else {
+		m.addapi_key_count = &i
+	}
+}
+
+// AddedAPIKeyCount returns the value that was added to the "api_key_count" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedAPIKeyCount() (r int, exists bool) {
+	v := m.addapi_key_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyCount resets all changes to the "api_key_count" field.
+func (m *BusinessMonthlySnapshotMutation) ResetAPIKeyCount() {
+	m.api_key_count = nil
+	m.addapi_key_count = nil
+}
+
+// SetPrivateSubscriptionCount sets the "private_subscription_count" field.
+func (m *BusinessMonthlySnapshotMutation) SetPrivateSubscriptionCount(i int) {
+	m.private_subscription_count = &i
+	m.addprivate_subscription_count = nil
+}
+
+// PrivateSubscriptionCount returns the value of the "private_subscription_count" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) PrivateSubscriptionCount() (r int, exists bool) {
+	v := m.private_subscription_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrivateSubscriptionCount returns the old "private_subscription_count" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldPrivateSubscriptionCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrivateSubscriptionCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrivateSubscriptionCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrivateSubscriptionCount: %w", err)
+	}
+	return oldValue.PrivateSubscriptionCount, nil
+}
+
+// AddPrivateSubscriptionCount adds i to the "private_subscription_count" field.
+func (m *BusinessMonthlySnapshotMutation) AddPrivateSubscriptionCount(i int) {
+	if m.addprivate_subscription_count != nil {
+		*m.addprivate_subscription_count += i
+	} else {
+		m.addprivate_subscription_count = &i
+	}
+}
+
+// AddedPrivateSubscriptionCount returns the value that was added to the "private_subscription_count" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedPrivateSubscriptionCount() (r int, exists bool) {
+	v := m.addprivate_subscription_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPrivateSubscriptionCount resets all changes to the "private_subscription_count" field.
+func (m *BusinessMonthlySnapshotMutation) ResetPrivateSubscriptionCount() {
+	m.private_subscription_count = nil
+	m.addprivate_subscription_count = nil
+}
+
+// SetCustomerCount sets the "customer_count" field.
+func (m *BusinessMonthlySnapshotMutation) SetCustomerCount(i int) {
+	m.customer_count = &i
+	m.addcustomer_count = nil
+}
+
+// CustomerCount returns the value of the "customer_count" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) CustomerCount() (r int, exists bool) {
+	v := m.customer_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCustomerCount returns the old "customer_count" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldCustomerCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCustomerCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCustomerCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCustomerCount: %w", err)
+	}
+	return oldValue.CustomerCount, nil
+}
+
+// AddCustomerCount adds i to the "customer_count" field.
+func (m *BusinessMonthlySnapshotMutation) AddCustomerCount(i int) {
+	if m.addcustomer_count != nil {
+		*m.addcustomer_count += i
+	} else {
+		m.addcustomer_count = &i
+	}
+}
+
+// AddedCustomerCount returns the value that was added to the "customer_count" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedCustomerCount() (r int, exists bool) {
+	v := m.addcustomer_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCustomerCount resets all changes to the "customer_count" field.
+func (m *BusinessMonthlySnapshotMutation) ResetCustomerCount() {
+	m.customer_count = nil
+	m.addcustomer_count = nil
+}
+
+// SetExcludedAPIKeyCount sets the "excluded_api_key_count" field.
+func (m *BusinessMonthlySnapshotMutation) SetExcludedAPIKeyCount(i int) {
+	m.excluded_api_key_count = &i
+	m.addexcluded_api_key_count = nil
+}
+
+// ExcludedAPIKeyCount returns the value of the "excluded_api_key_count" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) ExcludedAPIKeyCount() (r int, exists bool) {
+	v := m.excluded_api_key_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExcludedAPIKeyCount returns the old "excluded_api_key_count" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldExcludedAPIKeyCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExcludedAPIKeyCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExcludedAPIKeyCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExcludedAPIKeyCount: %w", err)
+	}
+	return oldValue.ExcludedAPIKeyCount, nil
+}
+
+// AddExcludedAPIKeyCount adds i to the "excluded_api_key_count" field.
+func (m *BusinessMonthlySnapshotMutation) AddExcludedAPIKeyCount(i int) {
+	if m.addexcluded_api_key_count != nil {
+		*m.addexcluded_api_key_count += i
+	} else {
+		m.addexcluded_api_key_count = &i
+	}
+}
+
+// AddedExcludedAPIKeyCount returns the value that was added to the "excluded_api_key_count" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedExcludedAPIKeyCount() (r int, exists bool) {
+	v := m.addexcluded_api_key_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetExcludedAPIKeyCount resets all changes to the "excluded_api_key_count" field.
+func (m *BusinessMonthlySnapshotMutation) ResetExcludedAPIKeyCount() {
+	m.excluded_api_key_count = nil
+	m.addexcluded_api_key_count = nil
+}
+
+// SetAnomalyCount sets the "anomaly_count" field.
+func (m *BusinessMonthlySnapshotMutation) SetAnomalyCount(i int) {
+	m.anomaly_count = &i
+	m.addanomaly_count = nil
+}
+
+// AnomalyCount returns the value of the "anomaly_count" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) AnomalyCount() (r int, exists bool) {
+	v := m.anomaly_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAnomalyCount returns the old "anomaly_count" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldAnomalyCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAnomalyCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAnomalyCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAnomalyCount: %w", err)
+	}
+	return oldValue.AnomalyCount, nil
+}
+
+// AddAnomalyCount adds i to the "anomaly_count" field.
+func (m *BusinessMonthlySnapshotMutation) AddAnomalyCount(i int) {
+	if m.addanomaly_count != nil {
+		*m.addanomaly_count += i
+	} else {
+		m.addanomaly_count = &i
+	}
+}
+
+// AddedAnomalyCount returns the value that was added to the "anomaly_count" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedAnomalyCount() (r int, exists bool) {
+	v := m.addanomaly_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAnomalyCount resets all changes to the "anomaly_count" field.
+func (m *BusinessMonthlySnapshotMutation) ResetAnomalyCount() {
+	m.anomaly_count = nil
+	m.addanomaly_count = nil
+}
+
+// SetAPIKeyRevenueCents sets the "api_key_revenue_cents" field.
+func (m *BusinessMonthlySnapshotMutation) SetAPIKeyRevenueCents(i int64) {
+	m.api_key_revenue_cents = &i
+	m.addapi_key_revenue_cents = nil
+}
+
+// APIKeyRevenueCents returns the value of the "api_key_revenue_cents" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) APIKeyRevenueCents() (r int64, exists bool) {
+	v := m.api_key_revenue_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyRevenueCents returns the old "api_key_revenue_cents" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldAPIKeyRevenueCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyRevenueCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyRevenueCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyRevenueCents: %w", err)
+	}
+	return oldValue.APIKeyRevenueCents, nil
+}
+
+// AddAPIKeyRevenueCents adds i to the "api_key_revenue_cents" field.
+func (m *BusinessMonthlySnapshotMutation) AddAPIKeyRevenueCents(i int64) {
+	if m.addapi_key_revenue_cents != nil {
+		*m.addapi_key_revenue_cents += i
+	} else {
+		m.addapi_key_revenue_cents = &i
+	}
+}
+
+// AddedAPIKeyRevenueCents returns the value that was added to the "api_key_revenue_cents" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedAPIKeyRevenueCents() (r int64, exists bool) {
+	v := m.addapi_key_revenue_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyRevenueCents resets all changes to the "api_key_revenue_cents" field.
+func (m *BusinessMonthlySnapshotMutation) ResetAPIKeyRevenueCents() {
+	m.api_key_revenue_cents = nil
+	m.addapi_key_revenue_cents = nil
+}
+
+// SetPrivateSubscriptionRevenueCents sets the "private_subscription_revenue_cents" field.
+func (m *BusinessMonthlySnapshotMutation) SetPrivateSubscriptionRevenueCents(i int64) {
+	m.private_subscription_revenue_cents = &i
+	m.addprivate_subscription_revenue_cents = nil
+}
+
+// PrivateSubscriptionRevenueCents returns the value of the "private_subscription_revenue_cents" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) PrivateSubscriptionRevenueCents() (r int64, exists bool) {
+	v := m.private_subscription_revenue_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrivateSubscriptionRevenueCents returns the old "private_subscription_revenue_cents" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldPrivateSubscriptionRevenueCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrivateSubscriptionRevenueCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrivateSubscriptionRevenueCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrivateSubscriptionRevenueCents: %w", err)
+	}
+	return oldValue.PrivateSubscriptionRevenueCents, nil
+}
+
+// AddPrivateSubscriptionRevenueCents adds i to the "private_subscription_revenue_cents" field.
+func (m *BusinessMonthlySnapshotMutation) AddPrivateSubscriptionRevenueCents(i int64) {
+	if m.addprivate_subscription_revenue_cents != nil {
+		*m.addprivate_subscription_revenue_cents += i
+	} else {
+		m.addprivate_subscription_revenue_cents = &i
+	}
+}
+
+// AddedPrivateSubscriptionRevenueCents returns the value that was added to the "private_subscription_revenue_cents" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedPrivateSubscriptionRevenueCents() (r int64, exists bool) {
+	v := m.addprivate_subscription_revenue_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPrivateSubscriptionRevenueCents resets all changes to the "private_subscription_revenue_cents" field.
+func (m *BusinessMonthlySnapshotMutation) ResetPrivateSubscriptionRevenueCents() {
+	m.private_subscription_revenue_cents = nil
+	m.addprivate_subscription_revenue_cents = nil
+}
+
+// SetTotalRevenueCents sets the "total_revenue_cents" field.
+func (m *BusinessMonthlySnapshotMutation) SetTotalRevenueCents(i int64) {
+	m.total_revenue_cents = &i
+	m.addtotal_revenue_cents = nil
+}
+
+// TotalRevenueCents returns the value of the "total_revenue_cents" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) TotalRevenueCents() (r int64, exists bool) {
+	v := m.total_revenue_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalRevenueCents returns the old "total_revenue_cents" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldTotalRevenueCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalRevenueCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalRevenueCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalRevenueCents: %w", err)
+	}
+	return oldValue.TotalRevenueCents, nil
+}
+
+// AddTotalRevenueCents adds i to the "total_revenue_cents" field.
+func (m *BusinessMonthlySnapshotMutation) AddTotalRevenueCents(i int64) {
+	if m.addtotal_revenue_cents != nil {
+		*m.addtotal_revenue_cents += i
+	} else {
+		m.addtotal_revenue_cents = &i
+	}
+}
+
+// AddedTotalRevenueCents returns the value that was added to the "total_revenue_cents" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedTotalRevenueCents() (r int64, exists bool) {
+	v := m.addtotal_revenue_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTotalRevenueCents resets all changes to the "total_revenue_cents" field.
+func (m *BusinessMonthlySnapshotMutation) ResetTotalRevenueCents() {
+	m.total_revenue_cents = nil
+	m.addtotal_revenue_cents = nil
+}
+
+// SetDirectCostCents sets the "direct_cost_cents" field.
+func (m *BusinessMonthlySnapshotMutation) SetDirectCostCents(i int64) {
+	m.direct_cost_cents = &i
+	m.adddirect_cost_cents = nil
+}
+
+// DirectCostCents returns the value of the "direct_cost_cents" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) DirectCostCents() (r int64, exists bool) {
+	v := m.direct_cost_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDirectCostCents returns the old "direct_cost_cents" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldDirectCostCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDirectCostCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDirectCostCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDirectCostCents: %w", err)
+	}
+	return oldValue.DirectCostCents, nil
+}
+
+// AddDirectCostCents adds i to the "direct_cost_cents" field.
+func (m *BusinessMonthlySnapshotMutation) AddDirectCostCents(i int64) {
+	if m.adddirect_cost_cents != nil {
+		*m.adddirect_cost_cents += i
+	} else {
+		m.adddirect_cost_cents = &i
+	}
+}
+
+// AddedDirectCostCents returns the value that was added to the "direct_cost_cents" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedDirectCostCents() (r int64, exists bool) {
+	v := m.adddirect_cost_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDirectCostCents resets all changes to the "direct_cost_cents" field.
+func (m *BusinessMonthlySnapshotMutation) ResetDirectCostCents() {
+	m.direct_cost_cents = nil
+	m.adddirect_cost_cents = nil
+}
+
+// SetOperatingCostCents sets the "operating_cost_cents" field.
+func (m *BusinessMonthlySnapshotMutation) SetOperatingCostCents(i int64) {
+	m.operating_cost_cents = &i
+	m.addoperating_cost_cents = nil
+}
+
+// OperatingCostCents returns the value of the "operating_cost_cents" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) OperatingCostCents() (r int64, exists bool) {
+	v := m.operating_cost_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOperatingCostCents returns the old "operating_cost_cents" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldOperatingCostCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOperatingCostCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOperatingCostCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOperatingCostCents: %w", err)
+	}
+	return oldValue.OperatingCostCents, nil
+}
+
+// AddOperatingCostCents adds i to the "operating_cost_cents" field.
+func (m *BusinessMonthlySnapshotMutation) AddOperatingCostCents(i int64) {
+	if m.addoperating_cost_cents != nil {
+		*m.addoperating_cost_cents += i
+	} else {
+		m.addoperating_cost_cents = &i
+	}
+}
+
+// AddedOperatingCostCents returns the value that was added to the "operating_cost_cents" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedOperatingCostCents() (r int64, exists bool) {
+	v := m.addoperating_cost_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOperatingCostCents resets all changes to the "operating_cost_cents" field.
+func (m *BusinessMonthlySnapshotMutation) ResetOperatingCostCents() {
+	m.operating_cost_cents = nil
+	m.addoperating_cost_cents = nil
+}
+
+// SetGrossProfitCents sets the "gross_profit_cents" field.
+func (m *BusinessMonthlySnapshotMutation) SetGrossProfitCents(i int64) {
+	m.gross_profit_cents = &i
+	m.addgross_profit_cents = nil
+}
+
+// GrossProfitCents returns the value of the "gross_profit_cents" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) GrossProfitCents() (r int64, exists bool) {
+	v := m.gross_profit_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGrossProfitCents returns the old "gross_profit_cents" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldGrossProfitCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGrossProfitCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGrossProfitCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGrossProfitCents: %w", err)
+	}
+	return oldValue.GrossProfitCents, nil
+}
+
+// AddGrossProfitCents adds i to the "gross_profit_cents" field.
+func (m *BusinessMonthlySnapshotMutation) AddGrossProfitCents(i int64) {
+	if m.addgross_profit_cents != nil {
+		*m.addgross_profit_cents += i
+	} else {
+		m.addgross_profit_cents = &i
+	}
+}
+
+// AddedGrossProfitCents returns the value that was added to the "gross_profit_cents" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedGrossProfitCents() (r int64, exists bool) {
+	v := m.addgross_profit_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetGrossProfitCents resets all changes to the "gross_profit_cents" field.
+func (m *BusinessMonthlySnapshotMutation) ResetGrossProfitCents() {
+	m.gross_profit_cents = nil
+	m.addgross_profit_cents = nil
+}
+
+// SetNetProfitCents sets the "net_profit_cents" field.
+func (m *BusinessMonthlySnapshotMutation) SetNetProfitCents(i int64) {
+	m.net_profit_cents = &i
+	m.addnet_profit_cents = nil
+}
+
+// NetProfitCents returns the value of the "net_profit_cents" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) NetProfitCents() (r int64, exists bool) {
+	v := m.net_profit_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNetProfitCents returns the old "net_profit_cents" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldNetProfitCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNetProfitCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNetProfitCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNetProfitCents: %w", err)
+	}
+	return oldValue.NetProfitCents, nil
+}
+
+// AddNetProfitCents adds i to the "net_profit_cents" field.
+func (m *BusinessMonthlySnapshotMutation) AddNetProfitCents(i int64) {
+	if m.addnet_profit_cents != nil {
+		*m.addnet_profit_cents += i
+	} else {
+		m.addnet_profit_cents = &i
+	}
+}
+
+// AddedNetProfitCents returns the value that was added to the "net_profit_cents" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedNetProfitCents() (r int64, exists bool) {
+	v := m.addnet_profit_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetNetProfitCents resets all changes to the "net_profit_cents" field.
+func (m *BusinessMonthlySnapshotMutation) ResetNetProfitCents() {
+	m.net_profit_cents = nil
+	m.addnet_profit_cents = nil
+}
+
+// SetGrossMarginBps sets the "gross_margin_bps" field.
+func (m *BusinessMonthlySnapshotMutation) SetGrossMarginBps(i int64) {
+	m.gross_margin_bps = &i
+	m.addgross_margin_bps = nil
+}
+
+// GrossMarginBps returns the value of the "gross_margin_bps" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) GrossMarginBps() (r int64, exists bool) {
+	v := m.gross_margin_bps
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGrossMarginBps returns the old "gross_margin_bps" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldGrossMarginBps(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGrossMarginBps is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGrossMarginBps requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGrossMarginBps: %w", err)
+	}
+	return oldValue.GrossMarginBps, nil
+}
+
+// AddGrossMarginBps adds i to the "gross_margin_bps" field.
+func (m *BusinessMonthlySnapshotMutation) AddGrossMarginBps(i int64) {
+	if m.addgross_margin_bps != nil {
+		*m.addgross_margin_bps += i
+	} else {
+		m.addgross_margin_bps = &i
+	}
+}
+
+// AddedGrossMarginBps returns the value that was added to the "gross_margin_bps" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedGrossMarginBps() (r int64, exists bool) {
+	v := m.addgross_margin_bps
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetGrossMarginBps resets all changes to the "gross_margin_bps" field.
+func (m *BusinessMonthlySnapshotMutation) ResetGrossMarginBps() {
+	m.gross_margin_bps = nil
+	m.addgross_margin_bps = nil
+}
+
+// SetNetMarginBps sets the "net_margin_bps" field.
+func (m *BusinessMonthlySnapshotMutation) SetNetMarginBps(i int64) {
+	m.net_margin_bps = &i
+	m.addnet_margin_bps = nil
+}
+
+// NetMarginBps returns the value of the "net_margin_bps" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) NetMarginBps() (r int64, exists bool) {
+	v := m.net_margin_bps
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNetMarginBps returns the old "net_margin_bps" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldNetMarginBps(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNetMarginBps is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNetMarginBps requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNetMarginBps: %w", err)
+	}
+	return oldValue.NetMarginBps, nil
+}
+
+// AddNetMarginBps adds i to the "net_margin_bps" field.
+func (m *BusinessMonthlySnapshotMutation) AddNetMarginBps(i int64) {
+	if m.addnet_margin_bps != nil {
+		*m.addnet_margin_bps += i
+	} else {
+		m.addnet_margin_bps = &i
+	}
+}
+
+// AddedNetMarginBps returns the value that was added to the "net_margin_bps" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedNetMarginBps() (r int64, exists bool) {
+	v := m.addnet_margin_bps
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetNetMarginBps resets all changes to the "net_margin_bps" field.
+func (m *BusinessMonthlySnapshotMutation) ResetNetMarginBps() {
+	m.net_margin_bps = nil
+	m.addnet_margin_bps = nil
+}
+
+// SetCostsComplete sets the "costs_complete" field.
+func (m *BusinessMonthlySnapshotMutation) SetCostsComplete(b bool) {
+	m.costs_complete = &b
+}
+
+// CostsComplete returns the value of the "costs_complete" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) CostsComplete() (r bool, exists bool) {
+	v := m.costs_complete
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCostsComplete returns the old "costs_complete" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldCostsComplete(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCostsComplete is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCostsComplete requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCostsComplete: %w", err)
+	}
+	return oldValue.CostsComplete, nil
+}
+
+// ResetCostsComplete resets all changes to the "costs_complete" field.
+func (m *BusinessMonthlySnapshotMutation) ResetCostsComplete() {
+	m.costs_complete = nil
+}
+
+// SetNotes sets the "notes" field.
+func (m *BusinessMonthlySnapshotMutation) SetNotes(s string) {
+	m.notes = &s
+}
+
+// Notes returns the value of the "notes" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) Notes() (r string, exists bool) {
+	v := m.notes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotes returns the old "notes" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldNotes(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotes: %w", err)
+	}
+	return oldValue.Notes, nil
+}
+
+// ClearNotes clears the value of the "notes" field.
+func (m *BusinessMonthlySnapshotMutation) ClearNotes() {
+	m.notes = nil
+	m.clearedFields[businessmonthlysnapshot.FieldNotes] = struct{}{}
+}
+
+// NotesCleared returns if the "notes" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotMutation) NotesCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshot.FieldNotes]
+	return ok
+}
+
+// ResetNotes resets all changes to the "notes" field.
+func (m *BusinessMonthlySnapshotMutation) ResetNotes() {
+	m.notes = nil
+	delete(m.clearedFields, businessmonthlysnapshot.FieldNotes)
+}
+
+// SetClosedAt sets the "closed_at" field.
+func (m *BusinessMonthlySnapshotMutation) SetClosedAt(t time.Time) {
+	m.closed_at = &t
+}
+
+// ClosedAt returns the value of the "closed_at" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) ClosedAt() (r time.Time, exists bool) {
+	v := m.closed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClosedAt returns the old "closed_at" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldClosedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClosedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClosedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClosedAt: %w", err)
+	}
+	return oldValue.ClosedAt, nil
+}
+
+// ResetClosedAt resets all changes to the "closed_at" field.
+func (m *BusinessMonthlySnapshotMutation) ResetClosedAt() {
+	m.closed_at = nil
+}
+
+// SetClosedBy sets the "closed_by" field.
+func (m *BusinessMonthlySnapshotMutation) SetClosedBy(i int64) {
+	m.closed_by = &i
+	m.addclosed_by = nil
+}
+
+// ClosedBy returns the value of the "closed_by" field in the mutation.
+func (m *BusinessMonthlySnapshotMutation) ClosedBy() (r int64, exists bool) {
+	v := m.closed_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClosedBy returns the old "closed_by" field's value of the BusinessMonthlySnapshot entity.
+// If the BusinessMonthlySnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotMutation) OldClosedBy(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClosedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClosedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClosedBy: %w", err)
+	}
+	return oldValue.ClosedBy, nil
+}
+
+// AddClosedBy adds i to the "closed_by" field.
+func (m *BusinessMonthlySnapshotMutation) AddClosedBy(i int64) {
+	if m.addclosed_by != nil {
+		*m.addclosed_by += i
+	} else {
+		m.addclosed_by = &i
+	}
+}
+
+// AddedClosedBy returns the value that was added to the "closed_by" field in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedClosedBy() (r int64, exists bool) {
+	v := m.addclosed_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearClosedBy clears the value of the "closed_by" field.
+func (m *BusinessMonthlySnapshotMutation) ClearClosedBy() {
+	m.closed_by = nil
+	m.addclosed_by = nil
+	m.clearedFields[businessmonthlysnapshot.FieldClosedBy] = struct{}{}
+}
+
+// ClosedByCleared returns if the "closed_by" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotMutation) ClosedByCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshot.FieldClosedBy]
+	return ok
+}
+
+// ResetClosedBy resets all changes to the "closed_by" field.
+func (m *BusinessMonthlySnapshotMutation) ResetClosedBy() {
+	m.closed_by = nil
+	m.addclosed_by = nil
+	delete(m.clearedFields, businessmonthlysnapshot.FieldClosedBy)
+}
+
+// Where appends a list predicates to the BusinessMonthlySnapshotMutation builder.
+func (m *BusinessMonthlySnapshotMutation) Where(ps ...predicate.BusinessMonthlySnapshot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BusinessMonthlySnapshotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BusinessMonthlySnapshotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BusinessMonthlySnapshot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BusinessMonthlySnapshotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BusinessMonthlySnapshotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BusinessMonthlySnapshot).
+func (m *BusinessMonthlySnapshotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BusinessMonthlySnapshotMutation) Fields() []string {
+	fields := make([]string, 0, 23)
+	if m.created_at != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldUpdatedAt)
+	}
+	if m.month != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldMonth)
+	}
+	if m.status != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldStatus)
+	}
+	if m.data_quality != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldDataQuality)
+	}
+	if m.api_key_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldAPIKeyCount)
+	}
+	if m.private_subscription_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldPrivateSubscriptionCount)
+	}
+	if m.customer_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldCustomerCount)
+	}
+	if m.excluded_api_key_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldExcludedAPIKeyCount)
+	}
+	if m.anomaly_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldAnomalyCount)
+	}
+	if m.api_key_revenue_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldAPIKeyRevenueCents)
+	}
+	if m.private_subscription_revenue_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldPrivateSubscriptionRevenueCents)
+	}
+	if m.total_revenue_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldTotalRevenueCents)
+	}
+	if m.direct_cost_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldDirectCostCents)
+	}
+	if m.operating_cost_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldOperatingCostCents)
+	}
+	if m.gross_profit_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldGrossProfitCents)
+	}
+	if m.net_profit_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldNetProfitCents)
+	}
+	if m.gross_margin_bps != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldGrossMarginBps)
+	}
+	if m.net_margin_bps != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldNetMarginBps)
+	}
+	if m.costs_complete != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldCostsComplete)
+	}
+	if m.notes != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldNotes)
+	}
+	if m.closed_at != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldClosedAt)
+	}
+	if m.closed_by != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldClosedBy)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BusinessMonthlySnapshotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case businessmonthlysnapshot.FieldCreatedAt:
+		return m.CreatedAt()
+	case businessmonthlysnapshot.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case businessmonthlysnapshot.FieldMonth:
+		return m.Month()
+	case businessmonthlysnapshot.FieldStatus:
+		return m.Status()
+	case businessmonthlysnapshot.FieldDataQuality:
+		return m.DataQuality()
+	case businessmonthlysnapshot.FieldAPIKeyCount:
+		return m.APIKeyCount()
+	case businessmonthlysnapshot.FieldPrivateSubscriptionCount:
+		return m.PrivateSubscriptionCount()
+	case businessmonthlysnapshot.FieldCustomerCount:
+		return m.CustomerCount()
+	case businessmonthlysnapshot.FieldExcludedAPIKeyCount:
+		return m.ExcludedAPIKeyCount()
+	case businessmonthlysnapshot.FieldAnomalyCount:
+		return m.AnomalyCount()
+	case businessmonthlysnapshot.FieldAPIKeyRevenueCents:
+		return m.APIKeyRevenueCents()
+	case businessmonthlysnapshot.FieldPrivateSubscriptionRevenueCents:
+		return m.PrivateSubscriptionRevenueCents()
+	case businessmonthlysnapshot.FieldTotalRevenueCents:
+		return m.TotalRevenueCents()
+	case businessmonthlysnapshot.FieldDirectCostCents:
+		return m.DirectCostCents()
+	case businessmonthlysnapshot.FieldOperatingCostCents:
+		return m.OperatingCostCents()
+	case businessmonthlysnapshot.FieldGrossProfitCents:
+		return m.GrossProfitCents()
+	case businessmonthlysnapshot.FieldNetProfitCents:
+		return m.NetProfitCents()
+	case businessmonthlysnapshot.FieldGrossMarginBps:
+		return m.GrossMarginBps()
+	case businessmonthlysnapshot.FieldNetMarginBps:
+		return m.NetMarginBps()
+	case businessmonthlysnapshot.FieldCostsComplete:
+		return m.CostsComplete()
+	case businessmonthlysnapshot.FieldNotes:
+		return m.Notes()
+	case businessmonthlysnapshot.FieldClosedAt:
+		return m.ClosedAt()
+	case businessmonthlysnapshot.FieldClosedBy:
+		return m.ClosedBy()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BusinessMonthlySnapshotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case businessmonthlysnapshot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case businessmonthlysnapshot.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case businessmonthlysnapshot.FieldMonth:
+		return m.OldMonth(ctx)
+	case businessmonthlysnapshot.FieldStatus:
+		return m.OldStatus(ctx)
+	case businessmonthlysnapshot.FieldDataQuality:
+		return m.OldDataQuality(ctx)
+	case businessmonthlysnapshot.FieldAPIKeyCount:
+		return m.OldAPIKeyCount(ctx)
+	case businessmonthlysnapshot.FieldPrivateSubscriptionCount:
+		return m.OldPrivateSubscriptionCount(ctx)
+	case businessmonthlysnapshot.FieldCustomerCount:
+		return m.OldCustomerCount(ctx)
+	case businessmonthlysnapshot.FieldExcludedAPIKeyCount:
+		return m.OldExcludedAPIKeyCount(ctx)
+	case businessmonthlysnapshot.FieldAnomalyCount:
+		return m.OldAnomalyCount(ctx)
+	case businessmonthlysnapshot.FieldAPIKeyRevenueCents:
+		return m.OldAPIKeyRevenueCents(ctx)
+	case businessmonthlysnapshot.FieldPrivateSubscriptionRevenueCents:
+		return m.OldPrivateSubscriptionRevenueCents(ctx)
+	case businessmonthlysnapshot.FieldTotalRevenueCents:
+		return m.OldTotalRevenueCents(ctx)
+	case businessmonthlysnapshot.FieldDirectCostCents:
+		return m.OldDirectCostCents(ctx)
+	case businessmonthlysnapshot.FieldOperatingCostCents:
+		return m.OldOperatingCostCents(ctx)
+	case businessmonthlysnapshot.FieldGrossProfitCents:
+		return m.OldGrossProfitCents(ctx)
+	case businessmonthlysnapshot.FieldNetProfitCents:
+		return m.OldNetProfitCents(ctx)
+	case businessmonthlysnapshot.FieldGrossMarginBps:
+		return m.OldGrossMarginBps(ctx)
+	case businessmonthlysnapshot.FieldNetMarginBps:
+		return m.OldNetMarginBps(ctx)
+	case businessmonthlysnapshot.FieldCostsComplete:
+		return m.OldCostsComplete(ctx)
+	case businessmonthlysnapshot.FieldNotes:
+		return m.OldNotes(ctx)
+	case businessmonthlysnapshot.FieldClosedAt:
+		return m.OldClosedAt(ctx)
+	case businessmonthlysnapshot.FieldClosedBy:
+		return m.OldClosedBy(ctx)
+	}
+	return nil, fmt.Errorf("unknown BusinessMonthlySnapshot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessMonthlySnapshotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case businessmonthlysnapshot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case businessmonthlysnapshot.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case businessmonthlysnapshot.FieldMonth:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonth(v)
+		return nil
+	case businessmonthlysnapshot.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case businessmonthlysnapshot.FieldDataQuality:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDataQuality(v)
+		return nil
+	case businessmonthlysnapshot.FieldAPIKeyCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldPrivateSubscriptionCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrivateSubscriptionCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldCustomerCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCustomerCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldExcludedAPIKeyCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExcludedAPIKeyCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldAnomalyCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAnomalyCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldAPIKeyRevenueCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyRevenueCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldPrivateSubscriptionRevenueCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrivateSubscriptionRevenueCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldTotalRevenueCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalRevenueCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldDirectCostCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDirectCostCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldOperatingCostCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOperatingCostCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldGrossProfitCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGrossProfitCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldNetProfitCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNetProfitCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldGrossMarginBps:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGrossMarginBps(v)
+		return nil
+	case businessmonthlysnapshot.FieldNetMarginBps:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNetMarginBps(v)
+		return nil
+	case businessmonthlysnapshot.FieldCostsComplete:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCostsComplete(v)
+		return nil
+	case businessmonthlysnapshot.FieldNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotes(v)
+		return nil
+	case businessmonthlysnapshot.FieldClosedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClosedAt(v)
+		return nil
+	case businessmonthlysnapshot.FieldClosedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClosedBy(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessMonthlySnapshot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedFields() []string {
+	var fields []string
+	if m.addapi_key_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldAPIKeyCount)
+	}
+	if m.addprivate_subscription_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldPrivateSubscriptionCount)
+	}
+	if m.addcustomer_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldCustomerCount)
+	}
+	if m.addexcluded_api_key_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldExcludedAPIKeyCount)
+	}
+	if m.addanomaly_count != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldAnomalyCount)
+	}
+	if m.addapi_key_revenue_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldAPIKeyRevenueCents)
+	}
+	if m.addprivate_subscription_revenue_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldPrivateSubscriptionRevenueCents)
+	}
+	if m.addtotal_revenue_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldTotalRevenueCents)
+	}
+	if m.adddirect_cost_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldDirectCostCents)
+	}
+	if m.addoperating_cost_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldOperatingCostCents)
+	}
+	if m.addgross_profit_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldGrossProfitCents)
+	}
+	if m.addnet_profit_cents != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldNetProfitCents)
+	}
+	if m.addgross_margin_bps != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldGrossMarginBps)
+	}
+	if m.addnet_margin_bps != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldNetMarginBps)
+	}
+	if m.addclosed_by != nil {
+		fields = append(fields, businessmonthlysnapshot.FieldClosedBy)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BusinessMonthlySnapshotMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case businessmonthlysnapshot.FieldAPIKeyCount:
+		return m.AddedAPIKeyCount()
+	case businessmonthlysnapshot.FieldPrivateSubscriptionCount:
+		return m.AddedPrivateSubscriptionCount()
+	case businessmonthlysnapshot.FieldCustomerCount:
+		return m.AddedCustomerCount()
+	case businessmonthlysnapshot.FieldExcludedAPIKeyCount:
+		return m.AddedExcludedAPIKeyCount()
+	case businessmonthlysnapshot.FieldAnomalyCount:
+		return m.AddedAnomalyCount()
+	case businessmonthlysnapshot.FieldAPIKeyRevenueCents:
+		return m.AddedAPIKeyRevenueCents()
+	case businessmonthlysnapshot.FieldPrivateSubscriptionRevenueCents:
+		return m.AddedPrivateSubscriptionRevenueCents()
+	case businessmonthlysnapshot.FieldTotalRevenueCents:
+		return m.AddedTotalRevenueCents()
+	case businessmonthlysnapshot.FieldDirectCostCents:
+		return m.AddedDirectCostCents()
+	case businessmonthlysnapshot.FieldOperatingCostCents:
+		return m.AddedOperatingCostCents()
+	case businessmonthlysnapshot.FieldGrossProfitCents:
+		return m.AddedGrossProfitCents()
+	case businessmonthlysnapshot.FieldNetProfitCents:
+		return m.AddedNetProfitCents()
+	case businessmonthlysnapshot.FieldGrossMarginBps:
+		return m.AddedGrossMarginBps()
+	case businessmonthlysnapshot.FieldNetMarginBps:
+		return m.AddedNetMarginBps()
+	case businessmonthlysnapshot.FieldClosedBy:
+		return m.AddedClosedBy()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessMonthlySnapshotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case businessmonthlysnapshot.FieldAPIKeyCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldPrivateSubscriptionCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPrivateSubscriptionCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldCustomerCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCustomerCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldExcludedAPIKeyCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddExcludedAPIKeyCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldAnomalyCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAnomalyCount(v)
+		return nil
+	case businessmonthlysnapshot.FieldAPIKeyRevenueCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyRevenueCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldPrivateSubscriptionRevenueCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPrivateSubscriptionRevenueCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldTotalRevenueCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalRevenueCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldDirectCostCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDirectCostCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldOperatingCostCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOperatingCostCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldGrossProfitCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGrossProfitCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldNetProfitCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddNetProfitCents(v)
+		return nil
+	case businessmonthlysnapshot.FieldGrossMarginBps:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGrossMarginBps(v)
+		return nil
+	case businessmonthlysnapshot.FieldNetMarginBps:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddNetMarginBps(v)
+		return nil
+	case businessmonthlysnapshot.FieldClosedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddClosedBy(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessMonthlySnapshot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BusinessMonthlySnapshotMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(businessmonthlysnapshot.FieldNotes) {
+		fields = append(fields, businessmonthlysnapshot.FieldNotes)
+	}
+	if m.FieldCleared(businessmonthlysnapshot.FieldClosedBy) {
+		fields = append(fields, businessmonthlysnapshot.FieldClosedBy)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BusinessMonthlySnapshotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BusinessMonthlySnapshotMutation) ClearField(name string) error {
+	switch name {
+	case businessmonthlysnapshot.FieldNotes:
+		m.ClearNotes()
+		return nil
+	case businessmonthlysnapshot.FieldClosedBy:
+		m.ClearClosedBy()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessMonthlySnapshot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BusinessMonthlySnapshotMutation) ResetField(name string) error {
+	switch name {
+	case businessmonthlysnapshot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case businessmonthlysnapshot.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case businessmonthlysnapshot.FieldMonth:
+		m.ResetMonth()
+		return nil
+	case businessmonthlysnapshot.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case businessmonthlysnapshot.FieldDataQuality:
+		m.ResetDataQuality()
+		return nil
+	case businessmonthlysnapshot.FieldAPIKeyCount:
+		m.ResetAPIKeyCount()
+		return nil
+	case businessmonthlysnapshot.FieldPrivateSubscriptionCount:
+		m.ResetPrivateSubscriptionCount()
+		return nil
+	case businessmonthlysnapshot.FieldCustomerCount:
+		m.ResetCustomerCount()
+		return nil
+	case businessmonthlysnapshot.FieldExcludedAPIKeyCount:
+		m.ResetExcludedAPIKeyCount()
+		return nil
+	case businessmonthlysnapshot.FieldAnomalyCount:
+		m.ResetAnomalyCount()
+		return nil
+	case businessmonthlysnapshot.FieldAPIKeyRevenueCents:
+		m.ResetAPIKeyRevenueCents()
+		return nil
+	case businessmonthlysnapshot.FieldPrivateSubscriptionRevenueCents:
+		m.ResetPrivateSubscriptionRevenueCents()
+		return nil
+	case businessmonthlysnapshot.FieldTotalRevenueCents:
+		m.ResetTotalRevenueCents()
+		return nil
+	case businessmonthlysnapshot.FieldDirectCostCents:
+		m.ResetDirectCostCents()
+		return nil
+	case businessmonthlysnapshot.FieldOperatingCostCents:
+		m.ResetOperatingCostCents()
+		return nil
+	case businessmonthlysnapshot.FieldGrossProfitCents:
+		m.ResetGrossProfitCents()
+		return nil
+	case businessmonthlysnapshot.FieldNetProfitCents:
+		m.ResetNetProfitCents()
+		return nil
+	case businessmonthlysnapshot.FieldGrossMarginBps:
+		m.ResetGrossMarginBps()
+		return nil
+	case businessmonthlysnapshot.FieldNetMarginBps:
+		m.ResetNetMarginBps()
+		return nil
+	case businessmonthlysnapshot.FieldCostsComplete:
+		m.ResetCostsComplete()
+		return nil
+	case businessmonthlysnapshot.FieldNotes:
+		m.ResetNotes()
+		return nil
+	case businessmonthlysnapshot.FieldClosedAt:
+		m.ResetClosedAt()
+		return nil
+	case businessmonthlysnapshot.FieldClosedBy:
+		m.ResetClosedBy()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessMonthlySnapshot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BusinessMonthlySnapshotMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BusinessMonthlySnapshotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BusinessMonthlySnapshotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BusinessMonthlySnapshotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BusinessMonthlySnapshotMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BusinessMonthlySnapshotMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown BusinessMonthlySnapshot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BusinessMonthlySnapshotMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown BusinessMonthlySnapshot edge %s", name)
+}
+
+// BusinessMonthlySnapshotItemMutation represents an operation that mutates the BusinessMonthlySnapshotItem nodes in the graph.
+type BusinessMonthlySnapshotItemMutation struct {
+	config
+	op                       Op
+	typ                      string
+	id                       *int64
+	created_at               *time.Time
+	updated_at               *time.Time
+	snapshot_id              *int64
+	addsnapshot_id           *int64
+	item_type                *string
+	source_type              *string
+	source_id                *int64
+	addsource_id             *int64
+	name                     *string
+	category                 *string
+	tier                     *string
+	original_amount_minor    *int64
+	addoriginal_amount_minor *int64
+	currency                 *string
+	rate_scaled              *int64
+	addrate_scaled           *int64
+	amount_cny_cents         *int64
+	addamount_cny_cents      *int64
+	expires_on               *time.Time
+	reason                   *string
+	included                 *bool
+	linked_api_key_id        *int64
+	addlinked_api_key_id     *int64
+	group_name               *string
+	user_email               *string
+	clearedFields            map[string]struct{}
+	done                     bool
+	oldValue                 func(context.Context) (*BusinessMonthlySnapshotItem, error)
+	predicates               []predicate.BusinessMonthlySnapshotItem
+}
+
+var _ ent.Mutation = (*BusinessMonthlySnapshotItemMutation)(nil)
+
+// businessmonthlysnapshotitemOption allows management of the mutation configuration using functional options.
+type businessmonthlysnapshotitemOption func(*BusinessMonthlySnapshotItemMutation)
+
+// newBusinessMonthlySnapshotItemMutation creates new mutation for the BusinessMonthlySnapshotItem entity.
+func newBusinessMonthlySnapshotItemMutation(c config, op Op, opts ...businessmonthlysnapshotitemOption) *BusinessMonthlySnapshotItemMutation {
+	m := &BusinessMonthlySnapshotItemMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBusinessMonthlySnapshotItem,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBusinessMonthlySnapshotItemID sets the ID field of the mutation.
+func withBusinessMonthlySnapshotItemID(id int64) businessmonthlysnapshotitemOption {
+	return func(m *BusinessMonthlySnapshotItemMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BusinessMonthlySnapshotItem
+		)
+		m.oldValue = func(ctx context.Context) (*BusinessMonthlySnapshotItem, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BusinessMonthlySnapshotItem.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBusinessMonthlySnapshotItem sets the old BusinessMonthlySnapshotItem of the mutation.
+func withBusinessMonthlySnapshotItem(node *BusinessMonthlySnapshotItem) businessmonthlysnapshotitemOption {
+	return func(m *BusinessMonthlySnapshotItemMutation) {
+		m.oldValue = func(context.Context) (*BusinessMonthlySnapshotItem, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BusinessMonthlySnapshotItemMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BusinessMonthlySnapshotItemMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BusinessMonthlySnapshotItemMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BusinessMonthlySnapshotItem.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetSnapshotID sets the "snapshot_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetSnapshotID(i int64) {
+	m.snapshot_id = &i
+	m.addsnapshot_id = nil
+}
+
+// SnapshotID returns the value of the "snapshot_id" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) SnapshotID() (r int64, exists bool) {
+	v := m.snapshot_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSnapshotID returns the old "snapshot_id" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldSnapshotID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSnapshotID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSnapshotID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSnapshotID: %w", err)
+	}
+	return oldValue.SnapshotID, nil
+}
+
+// AddSnapshotID adds i to the "snapshot_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) AddSnapshotID(i int64) {
+	if m.addsnapshot_id != nil {
+		*m.addsnapshot_id += i
+	} else {
+		m.addsnapshot_id = &i
+	}
+}
+
+// AddedSnapshotID returns the value that was added to the "snapshot_id" field in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AddedSnapshotID() (r int64, exists bool) {
+	v := m.addsnapshot_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSnapshotID resets all changes to the "snapshot_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetSnapshotID() {
+	m.snapshot_id = nil
+	m.addsnapshot_id = nil
+}
+
+// SetItemType sets the "item_type" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetItemType(s string) {
+	m.item_type = &s
+}
+
+// ItemType returns the value of the "item_type" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) ItemType() (r string, exists bool) {
+	v := m.item_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldItemType returns the old "item_type" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldItemType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldItemType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldItemType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldItemType: %w", err)
+	}
+	return oldValue.ItemType, nil
+}
+
+// ResetItemType resets all changes to the "item_type" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetItemType() {
+	m.item_type = nil
+}
+
+// SetSourceType sets the "source_type" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetSourceType(s string) {
+	m.source_type = &s
+}
+
+// SourceType returns the value of the "source_type" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) SourceType() (r string, exists bool) {
+	v := m.source_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceType returns the old "source_type" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldSourceType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceType: %w", err)
+	}
+	return oldValue.SourceType, nil
+}
+
+// ResetSourceType resets all changes to the "source_type" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetSourceType() {
+	m.source_type = nil
+}
+
+// SetSourceID sets the "source_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetSourceID(i int64) {
+	m.source_id = &i
+	m.addsource_id = nil
+}
+
+// SourceID returns the value of the "source_id" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) SourceID() (r int64, exists bool) {
+	v := m.source_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceID returns the old "source_id" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldSourceID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceID: %w", err)
+	}
+	return oldValue.SourceID, nil
+}
+
+// AddSourceID adds i to the "source_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) AddSourceID(i int64) {
+	if m.addsource_id != nil {
+		*m.addsource_id += i
+	} else {
+		m.addsource_id = &i
+	}
+}
+
+// AddedSourceID returns the value that was added to the "source_id" field in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AddedSourceID() (r int64, exists bool) {
+	v := m.addsource_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearSourceID clears the value of the "source_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) ClearSourceID() {
+	m.source_id = nil
+	m.addsource_id = nil
+	m.clearedFields[businessmonthlysnapshotitem.FieldSourceID] = struct{}{}
+}
+
+// SourceIDCleared returns if the "source_id" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) SourceIDCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshotitem.FieldSourceID]
+	return ok
+}
+
+// ResetSourceID resets all changes to the "source_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetSourceID() {
+	m.source_id = nil
+	m.addsource_id = nil
+	delete(m.clearedFields, businessmonthlysnapshotitem.FieldSourceID)
+}
+
+// SetName sets the "name" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetName() {
+	m.name = nil
+}
+
+// SetCategory sets the "category" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetCategory(s string) {
+	m.category = &s
+}
+
+// Category returns the value of the "category" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) Category() (r string, exists bool) {
+	v := m.category
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCategory returns the old "category" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldCategory(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCategory is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCategory requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCategory: %w", err)
+	}
+	return oldValue.Category, nil
+}
+
+// ClearCategory clears the value of the "category" field.
+func (m *BusinessMonthlySnapshotItemMutation) ClearCategory() {
+	m.category = nil
+	m.clearedFields[businessmonthlysnapshotitem.FieldCategory] = struct{}{}
+}
+
+// CategoryCleared returns if the "category" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) CategoryCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshotitem.FieldCategory]
+	return ok
+}
+
+// ResetCategory resets all changes to the "category" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetCategory() {
+	m.category = nil
+	delete(m.clearedFields, businessmonthlysnapshotitem.FieldCategory)
+}
+
+// SetTier sets the "tier" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetTier(s string) {
+	m.tier = &s
+}
+
+// Tier returns the value of the "tier" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) Tier() (r string, exists bool) {
+	v := m.tier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTier returns the old "tier" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldTier(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTier: %w", err)
+	}
+	return oldValue.Tier, nil
+}
+
+// ClearTier clears the value of the "tier" field.
+func (m *BusinessMonthlySnapshotItemMutation) ClearTier() {
+	m.tier = nil
+	m.clearedFields[businessmonthlysnapshotitem.FieldTier] = struct{}{}
+}
+
+// TierCleared returns if the "tier" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) TierCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshotitem.FieldTier]
+	return ok
+}
+
+// ResetTier resets all changes to the "tier" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetTier() {
+	m.tier = nil
+	delete(m.clearedFields, businessmonthlysnapshotitem.FieldTier)
+}
+
+// SetOriginalAmountMinor sets the "original_amount_minor" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetOriginalAmountMinor(i int64) {
+	m.original_amount_minor = &i
+	m.addoriginal_amount_minor = nil
+}
+
+// OriginalAmountMinor returns the value of the "original_amount_minor" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) OriginalAmountMinor() (r int64, exists bool) {
+	v := m.original_amount_minor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOriginalAmountMinor returns the old "original_amount_minor" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldOriginalAmountMinor(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOriginalAmountMinor is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOriginalAmountMinor requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOriginalAmountMinor: %w", err)
+	}
+	return oldValue.OriginalAmountMinor, nil
+}
+
+// AddOriginalAmountMinor adds i to the "original_amount_minor" field.
+func (m *BusinessMonthlySnapshotItemMutation) AddOriginalAmountMinor(i int64) {
+	if m.addoriginal_amount_minor != nil {
+		*m.addoriginal_amount_minor += i
+	} else {
+		m.addoriginal_amount_minor = &i
+	}
+}
+
+// AddedOriginalAmountMinor returns the value that was added to the "original_amount_minor" field in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AddedOriginalAmountMinor() (r int64, exists bool) {
+	v := m.addoriginal_amount_minor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOriginalAmountMinor resets all changes to the "original_amount_minor" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetOriginalAmountMinor() {
+	m.original_amount_minor = nil
+	m.addoriginal_amount_minor = nil
+}
+
+// SetCurrency sets the "currency" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetCurrency(s string) {
+	m.currency = &s
+}
+
+// Currency returns the value of the "currency" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) Currency() (r string, exists bool) {
+	v := m.currency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrency returns the old "currency" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldCurrency(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrency: %w", err)
+	}
+	return oldValue.Currency, nil
+}
+
+// ResetCurrency resets all changes to the "currency" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetCurrency() {
+	m.currency = nil
+}
+
+// SetRateScaled sets the "rate_scaled" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetRateScaled(i int64) {
+	m.rate_scaled = &i
+	m.addrate_scaled = nil
+}
+
+// RateScaled returns the value of the "rate_scaled" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) RateScaled() (r int64, exists bool) {
+	v := m.rate_scaled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRateScaled returns the old "rate_scaled" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldRateScaled(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRateScaled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRateScaled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRateScaled: %w", err)
+	}
+	return oldValue.RateScaled, nil
+}
+
+// AddRateScaled adds i to the "rate_scaled" field.
+func (m *BusinessMonthlySnapshotItemMutation) AddRateScaled(i int64) {
+	if m.addrate_scaled != nil {
+		*m.addrate_scaled += i
+	} else {
+		m.addrate_scaled = &i
+	}
+}
+
+// AddedRateScaled returns the value that was added to the "rate_scaled" field in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AddedRateScaled() (r int64, exists bool) {
+	v := m.addrate_scaled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRateScaled resets all changes to the "rate_scaled" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetRateScaled() {
+	m.rate_scaled = nil
+	m.addrate_scaled = nil
+}
+
+// SetAmountCnyCents sets the "amount_cny_cents" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetAmountCnyCents(i int64) {
+	m.amount_cny_cents = &i
+	m.addamount_cny_cents = nil
+}
+
+// AmountCnyCents returns the value of the "amount_cny_cents" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AmountCnyCents() (r int64, exists bool) {
+	v := m.amount_cny_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAmountCnyCents returns the old "amount_cny_cents" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldAmountCnyCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAmountCnyCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAmountCnyCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAmountCnyCents: %w", err)
+	}
+	return oldValue.AmountCnyCents, nil
+}
+
+// AddAmountCnyCents adds i to the "amount_cny_cents" field.
+func (m *BusinessMonthlySnapshotItemMutation) AddAmountCnyCents(i int64) {
+	if m.addamount_cny_cents != nil {
+		*m.addamount_cny_cents += i
+	} else {
+		m.addamount_cny_cents = &i
+	}
+}
+
+// AddedAmountCnyCents returns the value that was added to the "amount_cny_cents" field in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AddedAmountCnyCents() (r int64, exists bool) {
+	v := m.addamount_cny_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAmountCnyCents resets all changes to the "amount_cny_cents" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetAmountCnyCents() {
+	m.amount_cny_cents = nil
+	m.addamount_cny_cents = nil
+}
+
+// SetExpiresOn sets the "expires_on" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetExpiresOn(t time.Time) {
+	m.expires_on = &t
+}
+
+// ExpiresOn returns the value of the "expires_on" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) ExpiresOn() (r time.Time, exists bool) {
+	v := m.expires_on
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresOn returns the old "expires_on" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldExpiresOn(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresOn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresOn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresOn: %w", err)
+	}
+	return oldValue.ExpiresOn, nil
+}
+
+// ClearExpiresOn clears the value of the "expires_on" field.
+func (m *BusinessMonthlySnapshotItemMutation) ClearExpiresOn() {
+	m.expires_on = nil
+	m.clearedFields[businessmonthlysnapshotitem.FieldExpiresOn] = struct{}{}
+}
+
+// ExpiresOnCleared returns if the "expires_on" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) ExpiresOnCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshotitem.FieldExpiresOn]
+	return ok
+}
+
+// ResetExpiresOn resets all changes to the "expires_on" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetExpiresOn() {
+	m.expires_on = nil
+	delete(m.clearedFields, businessmonthlysnapshotitem.FieldExpiresOn)
+}
+
+// SetReason sets the "reason" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ClearReason clears the value of the "reason" field.
+func (m *BusinessMonthlySnapshotItemMutation) ClearReason() {
+	m.reason = nil
+	m.clearedFields[businessmonthlysnapshotitem.FieldReason] = struct{}{}
+}
+
+// ReasonCleared returns if the "reason" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) ReasonCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshotitem.FieldReason]
+	return ok
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetReason() {
+	m.reason = nil
+	delete(m.clearedFields, businessmonthlysnapshotitem.FieldReason)
+}
+
+// SetIncluded sets the "included" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetIncluded(b bool) {
+	m.included = &b
+}
+
+// Included returns the value of the "included" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) Included() (r bool, exists bool) {
+	v := m.included
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIncluded returns the old "included" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldIncluded(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIncluded is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIncluded requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIncluded: %w", err)
+	}
+	return oldValue.Included, nil
+}
+
+// ResetIncluded resets all changes to the "included" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetIncluded() {
+	m.included = nil
+}
+
+// SetLinkedAPIKeyID sets the "linked_api_key_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetLinkedAPIKeyID(i int64) {
+	m.linked_api_key_id = &i
+	m.addlinked_api_key_id = nil
+}
+
+// LinkedAPIKeyID returns the value of the "linked_api_key_id" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) LinkedAPIKeyID() (r int64, exists bool) {
+	v := m.linked_api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLinkedAPIKeyID returns the old "linked_api_key_id" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldLinkedAPIKeyID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLinkedAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLinkedAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLinkedAPIKeyID: %w", err)
+	}
+	return oldValue.LinkedAPIKeyID, nil
+}
+
+// AddLinkedAPIKeyID adds i to the "linked_api_key_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) AddLinkedAPIKeyID(i int64) {
+	if m.addlinked_api_key_id != nil {
+		*m.addlinked_api_key_id += i
+	} else {
+		m.addlinked_api_key_id = &i
+	}
+}
+
+// AddedLinkedAPIKeyID returns the value that was added to the "linked_api_key_id" field in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AddedLinkedAPIKeyID() (r int64, exists bool) {
+	v := m.addlinked_api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearLinkedAPIKeyID clears the value of the "linked_api_key_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) ClearLinkedAPIKeyID() {
+	m.linked_api_key_id = nil
+	m.addlinked_api_key_id = nil
+	m.clearedFields[businessmonthlysnapshotitem.FieldLinkedAPIKeyID] = struct{}{}
+}
+
+// LinkedAPIKeyIDCleared returns if the "linked_api_key_id" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) LinkedAPIKeyIDCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshotitem.FieldLinkedAPIKeyID]
+	return ok
+}
+
+// ResetLinkedAPIKeyID resets all changes to the "linked_api_key_id" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetLinkedAPIKeyID() {
+	m.linked_api_key_id = nil
+	m.addlinked_api_key_id = nil
+	delete(m.clearedFields, businessmonthlysnapshotitem.FieldLinkedAPIKeyID)
+}
+
+// SetGroupName sets the "group_name" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetGroupName(s string) {
+	m.group_name = &s
+}
+
+// GroupName returns the value of the "group_name" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) GroupName() (r string, exists bool) {
+	v := m.group_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupName returns the old "group_name" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldGroupName(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupName: %w", err)
+	}
+	return oldValue.GroupName, nil
+}
+
+// ClearGroupName clears the value of the "group_name" field.
+func (m *BusinessMonthlySnapshotItemMutation) ClearGroupName() {
+	m.group_name = nil
+	m.clearedFields[businessmonthlysnapshotitem.FieldGroupName] = struct{}{}
+}
+
+// GroupNameCleared returns if the "group_name" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) GroupNameCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshotitem.FieldGroupName]
+	return ok
+}
+
+// ResetGroupName resets all changes to the "group_name" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetGroupName() {
+	m.group_name = nil
+	delete(m.clearedFields, businessmonthlysnapshotitem.FieldGroupName)
+}
+
+// SetUserEmail sets the "user_email" field.
+func (m *BusinessMonthlySnapshotItemMutation) SetUserEmail(s string) {
+	m.user_email = &s
+}
+
+// UserEmail returns the value of the "user_email" field in the mutation.
+func (m *BusinessMonthlySnapshotItemMutation) UserEmail() (r string, exists bool) {
+	v := m.user_email
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserEmail returns the old "user_email" field's value of the BusinessMonthlySnapshotItem entity.
+// If the BusinessMonthlySnapshotItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessMonthlySnapshotItemMutation) OldUserEmail(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserEmail is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserEmail requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserEmail: %w", err)
+	}
+	return oldValue.UserEmail, nil
+}
+
+// ClearUserEmail clears the value of the "user_email" field.
+func (m *BusinessMonthlySnapshotItemMutation) ClearUserEmail() {
+	m.user_email = nil
+	m.clearedFields[businessmonthlysnapshotitem.FieldUserEmail] = struct{}{}
+}
+
+// UserEmailCleared returns if the "user_email" field was cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) UserEmailCleared() bool {
+	_, ok := m.clearedFields[businessmonthlysnapshotitem.FieldUserEmail]
+	return ok
+}
+
+// ResetUserEmail resets all changes to the "user_email" field.
+func (m *BusinessMonthlySnapshotItemMutation) ResetUserEmail() {
+	m.user_email = nil
+	delete(m.clearedFields, businessmonthlysnapshotitem.FieldUserEmail)
+}
+
+// Where appends a list predicates to the BusinessMonthlySnapshotItemMutation builder.
+func (m *BusinessMonthlySnapshotItemMutation) Where(ps ...predicate.BusinessMonthlySnapshotItem) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BusinessMonthlySnapshotItemMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BusinessMonthlySnapshotItemMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BusinessMonthlySnapshotItem, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BusinessMonthlySnapshotItemMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BusinessMonthlySnapshotItemMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BusinessMonthlySnapshotItem).
+func (m *BusinessMonthlySnapshotItemMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BusinessMonthlySnapshotItemMutation) Fields() []string {
+	fields := make([]string, 0, 19)
+	if m.created_at != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldUpdatedAt)
+	}
+	if m.snapshot_id != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldSnapshotID)
+	}
+	if m.item_type != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldItemType)
+	}
+	if m.source_type != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldSourceType)
+	}
+	if m.source_id != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldSourceID)
+	}
+	if m.name != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldName)
+	}
+	if m.category != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldCategory)
+	}
+	if m.tier != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldTier)
+	}
+	if m.original_amount_minor != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldOriginalAmountMinor)
+	}
+	if m.currency != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldCurrency)
+	}
+	if m.rate_scaled != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldRateScaled)
+	}
+	if m.amount_cny_cents != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldAmountCnyCents)
+	}
+	if m.expires_on != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldExpiresOn)
+	}
+	if m.reason != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldReason)
+	}
+	if m.included != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldIncluded)
+	}
+	if m.linked_api_key_id != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldLinkedAPIKeyID)
+	}
+	if m.group_name != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldGroupName)
+	}
+	if m.user_email != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldUserEmail)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BusinessMonthlySnapshotItemMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case businessmonthlysnapshotitem.FieldCreatedAt:
+		return m.CreatedAt()
+	case businessmonthlysnapshotitem.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case businessmonthlysnapshotitem.FieldSnapshotID:
+		return m.SnapshotID()
+	case businessmonthlysnapshotitem.FieldItemType:
+		return m.ItemType()
+	case businessmonthlysnapshotitem.FieldSourceType:
+		return m.SourceType()
+	case businessmonthlysnapshotitem.FieldSourceID:
+		return m.SourceID()
+	case businessmonthlysnapshotitem.FieldName:
+		return m.Name()
+	case businessmonthlysnapshotitem.FieldCategory:
+		return m.Category()
+	case businessmonthlysnapshotitem.FieldTier:
+		return m.Tier()
+	case businessmonthlysnapshotitem.FieldOriginalAmountMinor:
+		return m.OriginalAmountMinor()
+	case businessmonthlysnapshotitem.FieldCurrency:
+		return m.Currency()
+	case businessmonthlysnapshotitem.FieldRateScaled:
+		return m.RateScaled()
+	case businessmonthlysnapshotitem.FieldAmountCnyCents:
+		return m.AmountCnyCents()
+	case businessmonthlysnapshotitem.FieldExpiresOn:
+		return m.ExpiresOn()
+	case businessmonthlysnapshotitem.FieldReason:
+		return m.Reason()
+	case businessmonthlysnapshotitem.FieldIncluded:
+		return m.Included()
+	case businessmonthlysnapshotitem.FieldLinkedAPIKeyID:
+		return m.LinkedAPIKeyID()
+	case businessmonthlysnapshotitem.FieldGroupName:
+		return m.GroupName()
+	case businessmonthlysnapshotitem.FieldUserEmail:
+		return m.UserEmail()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BusinessMonthlySnapshotItemMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case businessmonthlysnapshotitem.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case businessmonthlysnapshotitem.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case businessmonthlysnapshotitem.FieldSnapshotID:
+		return m.OldSnapshotID(ctx)
+	case businessmonthlysnapshotitem.FieldItemType:
+		return m.OldItemType(ctx)
+	case businessmonthlysnapshotitem.FieldSourceType:
+		return m.OldSourceType(ctx)
+	case businessmonthlysnapshotitem.FieldSourceID:
+		return m.OldSourceID(ctx)
+	case businessmonthlysnapshotitem.FieldName:
+		return m.OldName(ctx)
+	case businessmonthlysnapshotitem.FieldCategory:
+		return m.OldCategory(ctx)
+	case businessmonthlysnapshotitem.FieldTier:
+		return m.OldTier(ctx)
+	case businessmonthlysnapshotitem.FieldOriginalAmountMinor:
+		return m.OldOriginalAmountMinor(ctx)
+	case businessmonthlysnapshotitem.FieldCurrency:
+		return m.OldCurrency(ctx)
+	case businessmonthlysnapshotitem.FieldRateScaled:
+		return m.OldRateScaled(ctx)
+	case businessmonthlysnapshotitem.FieldAmountCnyCents:
+		return m.OldAmountCnyCents(ctx)
+	case businessmonthlysnapshotitem.FieldExpiresOn:
+		return m.OldExpiresOn(ctx)
+	case businessmonthlysnapshotitem.FieldReason:
+		return m.OldReason(ctx)
+	case businessmonthlysnapshotitem.FieldIncluded:
+		return m.OldIncluded(ctx)
+	case businessmonthlysnapshotitem.FieldLinkedAPIKeyID:
+		return m.OldLinkedAPIKeyID(ctx)
+	case businessmonthlysnapshotitem.FieldGroupName:
+		return m.OldGroupName(ctx)
+	case businessmonthlysnapshotitem.FieldUserEmail:
+		return m.OldUserEmail(ctx)
+	}
+	return nil, fmt.Errorf("unknown BusinessMonthlySnapshotItem field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessMonthlySnapshotItemMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case businessmonthlysnapshotitem.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldSnapshotID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSnapshotID(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldItemType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetItemType(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldSourceType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceType(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldSourceID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceID(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldCategory:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCategory(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldTier:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTier(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldOriginalAmountMinor:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOriginalAmountMinor(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldCurrency:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrency(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldRateScaled:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRateScaled(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldAmountCnyCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAmountCnyCents(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldExpiresOn:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresOn(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldIncluded:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIncluded(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldLinkedAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLinkedAPIKeyID(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldGroupName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupName(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldUserEmail:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserEmail(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessMonthlySnapshotItem field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AddedFields() []string {
+	var fields []string
+	if m.addsnapshot_id != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldSnapshotID)
+	}
+	if m.addsource_id != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldSourceID)
+	}
+	if m.addoriginal_amount_minor != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldOriginalAmountMinor)
+	}
+	if m.addrate_scaled != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldRateScaled)
+	}
+	if m.addamount_cny_cents != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldAmountCnyCents)
+	}
+	if m.addlinked_api_key_id != nil {
+		fields = append(fields, businessmonthlysnapshotitem.FieldLinkedAPIKeyID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BusinessMonthlySnapshotItemMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case businessmonthlysnapshotitem.FieldSnapshotID:
+		return m.AddedSnapshotID()
+	case businessmonthlysnapshotitem.FieldSourceID:
+		return m.AddedSourceID()
+	case businessmonthlysnapshotitem.FieldOriginalAmountMinor:
+		return m.AddedOriginalAmountMinor()
+	case businessmonthlysnapshotitem.FieldRateScaled:
+		return m.AddedRateScaled()
+	case businessmonthlysnapshotitem.FieldAmountCnyCents:
+		return m.AddedAmountCnyCents()
+	case businessmonthlysnapshotitem.FieldLinkedAPIKeyID:
+		return m.AddedLinkedAPIKeyID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessMonthlySnapshotItemMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case businessmonthlysnapshotitem.FieldSnapshotID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSnapshotID(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldSourceID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSourceID(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldOriginalAmountMinor:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOriginalAmountMinor(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldRateScaled:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRateScaled(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldAmountCnyCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAmountCnyCents(v)
+		return nil
+	case businessmonthlysnapshotitem.FieldLinkedAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLinkedAPIKeyID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessMonthlySnapshotItem numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BusinessMonthlySnapshotItemMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(businessmonthlysnapshotitem.FieldSourceID) {
+		fields = append(fields, businessmonthlysnapshotitem.FieldSourceID)
+	}
+	if m.FieldCleared(businessmonthlysnapshotitem.FieldCategory) {
+		fields = append(fields, businessmonthlysnapshotitem.FieldCategory)
+	}
+	if m.FieldCleared(businessmonthlysnapshotitem.FieldTier) {
+		fields = append(fields, businessmonthlysnapshotitem.FieldTier)
+	}
+	if m.FieldCleared(businessmonthlysnapshotitem.FieldExpiresOn) {
+		fields = append(fields, businessmonthlysnapshotitem.FieldExpiresOn)
+	}
+	if m.FieldCleared(businessmonthlysnapshotitem.FieldReason) {
+		fields = append(fields, businessmonthlysnapshotitem.FieldReason)
+	}
+	if m.FieldCleared(businessmonthlysnapshotitem.FieldLinkedAPIKeyID) {
+		fields = append(fields, businessmonthlysnapshotitem.FieldLinkedAPIKeyID)
+	}
+	if m.FieldCleared(businessmonthlysnapshotitem.FieldGroupName) {
+		fields = append(fields, businessmonthlysnapshotitem.FieldGroupName)
+	}
+	if m.FieldCleared(businessmonthlysnapshotitem.FieldUserEmail) {
+		fields = append(fields, businessmonthlysnapshotitem.FieldUserEmail)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BusinessMonthlySnapshotItemMutation) ClearField(name string) error {
+	switch name {
+	case businessmonthlysnapshotitem.FieldSourceID:
+		m.ClearSourceID()
+		return nil
+	case businessmonthlysnapshotitem.FieldCategory:
+		m.ClearCategory()
+		return nil
+	case businessmonthlysnapshotitem.FieldTier:
+		m.ClearTier()
+		return nil
+	case businessmonthlysnapshotitem.FieldExpiresOn:
+		m.ClearExpiresOn()
+		return nil
+	case businessmonthlysnapshotitem.FieldReason:
+		m.ClearReason()
+		return nil
+	case businessmonthlysnapshotitem.FieldLinkedAPIKeyID:
+		m.ClearLinkedAPIKeyID()
+		return nil
+	case businessmonthlysnapshotitem.FieldGroupName:
+		m.ClearGroupName()
+		return nil
+	case businessmonthlysnapshotitem.FieldUserEmail:
+		m.ClearUserEmail()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessMonthlySnapshotItem nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BusinessMonthlySnapshotItemMutation) ResetField(name string) error {
+	switch name {
+	case businessmonthlysnapshotitem.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case businessmonthlysnapshotitem.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case businessmonthlysnapshotitem.FieldSnapshotID:
+		m.ResetSnapshotID()
+		return nil
+	case businessmonthlysnapshotitem.FieldItemType:
+		m.ResetItemType()
+		return nil
+	case businessmonthlysnapshotitem.FieldSourceType:
+		m.ResetSourceType()
+		return nil
+	case businessmonthlysnapshotitem.FieldSourceID:
+		m.ResetSourceID()
+		return nil
+	case businessmonthlysnapshotitem.FieldName:
+		m.ResetName()
+		return nil
+	case businessmonthlysnapshotitem.FieldCategory:
+		m.ResetCategory()
+		return nil
+	case businessmonthlysnapshotitem.FieldTier:
+		m.ResetTier()
+		return nil
+	case businessmonthlysnapshotitem.FieldOriginalAmountMinor:
+		m.ResetOriginalAmountMinor()
+		return nil
+	case businessmonthlysnapshotitem.FieldCurrency:
+		m.ResetCurrency()
+		return nil
+	case businessmonthlysnapshotitem.FieldRateScaled:
+		m.ResetRateScaled()
+		return nil
+	case businessmonthlysnapshotitem.FieldAmountCnyCents:
+		m.ResetAmountCnyCents()
+		return nil
+	case businessmonthlysnapshotitem.FieldExpiresOn:
+		m.ResetExpiresOn()
+		return nil
+	case businessmonthlysnapshotitem.FieldReason:
+		m.ResetReason()
+		return nil
+	case businessmonthlysnapshotitem.FieldIncluded:
+		m.ResetIncluded()
+		return nil
+	case businessmonthlysnapshotitem.FieldLinkedAPIKeyID:
+		m.ResetLinkedAPIKeyID()
+		return nil
+	case businessmonthlysnapshotitem.FieldGroupName:
+		m.ResetGroupName()
+		return nil
+	case businessmonthlysnapshotitem.FieldUserEmail:
+		m.ResetUserEmail()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessMonthlySnapshotItem field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BusinessMonthlySnapshotItemMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BusinessMonthlySnapshotItemMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown BusinessMonthlySnapshotItem unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BusinessMonthlySnapshotItemMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown BusinessMonthlySnapshotItem edge %s", name)
+}
+
+// BusinessPricingRuleMutation represents an operation that mutates the BusinessPricingRule nodes in the graph.
+type BusinessPricingRuleMutation struct {
+	config
+	op                     Op
+	typ                    string
+	id                     *int64
+	created_at             *time.Time
+	updated_at             *time.Time
+	group_id               *int64
+	addgroup_id            *int64
+	tier                   *string
+	monthly_price_cents    *int64
+	addmonthly_price_cents *int64
+	active                 *bool
+	notes                  *string
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*BusinessPricingRule, error)
+	predicates             []predicate.BusinessPricingRule
+}
+
+var _ ent.Mutation = (*BusinessPricingRuleMutation)(nil)
+
+// businesspricingruleOption allows management of the mutation configuration using functional options.
+type businesspricingruleOption func(*BusinessPricingRuleMutation)
+
+// newBusinessPricingRuleMutation creates new mutation for the BusinessPricingRule entity.
+func newBusinessPricingRuleMutation(c config, op Op, opts ...businesspricingruleOption) *BusinessPricingRuleMutation {
+	m := &BusinessPricingRuleMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBusinessPricingRule,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBusinessPricingRuleID sets the ID field of the mutation.
+func withBusinessPricingRuleID(id int64) businesspricingruleOption {
+	return func(m *BusinessPricingRuleMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BusinessPricingRule
+		)
+		m.oldValue = func(ctx context.Context) (*BusinessPricingRule, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BusinessPricingRule.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBusinessPricingRule sets the old BusinessPricingRule of the mutation.
+func withBusinessPricingRule(node *BusinessPricingRule) businesspricingruleOption {
+	return func(m *BusinessPricingRuleMutation) {
+		m.oldValue = func(context.Context) (*BusinessPricingRule, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BusinessPricingRuleMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BusinessPricingRuleMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BusinessPricingRuleMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BusinessPricingRuleMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BusinessPricingRule.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BusinessPricingRuleMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BusinessPricingRuleMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BusinessPricingRule entity.
+// If the BusinessPricingRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessPricingRuleMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BusinessPricingRuleMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BusinessPricingRuleMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BusinessPricingRuleMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BusinessPricingRule entity.
+// If the BusinessPricingRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessPricingRuleMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BusinessPricingRuleMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *BusinessPricingRuleMutation) SetGroupID(i int64) {
+	m.group_id = &i
+	m.addgroup_id = nil
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *BusinessPricingRuleMutation) GroupID() (r int64, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the BusinessPricingRule entity.
+// If the BusinessPricingRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessPricingRuleMutation) OldGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// AddGroupID adds i to the "group_id" field.
+func (m *BusinessPricingRuleMutation) AddGroupID(i int64) {
+	if m.addgroup_id != nil {
+		*m.addgroup_id += i
+	} else {
+		m.addgroup_id = &i
+	}
+}
+
+// AddedGroupID returns the value that was added to the "group_id" field in this mutation.
+func (m *BusinessPricingRuleMutation) AddedGroupID() (r int64, exists bool) {
+	v := m.addgroup_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *BusinessPricingRuleMutation) ResetGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+}
+
+// SetTier sets the "tier" field.
+func (m *BusinessPricingRuleMutation) SetTier(s string) {
+	m.tier = &s
+}
+
+// Tier returns the value of the "tier" field in the mutation.
+func (m *BusinessPricingRuleMutation) Tier() (r string, exists bool) {
+	v := m.tier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTier returns the old "tier" field's value of the BusinessPricingRule entity.
+// If the BusinessPricingRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessPricingRuleMutation) OldTier(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTier: %w", err)
+	}
+	return oldValue.Tier, nil
+}
+
+// ResetTier resets all changes to the "tier" field.
+func (m *BusinessPricingRuleMutation) ResetTier() {
+	m.tier = nil
+}
+
+// SetMonthlyPriceCents sets the "monthly_price_cents" field.
+func (m *BusinessPricingRuleMutation) SetMonthlyPriceCents(i int64) {
+	m.monthly_price_cents = &i
+	m.addmonthly_price_cents = nil
+}
+
+// MonthlyPriceCents returns the value of the "monthly_price_cents" field in the mutation.
+func (m *BusinessPricingRuleMutation) MonthlyPriceCents() (r int64, exists bool) {
+	v := m.monthly_price_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonthlyPriceCents returns the old "monthly_price_cents" field's value of the BusinessPricingRule entity.
+// If the BusinessPricingRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessPricingRuleMutation) OldMonthlyPriceCents(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthlyPriceCents is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthlyPriceCents requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthlyPriceCents: %w", err)
+	}
+	return oldValue.MonthlyPriceCents, nil
+}
+
+// AddMonthlyPriceCents adds i to the "monthly_price_cents" field.
+func (m *BusinessPricingRuleMutation) AddMonthlyPriceCents(i int64) {
+	if m.addmonthly_price_cents != nil {
+		*m.addmonthly_price_cents += i
+	} else {
+		m.addmonthly_price_cents = &i
+	}
+}
+
+// AddedMonthlyPriceCents returns the value that was added to the "monthly_price_cents" field in this mutation.
+func (m *BusinessPricingRuleMutation) AddedMonthlyPriceCents() (r int64, exists bool) {
+	v := m.addmonthly_price_cents
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMonthlyPriceCents resets all changes to the "monthly_price_cents" field.
+func (m *BusinessPricingRuleMutation) ResetMonthlyPriceCents() {
+	m.monthly_price_cents = nil
+	m.addmonthly_price_cents = nil
+}
+
+// SetActive sets the "active" field.
+func (m *BusinessPricingRuleMutation) SetActive(b bool) {
+	m.active = &b
+}
+
+// Active returns the value of the "active" field in the mutation.
+func (m *BusinessPricingRuleMutation) Active() (r bool, exists bool) {
+	v := m.active
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActive returns the old "active" field's value of the BusinessPricingRule entity.
+// If the BusinessPricingRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessPricingRuleMutation) OldActive(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActive: %w", err)
+	}
+	return oldValue.Active, nil
+}
+
+// ResetActive resets all changes to the "active" field.
+func (m *BusinessPricingRuleMutation) ResetActive() {
+	m.active = nil
+}
+
+// SetNotes sets the "notes" field.
+func (m *BusinessPricingRuleMutation) SetNotes(s string) {
+	m.notes = &s
+}
+
+// Notes returns the value of the "notes" field in the mutation.
+func (m *BusinessPricingRuleMutation) Notes() (r string, exists bool) {
+	v := m.notes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotes returns the old "notes" field's value of the BusinessPricingRule entity.
+// If the BusinessPricingRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BusinessPricingRuleMutation) OldNotes(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotes: %w", err)
+	}
+	return oldValue.Notes, nil
+}
+
+// ClearNotes clears the value of the "notes" field.
+func (m *BusinessPricingRuleMutation) ClearNotes() {
+	m.notes = nil
+	m.clearedFields[businesspricingrule.FieldNotes] = struct{}{}
+}
+
+// NotesCleared returns if the "notes" field was cleared in this mutation.
+func (m *BusinessPricingRuleMutation) NotesCleared() bool {
+	_, ok := m.clearedFields[businesspricingrule.FieldNotes]
+	return ok
+}
+
+// ResetNotes resets all changes to the "notes" field.
+func (m *BusinessPricingRuleMutation) ResetNotes() {
+	m.notes = nil
+	delete(m.clearedFields, businesspricingrule.FieldNotes)
+}
+
+// Where appends a list predicates to the BusinessPricingRuleMutation builder.
+func (m *BusinessPricingRuleMutation) Where(ps ...predicate.BusinessPricingRule) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BusinessPricingRuleMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BusinessPricingRuleMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BusinessPricingRule, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BusinessPricingRuleMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BusinessPricingRuleMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BusinessPricingRule).
+func (m *BusinessPricingRuleMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BusinessPricingRuleMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.created_at != nil {
+		fields = append(fields, businesspricingrule.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, businesspricingrule.FieldUpdatedAt)
+	}
+	if m.group_id != nil {
+		fields = append(fields, businesspricingrule.FieldGroupID)
+	}
+	if m.tier != nil {
+		fields = append(fields, businesspricingrule.FieldTier)
+	}
+	if m.monthly_price_cents != nil {
+		fields = append(fields, businesspricingrule.FieldMonthlyPriceCents)
+	}
+	if m.active != nil {
+		fields = append(fields, businesspricingrule.FieldActive)
+	}
+	if m.notes != nil {
+		fields = append(fields, businesspricingrule.FieldNotes)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BusinessPricingRuleMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case businesspricingrule.FieldCreatedAt:
+		return m.CreatedAt()
+	case businesspricingrule.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case businesspricingrule.FieldGroupID:
+		return m.GroupID()
+	case businesspricingrule.FieldTier:
+		return m.Tier()
+	case businesspricingrule.FieldMonthlyPriceCents:
+		return m.MonthlyPriceCents()
+	case businesspricingrule.FieldActive:
+		return m.Active()
+	case businesspricingrule.FieldNotes:
+		return m.Notes()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BusinessPricingRuleMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case businesspricingrule.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case businesspricingrule.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case businesspricingrule.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case businesspricingrule.FieldTier:
+		return m.OldTier(ctx)
+	case businesspricingrule.FieldMonthlyPriceCents:
+		return m.OldMonthlyPriceCents(ctx)
+	case businesspricingrule.FieldActive:
+		return m.OldActive(ctx)
+	case businesspricingrule.FieldNotes:
+		return m.OldNotes(ctx)
+	}
+	return nil, fmt.Errorf("unknown BusinessPricingRule field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessPricingRuleMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case businesspricingrule.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case businesspricingrule.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case businesspricingrule.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case businesspricingrule.FieldTier:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTier(v)
+		return nil
+	case businesspricingrule.FieldMonthlyPriceCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonthlyPriceCents(v)
+		return nil
+	case businesspricingrule.FieldActive:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActive(v)
+		return nil
+	case businesspricingrule.FieldNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessPricingRule field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BusinessPricingRuleMutation) AddedFields() []string {
+	var fields []string
+	if m.addgroup_id != nil {
+		fields = append(fields, businesspricingrule.FieldGroupID)
+	}
+	if m.addmonthly_price_cents != nil {
+		fields = append(fields, businesspricingrule.FieldMonthlyPriceCents)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BusinessPricingRuleMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case businesspricingrule.FieldGroupID:
+		return m.AddedGroupID()
+	case businesspricingrule.FieldMonthlyPriceCents:
+		return m.AddedMonthlyPriceCents()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BusinessPricingRuleMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case businesspricingrule.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupID(v)
+		return nil
+	case businesspricingrule.FieldMonthlyPriceCents:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMonthlyPriceCents(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessPricingRule numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BusinessPricingRuleMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(businesspricingrule.FieldNotes) {
+		fields = append(fields, businesspricingrule.FieldNotes)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BusinessPricingRuleMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BusinessPricingRuleMutation) ClearField(name string) error {
+	switch name {
+	case businesspricingrule.FieldNotes:
+		m.ClearNotes()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessPricingRule nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BusinessPricingRuleMutation) ResetField(name string) error {
+	switch name {
+	case businesspricingrule.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case businesspricingrule.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case businesspricingrule.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case businesspricingrule.FieldTier:
+		m.ResetTier()
+		return nil
+	case businesspricingrule.FieldMonthlyPriceCents:
+		m.ResetMonthlyPriceCents()
+		return nil
+	case businesspricingrule.FieldActive:
+		m.ResetActive()
+		return nil
+	case businesspricingrule.FieldNotes:
+		m.ResetNotes()
+		return nil
+	}
+	return fmt.Errorf("unknown BusinessPricingRule field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BusinessPricingRuleMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BusinessPricingRuleMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BusinessPricingRuleMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BusinessPricingRuleMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BusinessPricingRuleMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BusinessPricingRuleMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BusinessPricingRuleMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown BusinessPricingRule unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BusinessPricingRuleMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown BusinessPricingRule edge %s", name)
 }
 
 // ChannelMonitorMutation represents an operation that mutates the ChannelMonitor nodes in the graph.

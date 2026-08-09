@@ -83,6 +83,8 @@ func provideCleanup(
 	accountExpiry *service.AccountExpiryService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	privateSubscriptionReminder *service.PrivateSubscriptionReminderService,
+	businessSnapshotScheduler *service.BusinessSnapshotScheduler,
+	businessExchangeRateRefresher *service.BusinessExchangeRateRefresher,
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	pricing *service.PricingService,
@@ -179,6 +181,14 @@ func provideCleanup(
 			}},
 			{"PrivateSubscriptionReminderService", func() error {
 				privateSubscriptionReminder.Stop()
+				return nil
+			}},
+			{"BusinessSnapshotScheduler", func() error {
+				businessSnapshotScheduler.Stop()
+				return nil
+			}},
+			{"BusinessExchangeRateRefresher", func() error {
+				businessExchangeRateRefresher.Stop()
 				return nil
 			}},
 			{"SubscriptionService", func() error {

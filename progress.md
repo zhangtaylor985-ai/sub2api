@@ -880,5 +880,15 @@
 - 生产 PostgreSQL `BEGIN READ ONLY` 中完成名称 ILIKE + Key 等值条件的 PREPARE/EXECUTE/ROLLBACK，未写入数据、未使用真实 Key。
 - `go test ./... -count=1` 全量通过；前端 `npm run lint:check`、`npm run typecheck`、专项 Vitest 与 `npm run build` 全部通过。
 - 本地实现阶段完成，进入 diff 审查、提交、远端同步与 ARM64 embed binary 构建。
+- 提交 `b23ab361b fix(admin): support exact API key usage search` 已推送到 `origin/codex/admin-usage-key-search` 与 `origin/main`。
+- Linux ARM64 embed binary 已构建，SHA256=`950d251604f73795ddecfa8828c743dea18dd5f016d57fa4c99c4f13b9ff2eab`，大小 87,097,506 bytes；远端上传后哈希一致。
+- 首次 canary 从生产 `/tmp` 启动被 noexec 策略拒绝并返回 203/EXEC；trap 已停止 unit，正式服务未受影响。下一次使用 `/opt/sub2api` 唯一候选路径。
+- 第二次 canary 可执行候选 binary，但 transient unit 未获得正式服务的完整配置上下文，进入 setup wizard 后因 8080 已占用退出；未完成 setup、未修改数据库或生产配置，正式服务仍正常。
+- 第三次 canary 显式注入 `DATA_DIR=/opt/sub2api/data` 与 18080 监听后通过：health ok、新 POST 搜索路由未认证返回 401、`NRestarts=0`；随后 unit 停止且 18080 已释放。
+- 正式发布前旧 binary 备份为 `/opt/sub2api/sub2api.bak.20260809T040311Z-before-admin-usage-key-search`，旧 SHA256=`66db536c26bfad1a44d1e37e5136b5cdff7971b2758832504864ce5962042a84`。
+- 候选 binary 已原子替换并重启一次 `sub2api.service`；当前 SHA256=`950d251604f73795ddecfa8828c743dea18dd5f016d57fa4c99c4f13b9ff2eab`，服务 active/running、`NRestarts=0`。
+- 内网与公网 health 均为 ok，公网 POST 搜索路由未认证返回 401，发布后日志无 panic/fatal/OOM/migration failed。
+- Chrome 生产验收确认占位文案已更新为“按名称或 API Key 搜索...”；名称搜索返回候选并可点击应用 `api_key_id` 筛选，验收后已清空临时筛选并保留 `/admin/usage` 页面。
+- 本次未修改数据库、个人 `/usage` 页面或普通用户 usage 权限；完整 Key 精确匹配由 repository 回归、handler 脱敏回归和 POST body 前端回归覆盖。
 
 ---

@@ -518,8 +518,8 @@
 | 1. 生产 UI 与实现只读审计 | complete | 确认现有控件仅名称联想、无搜索按钮且完整 Key 会进入 GET 查询参数 |
 | 2. 安全搜索接口与前端交互 | complete | POST 请求体搜索、完整 Key 精确匹配、沿用候选选择交互 |
 | 3. 本地回归 | complete | handler/Vitest、Go 全量、前端 lint/typecheck/build、PostgreSQL 只读 SQL 验证 |
-| 4. Git 同步与 ARM64 构建 | in_progress | 提交、fetch/rebase、push、embed binary |
-| 5. 生产发布与验收 | pending | binary 备份、systemd 发布、health 与管理员页面验证 |
+| 4. Git 同步与 ARM64 构建 | complete | `b23ab361b`、origin main、ARM64 embed binary |
+| 5. 生产发布与验收 | complete | binary 回滚点、systemd 发布、health、路由和管理员页面验证 |
 
 ## 已确认边界
 
@@ -543,5 +543,7 @@
 | 2026-08-09 | 在 `backend/` 工作目录执行 gofmt 时误带 `backend/` 路径前缀 | 改用相对当前目录的 `internal/...` 路径；失败命令未修改文件 |
 | 2026-08-09 | 在 `frontend/` 工作目录准备依赖链接与执行工具时误带 `frontend/` 路径前缀 | 改用当前目录下的 `node_modules` 与 `.bin`；失败命令未创建链接或运行测试 |
 | 2026-08-09 | PostgreSQL repository integration test 因本机 Docker 不可用而 panic：`rootless Docker not found` | 不重复启动容器；保留单元/编译回归，并在生产 PostgreSQL 只读事务中验证等价查询可解析，不写入或读取原始 Key |
+| 2026-08-09 | 生产 `/tmp` 挂载禁止执行，首次 systemd canary 返回 `203/EXEC Permission denied` | canary 已由 trap 停止；改为将候选 binary 安装到 `/opt/sub2api` 唯一临时路径再启动，不重复从 `/tmp` 执行 |
+| 2026-08-09 | 第二次 transient canary 未继承正式服务的完整启动上下文，进入 setup wizard 并尝试绑定正式 8080 | setup 未写配置且因端口占用立即退出，trap 已停止 unit；先只读核对正式 unit 的非敏感启动上下文，再决定第三种 canary 方式或直接走可立即回滚的原子替换 |
 
 ---

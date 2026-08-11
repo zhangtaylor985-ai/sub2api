@@ -38,6 +38,9 @@
   - `go build ./cmd/sessiond ./cmd/sessionctl ./cmd/server`；
   - `git diff --check`。
 - 本地实现与文档已完成；生产配置仍全部关闭，未连接线上数据库、未配置 Google Drive、未执行任何线上导出或清理，等待用户提供独立 Session 主机/DSN 与 Drive remote 后进入分阶段上线。
+- 按用户提供的 Claude 会话 ID，使用 `sub2api-cc1-tty-blackbox-testing` 流程只读定位本地 JSONL；未执行 resume、未发送请求。脱敏结构统计确认 6 个 Claude Opus 5 响应中 4 个带真实 thinking signature，样本无 redacted block。
+- 对照 Anthropic 官方 thinking 文档确认 signature/data 是加密、不透明、要求原样回传的认证性字段；不在 GPT 投影中生成替代值。
+- 新增 `TestCanonicalizerAnthropicSSEPreservesOpaqueThinkingFieldsUnchanged`，同时覆盖 `signature_delta` 与 `redacted_thinking.data` 的精确透传；定向测试与 `git diff --check` 通过。
 
 ---
 

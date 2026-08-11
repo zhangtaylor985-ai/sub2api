@@ -112,6 +112,67 @@ func TestCanonicalizerAnthropicSSEBuildsDecodedResponse(t *testing.T) {
 	require.False(t, bytesContain(envelope.Original.Response, []byte("data:")))
 }
 
+func TestCanonicalizerAnthropicSSEPreservesOpaqueThinkingFieldsUnchanged(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	response := strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"id":"msg_opaque","type":"message","role":"assistant","model":"claude-opus-5","content":[],"stop_reason":null,"usage":{"input_tokens":4,"output_tokens":0}}}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"redacted_thinking","data":"fixture-encrypted-data-must-remain-unchanged"}}`,
+		``,
+		`event: content_block_stop`,
+		`data: {"type":"content_block_stop","index":0}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":"","signature":""}}`,
+		``,
+		`event: content_block_delta`,
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"summary"}}`,
+		``,
+		`event: content_block_delta`,
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"signature_delta","signature":"fixture-opaque-signature-must-remain-unchanged"}}`,
+		``,
+		`event: content_block_stop`,
+		`data: {"type":"content_block_stop","index":1}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}`,
+		``,
+		`event: content_block_delta`,
+		`data: {"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"done"}}`,
+		``,
+		`event: content_block_stop`,
+		`data: {"type":"content_block_stop","index":2}`,
+		``,
+		`event: message_delta`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":5}}`,
+		``,
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n")
+
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolAnthropicMessages,
+		Endpoint:         "/v1/messages",
+		Scope:            Scope{APIKeyID: 1},
+		GatewayRequestID: "gateway-opaque-thinking",
+		SessionHeader:    "opaque-thinking-session",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody:      []byte(`{"model":"claude-opus-5","max_tokens":100,"stream":true,"messages":[{"role":"user","content":"go"}]}`),
+		ResponseBody:     []byte(response),
+		MaxEventBytes:    1 << 20,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, envelope.Delivery)
+	require.Nil(t, envelope.Rejection)
+	require.Equal(t, "fixture-encrypted-data-must-remain-unchanged", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "data"))
+	require.Equal(t, "fixture-opaque-signature-must-remain-unchanged", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 1, "signature"))
+}
+
 func TestCanonicalizerResponsesProducesAnthropicDelivery(t *testing.T) {
 	canonicalizer := newTestCanonicalizer(t)
 	request := []byte(`{

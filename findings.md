@@ -91,6 +91,14 @@
 - 每日 purge 只删除大体积 `session_records` payload partition；紧凑的全局幂等 key 与 export batch 水位继续保留，防止历史 spool 重放和重复清理，不执行全库 TRUNCATE。
 - 尚未执行真实 Google Drive OAuth/rclone 上传和生产真实客户端黑盒；这是因为用户尚未提供 Drive 对象与独立 Session 主机/数据库，不影响本地实现完成，但上线阶段必须按运行手册分阶段验收。
 
+## 2026-08-11 Claude Opus 5 本地会话结构核对
+
+- 只读检查本机会话 `d0346cfb-45a0-44d4-af46-70fabce700b2`，没有执行 `claude --resume`、没有发送新请求或修改会话。
+- 会话文件共 39 条记录、13 条 assistant 行，按 message id 合并为 6 个 assistant 响应；模型字段均为 `claude-opus-5`。
+- 6 个响应中 4 个包含 `thinking`，全部带非空 signature；signature 长度分别约 1.5 KB、1.5 KB、13.2 KB、23.9 KB，均为不透明 Base64 字符串。该样本没有 `redacted_thinking`。
+- Anthropic 官方文档说明：`signature` 是加密完整 thinking、用于验证 thinking block 是否由 Claude 生成的不透明字段；`redacted_thinking.data` 同样是不透明加密字段，续轮时必须原样回传，修改后会被 API 拒绝。
+- V2 继续采用“真实字段原样透传，GPT 投影不生成认证性字段”的边界；新增 SSE 回归同时验证 `signature_delta` 与 `redacted_thinking.data` 在 capture/delivery 中逐字节不变。
+
 ---
 
 # 私下客户订阅管理与 Telegram 提醒发现记录

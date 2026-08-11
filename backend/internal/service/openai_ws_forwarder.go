@@ -3058,17 +3058,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				imageCount := imageCounter.Count()
 				result := &OpenAIForwardResult{
-					RequestID:       responseID,
-					Usage:           usage,
-					Model:           originalModel,
-					UpstreamModel:   mappedModel,
-					ServiceTier:     extractOpenAIServiceTierFromBody(payload),
-					ReasoningEffort: extractOpenAIReasoningEffortFromBody(payload, originalModel),
-					Stream:          reqStream,
-					OpenAIWSMode:    true,
-					ResponseHeaders: lease.HandshakeHeaders(),
-					Duration:        time.Since(turnStart),
-					FirstTokenMs:    firstTokenMs,
+					RequestID:         responseID,
+					Usage:             usage,
+					Model:             originalModel,
+					UpstreamModel:     mappedModel,
+					ServiceTier:       extractOpenAIServiceTierFromBody(payload),
+					ReasoningEffort:   extractOpenAIReasoningEffortFromBody(payload, originalModel),
+					Stream:            reqStream,
+					OpenAIWSMode:      true,
+					ResponseHeaders:   lease.HandshakeHeaders(),
+					Duration:          time.Since(turnStart),
+					FirstTokenMs:      firstTokenMs,
+					WSTerminalPayload: append([]byte(nil), upstreamMessage...),
 				}
 				if imageCount > 0 {
 					result.ImageCount = imageCount

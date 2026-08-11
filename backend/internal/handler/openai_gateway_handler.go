@@ -1395,10 +1395,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		zap.String("schedule_layer", scheduleDecision.Layer),
 		zap.Int("candidate_count", scheduleDecision.CandidateCount),
 	)
+	wsSessionCapture := newOpenAIWSSessionCapture(c, subject)
+	wsSessionCapture.remember(1, firstMessage)
 
 	hooks := &service.OpenAIWSIngressHooks{
 		InitialRequestModel: reqModel,
 		BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+			wsSessionCapture.remember(turn, payload)
 			if turn == 1 {
 				return nil
 			}
@@ -1451,6 +1454,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		},
 		AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
 			releaseTurnSlots()
+			wsSessionCapture.finish(turn, result, turnErr, reqLog)
 			if turnErr != nil {
 				if result == nil || result.ImageCount <= 0 {
 					return

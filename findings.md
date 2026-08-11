@@ -1,3 +1,98 @@
+# Session Delivery V2 发现记录
+
+## 2026-08-11 需求与交付边界
+
+- 真实推理模型始终是 GPT-5.6；不存在可用的真实 Claude Opus 5。
+- Claude Code 和 Codex 两类客户端的交付文件都必须采用供应商规定的 Anthropic Messages JSON/JSONL 结构，公开模型统一为 `claude-opus-5`。
+- 供应商规范必填顶层字段为 `session_id`、`timestamp`、`request`、`response`；成功请求必须包含完整 decoded `response.response_data`，不能混入 SSE 原文、日志或 HTML。
+- 推荐每个 Session 一个 `.jsonl`，每行一条请求；失败请求常规不进入交付包。
+- `thinking.signature` 只是真实生产情况下的优先目标，不是硬性验收；V2 不构造或伪造签名。
+- Codex 原始入站是 OpenAI Responses 协议，因此外部 Anthropic 文件是网关 canonical delivery projection；内部必须保留来源协议与原始 payload 的审计能力，但不得把内部模型/账号/路由写入交付包。
+
+## 2026-08-11 现状与容量
+
+- 当前生产根盘约 30 GB、可用约 12 GB；当前 Sub2API 主库约 4.6 GB，不能承载会话轨迹。
+- 历史 Session 数据曾达到约 200 GB/两周，折算约 430 GB/月原始数据；独立 Session 主机与独立归档介质是必要条件。
+- 旧 CLIProxy Session V1 有独立 DSN、异步队列、Session alias、Anthropic SSE 聚合和导出脚本等可复用经验。
+- V1 的主要缺陷是只按条数限制且满队列丢弃、无耐久 spool、响应 2 MiB 截断、仅支持 Anthropic SSE、超大未分区 JSONB、依赖批量 TRUNCATE、缺少严格交付校验与归档提交状态机。
+
+## 2026-08-11 现有代码基础
+
+- `internal/pkg/apicompat.ResponsesToAnthropicRequest` 已覆盖基本输入消息、工具、tool_choice、max tokens 和 reasoning effort。
+- `internal/pkg/apicompat.ResponsesToAnthropic` 已覆盖文本、reasoning summary、function_call、web_search、stop reason 和 usage。
+- 针对现有 Responses→Anthropic 转换的定向测试已通过，但它还不是供应商交付实现：需要补齐 instructions、稳定 Anthropic ID、完整流聚合、不支持字段检测、模型强制别名和严格泄漏检查。
+- 当前 worktree 基于 commit `e5f0ae9665b7ccbb48676e0f331888847f9077b3`；原主工作区存在大量未提交业务后台变更，本任务不会触碰。
+
+## 2026-08-11 架构方向
+
+- Sub2API 热路径只负责生成 capture envelope 并写入有界耐久 spool；独立 session worker 负责远端幂等入库。
+- Session 数据库按记录进入隔离库的 UTC 日期分区；查询字段独立列存，原始/交付 payload 使用 zstd 压缩字节保存，避免大 JSONB 索引与 WAL 膨胀。按 ingest day 而非 request day 分区，可让转发积压后的晚到记录进入新批次，不撞已清理历史分区。
+- 每日状态机：冻结水位 → 流式生成 JSONL → 严格验证 → 生成 manifest/checksum → 归档上传 → 目标回读验证 → 提交批次 → 删除已交付分区。
+- Google Drive 适合作为异机归档目标，但不适合作为在线 Session 数据库，也不等同 WORM；V2 通过 rclone backend 做 immutable copy 和全量回读 SHA-256，未配置真实 Drive 时 purge gate 保持关闭。
+
+## 2026-08-11 仓库结构审计（第一轮）
+
+- 后端主程序目前使用标准库 `flag`，没有 Cobra；新增独立命令应沿用标准库 flag，避免额外 CLI 依赖。
+- 仓库已有 `github.com/klauspost/compress/zstd`，可直接复用，不新增压缩依赖。
+- `/v1/messages` 经 `OpenAIGatewayHandler.Messages` 和 `GatewayService.ForwardAsAnthropicWithDisplayModel` 服务 OpenAI/GPT 调度。
+- `/v1/responses` 同时存在 OpenAI 平台 handler 和通用 Gateway handler；必须把 capture 放在共享的协议边界/response writer 层，避免只覆盖单一路由。
+- `GatewayService.ForwardAsResponses` 已实现 Responses→Anthropic→Responses 的实时协议桥，可作为 Codex canonical projection 与流聚合的重点复用点。
+- 数据库 migration 由项目内顺序 SQL 文件管理；Session 数据库是独立 DSN，不能把大 payload 表加入 Sub2API 主 Ent schema。
+- 仓库已有 systemd 模板和独立 daemon 先例 `sub2api-datamanagementd.service`，V2 可采用同样的独立 binary/service 组织方式。
+
+## 2026-08-11 配置与热路径约束
+
+- 主配置使用 Viper `AutomaticEnv` 与点号→下划线映射；Session capture 开关可自然映射为 `SESSION_DELIVERY_*` 环境变量并默认关闭。
+- 服务器允许最大请求体默认 256 MiB、非流式上游响应默认 128 MiB；Session V2 不能再使用固定 2 MiB 截断，应以流式压缩/spool 和可配置硬上限处理。
+- 主程序由 Wire 构建并集中管理服务 cleanup；把完整 Session worker 直接塞入主服务会扩大 wire/生命周期耦合。更稳妥的是核心 capture package 与主服务轻量 publisher，独立 `sessiond`/`sessionctl` 管理数据库、导出与清理。
+- 现有 handler/service 多处直接向 Gin writer 写流；仅依赖 `ForwardResult` 无法还原完整响应。需要 writer tee/协议事件聚合器，且必须在重试/失败最终确定后才提交成功记录。
+
+## 2026-08-11 中间件与协议类型审计
+
+- 全局 `RequestLogger` 已在路由前把稳定 gateway request ID 写入 request context；Session capture 可直接复用，不应另造不可关联的请求 ID。
+- API Key auth 在路由组内写入 `AuthSubject{UserID, APIKeyID, GroupID}`；全局 capture middleware 在 `c.Next()` 返回后仍可读取这些作用域字段，用于 HMAC 隔离 Session 信号，且无需改每个 handler。
+- HTTP 由全局 writer tee 捕获；Codex GET WebSocket 不能套普通 response writer，现已在 WS turn lifecycle 上捕获每个 `response.create` 的 terminal response。
+- `ResponsesRequest` 已包含 `Instructions`、`PromptCacheKey`、`PreviousResponseID`，但现有 converter 未使用 `Instructions`，需要修复为 Anthropic `system`。
+- `ResponsesStreamEvent` 的完成事件包含完整 `response`，正常 Codex SSE 可直接提取 decoded final body；缺失 terminal full response 时必须隔离而不是拼出不完整交付件。
+- 现有依赖已包含 `lib/pq`、zstd 和 UUID，Session V2 数据库/压缩/ID 无需新增库。
+
+## 2026-08-11 核心实现第一批
+
+- 已实现版本化 `Envelope` 与严格受限的 `DeliveryRecord`，内部来源字段和外部交付字段在 Go 类型层隔离。
+- 已实现 HMAC 派生的 `rec_`、`req_`、`msg_`、`session_` ID，以及持久 response_id alias 文件；alias 文件名不包含客户端原值。
+- 已实现 Anthropic SSE 完整聚合，覆盖 text/thinking/signature/tool JSON/citation/usage/stop reason；只有 `message_stop` 后才可交付。
+- 已实现 Responses SSE terminal response 提取；`response.completed/done/incomplete` 必须携带完整 response，缺失时隔离。
+- 已实现 Codex canonical request/response 转换和模型别名；Responses `instructions` 与 developer/system 内容现会合并进 Anthropic `system`。
+- 已实现按字节限额、zstd、0600 权限、fsync、原子 rename 和幂等文件名的本地 spool；不再采用易丢的内存队列。
+- 新包与原 apicompat 定向测试通过编译；下一步需要新增 V2 自身的 golden/故障测试后再接网关。
+
+## 2026-08-11 数据面与网关接入
+
+- Session PostgreSQL schema 使用独立 migration 集：按 ingest UTC 日 RANGE 分区的 records、全局幂等 key 表、export batch 状态表，不接入主 Ent schema。
+- 插入和日期冻结/purge 共用 day advisory transaction lock；先检查全局幂等键，再检查日期状态，避免导出冻结与迟到重试竞态。
+- 已实现每 Session 一个 JSONL 的 tar.zst 导出器、逐文件 checksum manifest、归档 read-back 校验与本地 non-durable backend；rejected 原文不会进入外部归档，避免泄露内部协议/模型，只在隔离库与批次计数保留。
+- 本地 archive backend 即使校验通过也只把批次标为 `archived`，不会成为 `verified`；数据库 purge 要求 durable `verified` + 显式 allow + checksum 三重匹配。
+- 已实现 HMAC + timestamp + compressed-body SHA 的 ingest transport；非 loopback 明文 HTTP 被拒绝，远端必须 HTTPS。
+- 主服务 capture 通过全局 Gin middleware 覆盖四个 HTTP Responses alias 和 `/v1/messages`；API auth 完成后读取作用域，临时捕获错误不反向破坏客户端请求。
+- 主服务配置默认完全关闭；显式启用时 HMAC secret、固定 public model、spool/capture 限额均严格校验。
+- Codex HTTP/SSE/WS 与 Claude HTTP/SSE 都已覆盖；WS passthrough/ctx-pool 的 terminal event 会保留到 `OpenAIForwardResult`，由 handler 生成 Session record，不改变客户端帧。
+- Google Drive 归档使用现有成熟 rclone：固定日期对象、`--immutable`、上传后 `rclone cat` 流式回读 SHA-256；rclone 凭据不进入 Sub2API 配置对象或 Session payload。
+- 外部 archive 不包含 `source_counts`、`Original`、`openai_responses` 或 rejected audit；集成测试会解包扫描，防止 GPT/Codex 内部字段越过交付边界。
+
+## 2026-08-11 最终耐久性与验收结论
+
+- export batch 使用唯一 `attempt_id` 与定时 heartbeat；同一 ingest day 同时只能有一个有效导出者，失联超过 30 分钟才允许接管，旧进程无法提交或覆盖新批次结果。
+- archive object 使用“日期 + 内容 SHA-256 前缀”命名；上传成功但批次提交失败时，重跑不会覆盖旧对象，含晚到记录的新内容也不会撞 immutable 文件名。
+- response alias 使用已 fsync 的同目录临时文件与原子 hard-link 提交；跨网关进程并发绑定不会覆盖既有 Session，重复同值绑定保持幂等。
+- ingest 默认同时解压上限收紧为 2，单文件传输超时为 20 分钟，daily oneshot 最长运行 24 小时，避免大 envelope 的并发内存峰值和大归档被默认 systemd 超时中断。
+- `sessionctl spool-status` 可只读输出 pending/quarantine 数量和字节水位；运行手册已给出分阶段启用、Drive 恢复演练与自动 purge 门禁。
+- 全仓 `go test ./...`、新增包竞态测试、全仓 `go vet ./...` 和三个生产二进制 build 均通过。
+- PostgreSQL 18 集成验收覆盖 HMAC ingest、重复投递、无效 envelope 隔离、导出所有权、local backend purge 拒绝、durable read-back、checksum/allow 双门禁、单日 partition drop 与晚到记录滚入次日。
+- 每日 purge 只删除大体积 `session_records` payload partition；紧凑的全局幂等 key 与 export batch 水位继续保留，防止历史 spool 重放和重复清理，不执行全库 TRUNCATE。
+- 尚未执行真实 Google Drive OAuth/rclone 上传和生产真实客户端黑盒；这是因为用户尚未提供 Drive 对象与独立 Session 主机/数据库，不影响本地实现完成，但上线阶段必须按运行手册分阶段验收。
+
+---
+
 # 私下客户订阅管理与 Telegram 提醒发现记录
 
 ## 2026-07-26 已确认需求

@@ -339,6 +339,7 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 		eventType:  "response.completed",
 		responseID: "resp_emit",
 		usage:      Usage{InputTokens: 2, OutputTokens: 3},
+		payload:    []byte(`{"type":"response.completed"}`),
 	})
 	require.Equal(t, 1, called)
 	require.Equal(t, "resp_emit", got.RequestID)
@@ -346,6 +347,7 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 	require.Equal(t, 2, got.Usage.InputTokens)
 	require.Equal(t, 3, got.Usage.OutputTokens)
 	require.Equal(t, "", got.RequestModel)
+	require.JSONEq(t, `{"type":"response.completed"}`, string(got.TerminalPayload))
 }
 
 func TestIsDisconnectErrorCoverage_CloseStatusesAndMessageBranches(t *testing.T) {

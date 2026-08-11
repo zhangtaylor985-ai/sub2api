@@ -1,0 +1,16 @@
+# Session Delivery V2 ingest edge example.
+# Replace both placeholders before use. Keep sessiond bound to loopback and
+# expose only this TLS endpoint from the isolated Session host.
+
+session-ingest.example.com {
+	@sub2api_source remote_ip 192.0.2.10
+
+	handle @sub2api_source {
+		request_body {
+			max_size 256MB
+		}
+		reverse_proxy 127.0.0.1:8091
+	}
+
+	respond 403
+}

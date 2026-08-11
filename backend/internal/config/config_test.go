@@ -213,6 +213,38 @@ func TestLoadOpenAIWSStickyTTLCompatibility(t *testing.T) {
 	}
 }
 
+func TestLoadSessionDeliveryDefaultsDisabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.SessionDelivery.Enabled)
+	require.Equal(t, "claude-opus-5", cfg.SessionDelivery.PublicModel)
+	require.Equal(t, int64(4<<30), cfg.SessionDelivery.SpoolMaxBytes)
+	require.Equal(t, int64(256<<20), cfg.SessionDelivery.CaptureMaxBytes)
+}
+
+func TestLoadSessionDeliveryEnabledRequiresExactPublicModelAndSecret(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SESSION_DELIVERY_ENABLED", "true")
+	t.Setenv("SESSION_DELIVERY_PUBLIC_MODEL", "claude-opus-5")
+	t.Setenv("SESSION_DELIVERY_HMAC_SECRET", strings.Repeat("s", 32))
+	t.Setenv("SESSION_DELIVERY_SPOOL_DIR", filepath.Join(t.TempDir(), "spool"))
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.SessionDelivery.Enabled)
+	require.Equal(t, "claude-opus-5", cfg.SessionDelivery.PublicModel)
+
+	resetViperWithJWTSecret(t)
+	t.Setenv("SESSION_DELIVERY_ENABLED", "true")
+	t.Setenv("SESSION_DELIVERY_PUBLIC_MODEL", "gpt-5.6-sol")
+	t.Setenv("SESSION_DELIVERY_HMAC_SECRET", strings.Repeat("s", 32))
+	t.Setenv("SESSION_DELIVERY_SPOOL_DIR", filepath.Join(t.TempDir(), "invalid-spool"))
+	_, err = Load()
+	require.ErrorContains(t, err, "session_delivery.public_model must be claude-opus-5")
+}
+
 func TestLoadDefaultIdempotencyConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

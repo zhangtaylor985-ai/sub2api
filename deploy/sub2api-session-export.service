@@ -1,0 +1,25 @@
+[Unit]
+Description=Sub2API Session Delivery V2 Daily Export
+After=network-online.target sub2api-sessiond.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sub2api
+Group=sub2api
+UMask=0077
+WorkingDirectory=/opt/sub2api
+EnvironmentFile=/etc/sub2api/session-delivery.env
+TimeoutStartSec=24h
+ExecStart=/opt/sub2api/sessionctl export \
+  -archive-dir /var/lib/sub2api/session-delivery/archive \
+  -temp-dir /var/lib/sub2api/session-delivery/export-tmp
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/sub2api/session-delivery

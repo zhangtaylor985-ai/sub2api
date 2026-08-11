@@ -1,0 +1,30 @@
+[Unit]
+Description=Sub2API Session Delivery V2 Ingest Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sub2api
+Group=sub2api
+UMask=0077
+WorkingDirectory=/opt/sub2api
+EnvironmentFile=/etc/sub2api/session-delivery.env
+ExecStart=/opt/sub2api/sessiond \
+  -listen 127.0.0.1:8091 \
+  -temp-dir /var/lib/sub2api/session-delivery/ingest-tmp
+Restart=always
+RestartSec=5s
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/sub2api/session-delivery
+
+[Install]
+WantedBy=multi-user.target

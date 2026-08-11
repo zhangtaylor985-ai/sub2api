@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Sub2API Session Delivery V2 export each morning
+
+[Timer]
+OnCalendar=*-*-* 09:30:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=5m
+Unit=sub2api-session-export.service
+
+[Install]
+WantedBy=timers.target

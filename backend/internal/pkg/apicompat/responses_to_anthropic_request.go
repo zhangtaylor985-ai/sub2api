@@ -15,6 +15,9 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	if err != nil {
 		return nil, err
 	}
+	if instructions := strings.TrimSpace(req.Instructions); instructions != "" {
+		system = prependAnthropicSystemText(system, instructions)
+	}
 
 	out := &AnthropicRequest{
 		Model:       req.Model,
@@ -67,6 +70,20 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	return out, nil
 }
 
+func prependAnthropicSystemText(existing json.RawMessage, text string) json.RawMessage {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return existing
+	}
+	var existingText string
+	if len(existing) > 0 && json.Unmarshal(existing, &existingText) == nil && strings.TrimSpace(existingText) != "" {
+		combined, _ := json.Marshal(text + "\n\n" + existingText)
+		return combined
+	}
+	encoded, _ := json.Marshal(text)
+	return encoded
+}
+
 // defaultThinkingBudget returns a sensible thinking budget based on effort level.
 func defaultThinkingBudget(effort string) int {
 	switch effort {
@@ -113,16 +130,16 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 		return nil, nil, fmt.Errorf("parse responses input: %w", err)
 	}
 
-	var system json.RawMessage
+	var systemTexts []string
 	var messages []AnthropicMessage
 
 	for _, item := range items {
 		switch {
-		case item.Role == "system":
+		case item.Role == "system" || item.Role == "developer":
 			// System prompt → Anthropic system field
 			text := extractTextFromContent(item.Content)
 			if text != "" {
-				system, _ = json.Marshal(text)
+				systemTexts = append(systemTexts, text)
 			}
 
 		case item.Type == "function_call":
@@ -195,6 +212,10 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 	// Merge consecutive same-role messages (Anthropic requires alternating roles)
 	messages = mergeConsecutiveMessages(messages)
 
+	var system json.RawMessage
+	if len(systemTexts) > 0 {
+		system, _ = json.Marshal(strings.Join(systemTexts, "\n\n"))
+	}
 	return system, messages, nil
 }
 

@@ -93,6 +93,7 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	SessionDelivery         SessionDeliveryConfig         `mapstructure:"session_delivery"`
 }
 
 type LogConfig struct {
@@ -173,6 +174,15 @@ type IdempotencyConfig struct {
 	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
 	// CleanupBatchSize 每次清理的最大记录数。
 	CleanupBatchSize int `mapstructure:"cleanup_batch_size"`
+}
+
+type SessionDeliveryConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	PublicModel     string `mapstructure:"public_model"`
+	HMACSecret      string `mapstructure:"hmac_secret"`
+	SpoolDir        string `mapstructure:"spool_dir"`
+	SpoolMaxBytes   int64  `mapstructure:"spool_max_bytes"`
+	CaptureMaxBytes int64  `mapstructure:"capture_max_bytes"`
 }
 
 type LinuxDoConnectConfig struct {
@@ -1423,6 +1433,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
+	cfg.SessionDelivery.PublicModel = strings.TrimSpace(cfg.SessionDelivery.PublicModel)
+	cfg.SessionDelivery.HMACSecret = strings.TrimSpace(cfg.SessionDelivery.HMACSecret)
+	cfg.SessionDelivery.SpoolDir = strings.TrimSpace(cfg.SessionDelivery.SpoolDir)
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 		if err != nil {
@@ -1767,6 +1780,14 @@ func setDefaults() {
 	viper.SetDefault("idempotency.max_stored_response_len", 64*1024)
 	viper.SetDefault("idempotency.cleanup_interval_seconds", 60)
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
+
+	// Session Delivery V2 (disabled until an isolated data plane is configured)
+	viper.SetDefault("session_delivery.enabled", false)
+	viper.SetDefault("session_delivery.public_model", "claude-opus-5")
+	viper.SetDefault("session_delivery.hmac_secret", "")
+	viper.SetDefault("session_delivery.spool_dir", "./data/session-delivery/spool")
+	viper.SetDefault("session_delivery.spool_max_bytes", int64(4*1024*1024*1024))
+	viper.SetDefault("session_delivery.capture_max_bytes", int64(256*1024*1024))
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
@@ -2389,6 +2410,23 @@ func (c *Config) Validate() error {
 	}
 	if c.Idempotency.CleanupBatchSize <= 0 {
 		return fmt.Errorf("idempotency.cleanup_batch_size must be positive")
+	}
+	if c.SessionDelivery.Enabled {
+		if c.SessionDelivery.PublicModel != "claude-opus-5" {
+			return fmt.Errorf("session_delivery.public_model must be claude-opus-5")
+		}
+		if len([]byte(c.SessionDelivery.HMACSecret)) < 32 {
+			return fmt.Errorf("session_delivery.hmac_secret must be at least 32 bytes when enabled")
+		}
+		if c.SessionDelivery.SpoolDir == "" {
+			return fmt.Errorf("session_delivery.spool_dir is required when enabled")
+		}
+		if c.SessionDelivery.SpoolMaxBytes <= 0 {
+			return fmt.Errorf("session_delivery.spool_max_bytes must be positive when enabled")
+		}
+		if c.SessionDelivery.CaptureMaxBytes <= 0 {
+			return fmt.Errorf("session_delivery.capture_max_bytes must be positive when enabled")
+		}
 	}
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")

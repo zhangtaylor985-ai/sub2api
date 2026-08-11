@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/sessiondelivery"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
@@ -23,8 +24,20 @@ import (
 // ProviderSet 提供服务器层的依赖
 var ProviderSet = wire.NewSet(
 	ProvideRouter,
+	ProvideSessionDeliveryRecorder,
 	ProvideHTTPServer,
 )
+
+func ProvideSessionDeliveryRecorder(cfg *config.Config) (*sessiondelivery.Recorder, error) {
+	return sessiondelivery.NewRecorder(sessiondelivery.RecorderConfig{
+		Enabled:         cfg.SessionDelivery.Enabled,
+		PublicModel:     cfg.SessionDelivery.PublicModel,
+		HMACSecret:      cfg.SessionDelivery.HMACSecret,
+		SpoolDir:        cfg.SessionDelivery.SpoolDir,
+		SpoolMaxBytes:   cfg.SessionDelivery.SpoolMaxBytes,
+		CaptureMaxBytes: cfg.SessionDelivery.CaptureMaxBytes,
+	})
+}
 
 // ProvideRouter 提供路由器
 func ProvideRouter(
@@ -38,6 +51,7 @@ func ProvideRouter(
 	opsService *service.OpsService,
 	settingService *service.SettingService,
 	redisClient *redis.Client,
+	sessionRecorder *sessiondelivery.Recorder,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -94,7 +108,7 @@ func ProvideRouter(
 		service.SetWebSearchManager(websearch.NewManager(configs, redisClient))
 	})
 
-	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
+	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient, sessionRecorder)
 }
 
 // ProvideHTTPServer 提供 HTTP 服务器

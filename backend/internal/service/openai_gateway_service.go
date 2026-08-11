@@ -246,6 +246,10 @@ type OpenAIForwardResult struct {
 	ImageOutputSizes   []string
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
+	// WSTerminalPayload is the complete terminal Responses WebSocket event
+	// observed for this turn. It is kept in-memory only so the gateway capture
+	// boundary can build a decoded Session delivery record.
+	WSTerminalPayload []byte
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {

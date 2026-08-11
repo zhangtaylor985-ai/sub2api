@@ -37,6 +37,7 @@ type RelayResult struct {
 	ClientToUpstreamFrames  int64
 	UpstreamToClientFrames  int64
 	DroppedDownstreamFrames int64
+	TerminalPayload         []byte
 }
 
 type RelayTurnResult struct {
@@ -46,6 +47,7 @@ type RelayTurnResult struct {
 	TerminalEventType string
 	Duration          time.Duration
 	FirstTokenMs      *int
+	TerminalPayload   []byte
 }
 
 type RelayExit struct {
@@ -83,6 +85,7 @@ type relayState struct {
 	firstTokenMs      *int
 	turnTimingByID    map[string]*relayTurnTiming
 	activeTurn        *relayTurnTiming
+	terminalPayload   []byte
 }
 
 type relayExitSignal struct {
@@ -99,6 +102,7 @@ type observedUpstreamEvent struct {
 	usage      Usage
 	duration   time.Duration
 	firstToken *int
+	payload    []byte
 }
 
 type relayTurnTiming struct {
@@ -577,6 +581,8 @@ func observeUpstreamMessage(
 		return observed
 	}
 	observed.terminal = true
+	observed.payload = append([]byte(nil), message...)
+	state.terminalPayload = append(state.terminalPayload[:0], message...)
 	state.terminalEventType = eventType
 	if responseID != "" {
 		state.lastResponseID = responseID
@@ -615,6 +621,7 @@ func emitTurnComplete(
 		TerminalEventType: observed.eventType,
 		Duration:          observed.duration,
 		FirstTokenMs:      openAIWSRelayCloneIntPtr(observed.firstToken),
+		TerminalPayload:   append([]byte(nil), observed.payload...),
 	})
 }
 
@@ -730,6 +737,7 @@ func enrichResult(result *RelayResult, state *relayState, duration time.Duration
 	result.RequestID = state.lastResponseID
 	result.TerminalEventType = state.terminalEventType
 	result.FirstTokenMs = state.firstTokenMs
+	result.TerminalPayload = append([]byte(nil), state.terminalPayload...)
 }
 
 func isDisconnectError(err error) bool {

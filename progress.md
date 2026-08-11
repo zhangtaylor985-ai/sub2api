@@ -1,3 +1,46 @@
+# Session Delivery V2 进度记录
+
+## 2026-08-11
+
+- 用户确认按 V2 方案开始实现；Google Drive 凭据与独立线上数据库/主机将在本地实现完成后提供。
+- 明确说明本阶段只修改本地代码，不连接生产、不创建线上库、不启用删除。
+- 从 `e5f0ae9665b7ccbb48676e0f331888847f9077b3` 创建独立 worktree `/Users/taylor/sdk/sub2api-session-delivery-v2` 和分支 `codex/session-delivery-v2`。
+- 原工作区的未提交业务后台改动保持不变。
+- 完整读取 `planning-with-files` Skill；session catchup 因不支持 Codex 原生 session 而跳过，已记录到计划错误表。
+- 下一步：固化供应商规范快照，审计网关请求/响应链、配置体系、migration 与 CLI 组织方式，完成 V2 数据模型设计。
+- 完成第一轮仓库搜索：确认标准库 CLI 风格、可复用 zstd、两类 gateway 路由及独立 daemon/systemd 先例。
+- 审计配置与热路径：确认 Viper env 映射、256 MiB 请求上限、128 MiB 非流式响应上限和 Wire 生命周期；确定采用轻量 publisher + 独立 worker/CLI。
+- 审计 Gin 中间件与协议类型：决定用全局 POST capture middleware 覆盖 HTTP 路径，在 handler 完成后读取 AuthSubject；WebSocket 单列后续接入。确认 Responses 完成事件可提供完整 decoded response。
+- 完成 `docs/session_delivery_v2_design_CN.md`：固化三层架构、内部/外部数据边界、HMAC ID、分区库、导出状态机、purge 门禁和分阶段上线顺序。
+- 新增 `internal/sessiondelivery` 第一批核心代码：types、HMAC IDs/aliases、Anthropic/Responses SSE 解码、canonicalizer、validator、zstd durable spool、recorder。
+- 修复 Responses→Anthropic request 对 `instructions` 和 developer/system 多段内容的保留。
+- 执行 gofmt，并通过 `go test ./internal/sessiondelivery ./internal/pkg/apicompat`（V2 当前尚未添加自身测试）。
+- 新增 V2 golden/故障测试，覆盖 Claude 非流/流式签名保留、Codex 非流/流式转换、terminal 缺失隔离、previous_response_id alias、内部字段拒绝、spool 幂等/权限/满载；两个包全量测试通过。
+- 新增独立 Session migration/store、日期锁与幂等写入、导出批次状态、tar.zst/manifest/validator、本地 archive backend、HMAC ingest/forwarder。
+- 新增默认关闭的 `session_delivery` 配置与 Gin capture middleware，接入 server provider；配置、server、middleware、apicompat、sessiondelivery 定向测试全部通过。
+- 新增 `sessiond`、`sessionctl` 六个子命令及三套 systemd service/timer 模板。首次 gofmt/Wire 组合命令因工作目录相对路径错误在执行前终止，已记录并改用分步命令。
+- 从 `backend/` 正确执行 gofmt，并使用 `go run -mod=mod github.com/google/wire/cmd/wire` 重新生成 `cmd/server/wire_gen.go`；新增命令、server、config、middleware 与核心包编译/定向测试通过。
+- 完成 Google Drive rclone archive backend：immutable 上传、全量回读 SHA-256/size、远端路径约束和错误输出限长；未配置凭据时仍默认 local non-durable。
+- 安全审计发现 rejected audit 与 `source_counts` 会暴露内部协议/原始 GPT payload，已从外部 tar.zst 完全移除；manifest 仅保留交付数量和 excluded 计数。
+- 数据分区从请求发生日调整为隔离库 ingest day，解决长时间 spool 积压恢复后写入已冻结/已 purge 历史日期的问题；交付 `timestamp` 保持原始时间。
+- 增加 Codex Responses WebSocket 多轮采集：ctx-pool 与 passthrough 均携带完整 terminal payload，每个 turn 独立 canonicalize/spool；相关 service/handler 测试通过。
+- 使用临时 PostgreSQL 18 testcontainer 完成全生命周期集成测试：spool、HMAC ingest、重复投递、Claude/Codex 入库、local archive 不可 purge、durable read-back、错误 checksum/无 allow 拒绝、正确分区 drop、晚到记录进入次日；测试通过且 PostgreSQL 容器已回收。
+- 补强导出并发状态机：每次导出使用 UUID `attempt_id`、一分钟 heartbeat 和 30 分钟失联接管；旧导出者不能提交新批次，集成测试覆盖并发拒绝与失败恢复。
+- 归档文件改为内容寻址名称 `session-delivery-YYYYMMDD-<sha256前16位>.tar.zst`，解决 Drive 上传成功、数据库批次提交前退出后的 immutable 重试冲突；集成测试断言文件名与完整归档 SHA 一致。
+- 补强跨进程 response alias：使用原子不可覆盖 hard-link 提交并 fsync 目录；32 组跨 store 冲突绑定测试确认只允许一个 Session 获胜，同值重放幂等。
+- 增加 `sessionctl spool-status`，并在运行手册补充本机 spool 水位检查命令。
+- 收紧大文件运行边界：ingest 默认并发从 8 降为 2，单 envelope 上传超时改为 20 分钟，daily export systemd oneshot 设置 24 小时上限。
+- 最终本地门禁通过：
+  - `go test -race ./internal/sessiondelivery ./internal/server/middleware -count=1`；
+  - `DOCKER_HOST=unix:///Users/taylor/.orbstack/run/docker.sock go test -tags=integration ./internal/sessiondelivery -run TestStoreExportVerifyAndPurgeLifecycle -count=1 -v`；
+  - `go test ./... -count=1`；
+  - `go vet ./...`；
+  - `go build ./cmd/sessiond ./cmd/sessionctl ./cmd/server`；
+  - `git diff --check`。
+- 本地实现与文档已完成；生产配置仍全部关闭，未连接线上数据库、未配置 Google Drive、未执行任何线上导出或清理，等待用户提供独立 Session 主机/DSN 与 Drive remote 后进入分阶段上线。
+
+---
+
 # 私下客户订阅管理与 Telegram 提醒进度
 
 ## 2026-07-26

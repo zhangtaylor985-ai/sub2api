@@ -1,0 +1,333 @@
+package sessiondelivery
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+
+	"github.com/klauspost/compress/zstd"
+)
+
+var ErrSpoolFull = errors.New("session delivery spool is full")
+
+const defaultDecodedEnvelopeMaxBytes int64 = 544 << 20
+
+type Spool struct {
+	dir           string
+	pendingDir    string
+	quarantineDir string
+	tmpDir        string
+	maxBytes      int64
+
+	mu        sync.Mutex
+	usedBytes int64
+}
+
+type SpoolStats struct {
+	UsedBytes          int64 `json:"used_bytes"`
+	MaxBytes           int64 `json:"max_bytes"`
+	PendingRecords     int   `json:"pending_records"`
+	QuarantinedRecords int   `json:"quarantined_records"`
+}
+
+func NewSpool(dir string, maxBytes int64) (*Spool, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return nil, errors.New("session delivery spool directory is required")
+	}
+	if maxBytes <= 0 {
+		return nil, errors.New("session delivery spool max bytes must be positive")
+	}
+	pendingDir := filepath.Join(dir, "pending")
+	quarantineDir := filepath.Join(dir, "quarantine")
+	tmpDir := filepath.Join(dir, "tmp")
+	for _, path := range []string{dir, pendingDir, quarantineDir, tmpDir} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			return nil, fmt.Errorf("create spool directory %s: %w", path, err)
+		}
+	}
+
+	spool := &Spool{dir: dir, pendingDir: pendingDir, quarantineDir: quarantineDir, tmpDir: tmpDir, maxBytes: maxBytes}
+	if err := spool.recount(); err != nil {
+		return nil, err
+	}
+	return spool, nil
+}
+
+func (s *Spool) Dir() string {
+	return s.dir
+}
+
+func (s *Spool) TempDir() string {
+	return s.tmpDir
+}
+
+func (s *Spool) Usage() (used, max int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.usedBytes, s.maxBytes
+}
+
+func (s *Spool) Stats() (SpoolStats, error) {
+	pending, err := countSpoolRecords(s.pendingDir)
+	if err != nil {
+		return SpoolStats{}, err
+	}
+	quarantined, err := countSpoolRecords(s.quarantineDir)
+	if err != nil {
+		return SpoolStats{}, err
+	}
+	used, max := s.Usage()
+	return SpoolStats{
+		UsedBytes:          used,
+		MaxBytes:           max,
+		PendingRecords:     pending,
+		QuarantinedRecords: quarantined,
+	}, nil
+}
+
+func (s *Spool) Write(envelope *Envelope) (string, error) {
+	if envelope == nil {
+		return "", errors.New("cannot spool a nil envelope")
+	}
+	if envelope.RecordID == "" {
+		return "", errors.New("cannot spool envelope without record_id")
+	}
+
+	tmp, err := os.CreateTemp(s.tmpDir, ".record-*.json.zst")
+	if err != nil {
+		return "", fmt.Errorf("create spool temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return "", fmt.Errorf("secure spool temp file: %w", err)
+	}
+
+	encoder, err := zstd.NewWriter(tmp, zstd.WithEncoderLevel(zstd.SpeedDefault))
+	if err != nil {
+		_ = tmp.Close()
+		return "", fmt.Errorf("create spool zstd writer: %w", err)
+	}
+	encodeErr := json.NewEncoder(encoder).Encode(envelope)
+	closeEncoderErr := encoder.Close()
+	if encodeErr != nil {
+		_ = tmp.Close()
+		return "", fmt.Errorf("encode spool envelope: %w", encodeErr)
+	}
+	if closeEncoderErr != nil {
+		_ = tmp.Close()
+		return "", fmt.Errorf("close spool zstd writer: %w", closeEncoderErr)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return "", fmt.Errorf("sync spool temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", fmt.Errorf("close spool temp file: %w", err)
+	}
+	stat, err := os.Stat(tmpName)
+	if err != nil {
+		return "", fmt.Errorf("stat spool temp file: %w", err)
+	}
+
+	filename := fmt.Sprintf("%020d-%s.json.zst", envelope.CapturedAt.UnixNano(), envelope.RecordID)
+	destination := filepath.Join(s.pendingDir, filename)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, err := os.Stat(destination); err == nil {
+		return destination, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("check existing spool record: %w", err)
+	} else if existing != nil {
+		return destination, nil
+	}
+	if stat.Size() > s.maxBytes || s.usedBytes > s.maxBytes-stat.Size() {
+		return "", fmt.Errorf("%w: used=%d incoming=%d max=%d", ErrSpoolFull, s.usedBytes, stat.Size(), s.maxBytes)
+	}
+	if err := os.Rename(tmpName, destination); err != nil {
+		return "", fmt.Errorf("commit spool record: %w", err)
+	}
+	s.usedBytes += stat.Size()
+	if err := syncDirectory(s.pendingDir); err != nil {
+		return "", fmt.Errorf("sync spool directory: %w", err)
+	}
+	return destination, nil
+}
+
+func (s *Spool) ListPending() ([]string, error) {
+	entries, err := os.ReadDir(s.pendingDir)
+	if err != nil {
+		return nil, fmt.Errorf("list pending spool records: %w", err)
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json.zst") {
+			continue
+		}
+		paths = append(paths, filepath.Join(s.pendingDir, entry.Name()))
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func (s *Spool) ReadEnvelope(path string) (*Envelope, error) {
+	file, err := s.openPending(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return DecodeCompressedEnvelope(file)
+}
+
+func (s *Spool) Quarantine(path, reason string) (string, error) {
+	file, err := s.openPending(path)
+	if err != nil {
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	reason = safeArchiveComponent(reason)
+	destination := filepath.Join(s.quarantineDir, reason+"-"+filepath.Base(path))
+	if err := os.Rename(path, destination); err != nil {
+		return "", fmt.Errorf("quarantine spool record: %w", err)
+	}
+	if err := syncDirectory(s.pendingDir); err != nil {
+		return "", err
+	}
+	if err := syncDirectory(s.quarantineDir); err != nil {
+		return "", err
+	}
+	return destination, nil
+}
+
+func (s *Spool) OpenCompressed(path string) (*os.File, error) {
+	return s.openPending(path)
+}
+
+func (s *Spool) Acknowledge(path string) error {
+	file, err := s.openPending(path)
+	if err != nil {
+		return err
+	}
+	stat, statErr := file.Stat()
+	closeErr := file.Close()
+	if statErr != nil {
+		return statErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("remove acknowledged spool record: %w", err)
+	}
+	s.mu.Lock()
+	s.usedBytes -= stat.Size()
+	if s.usedBytes < 0 {
+		s.usedBytes = 0
+	}
+	s.mu.Unlock()
+	return syncDirectory(s.pendingDir)
+}
+
+func (s *Spool) openPending(path string) (*os.File, error) {
+	cleaned := filepath.Clean(path)
+	relative, err := filepath.Rel(s.pendingDir, cleaned)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
+		return nil, errors.New("spool path is outside pending directory")
+	}
+	file, err := os.Open(cleaned)
+	if err != nil {
+		return nil, fmt.Errorf("open pending spool record: %w", err)
+	}
+	return file, nil
+}
+
+func (s *Spool) recount() error {
+	var total int64
+	for _, directory := range []string{s.pendingDir, s.quarantineDir} {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			return fmt.Errorf("list spool directory %s: %w", directory, err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json.zst") {
+				continue
+			}
+			stat, err := entry.Info()
+			if err != nil {
+				return fmt.Errorf("stat spool record: %w", err)
+			}
+			total += stat.Size()
+		}
+	}
+	s.usedBytes = total
+	return nil
+}
+
+func countSpoolRecords(directory string) (int, error) {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return 0, fmt.Errorf("list spool directory %s: %w", directory, err)
+	}
+	count := 0
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json.zst") {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func DecodeCompressedEnvelope(reader io.Reader) (*Envelope, error) {
+	return DecodeCompressedEnvelopeAtMost(reader, defaultDecodedEnvelopeMaxBytes)
+}
+
+func DecodeCompressedEnvelopeAtMost(reader io.Reader, maxDecodedBytes int64) (*Envelope, error) {
+	if maxDecodedBytes <= 0 {
+		return nil, errors.New("decoded envelope byte limit must be positive")
+	}
+	decoder, err := zstd.NewReader(reader, zstd.WithDecoderMaxMemory(uint64(maxDecodedBytes)))
+	if err != nil {
+		return nil, fmt.Errorf("open envelope zstd reader: %w", err)
+	}
+	defer decoder.Close()
+	limited := &io.LimitedReader{R: decoder, N: maxDecodedBytes + 1}
+	var envelope Envelope
+	jsonDecoder := json.NewDecoder(limited)
+	if err := jsonDecoder.Decode(&envelope); err != nil {
+		if limited.N == 0 {
+			return nil, fmt.Errorf("decoded envelope exceeds %d bytes", maxDecodedBytes)
+		}
+		return nil, fmt.Errorf("decode compressed envelope: %w", err)
+	}
+	var trailing any
+	if err := jsonDecoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, errors.New("compressed envelope contains multiple JSON values")
+		}
+		return nil, fmt.Errorf("validate compressed envelope trailing data: %w", err)
+	}
+	if limited.N == 0 {
+		return nil, fmt.Errorf("decoded envelope exceeds %d bytes", maxDecodedBytes)
+	}
+	return &envelope, nil
+}
+
+func syncDirectory(path string) error {
+	directory, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
+}

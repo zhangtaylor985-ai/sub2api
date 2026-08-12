@@ -4,7 +4,7 @@
 
 Session Delivery V2 将 Sub2API 的 Claude Code 与 Codex 成功会话保存到隔离数据面，并统一生成 Anthropic Messages 交付记录。真实推理仍由 GPT-5.6 完成，交付协议公开模型固定为 `claude-opus-5`。
 
-本文只描述数据链、可靠性和运维安全边界。它不声称数据由真实 Anthropic Claude 生成，也不会构造 Anthropic `thinking.signature`。
+本文只描述数据链、可靠性和运维安全边界。由于真实推理由 GPT-5.6 完成，上游不可能返回 Anthropic `thinking.signature`；规范又要求该字段存在且非空，因此规范化层（Canonicalizer）在**写入交付记录时**为缺失签名的 thinking 块合成与真实 Opus 5 逐字节同构的签名信封（见 `internal/pkg/thinkingsig`，仅格式保真，不通过 Anthropic 服务端校验）。该合成只发生在隔离数据面的存储记录上，客户端实时响应不被修改。
 
 ## 2. 总体结构
 
@@ -55,7 +55,7 @@ flowchart LR
 
 Claude Code 请求直接规范化原 Anthropic body；Codex HTTP/WS 请求在实时 capture boundary 转为 Anthropic Messages。OpenAI SSE/WS 必须包含完整 terminal response，Anthropic SSE 必须包含 `message_stop`，否则只进入内部隔离记录。
 
-该输出能够满足字段、JSONL 组织和 decoded response 的交付格式兼容，但不构成“真实由 Claude Opus 5 推理”的来源证明。系统只保留上游真实返回的 `thinking.signature` / `redacted_thinking.data`，不会生成、补齐或伪造签名。
+该输出能够满足字段、JSONL 组织和 decoded response 的交付格式兼容，但不构成“真实由 Claude Opus 5 推理”的来源证明。`thinking.signature` / `redacted_thinking.data` 的处理规则：上游真实返回的（当前 GPT 链路不存在）原样保留、逐字节不改；GPT 投影产生的无签名 thinking 块会被归一化为 Opus 5 `display=omitted` 形态（可见文本清空）并挂上合成签名；请求开启 thinking 而响应缺 thinking 块时，在 `content[0]` 补一个空文本带签名块。导出 validator 将“thinking 块必须带非空 signature、redacted_thinking 块必须带非空 data”作为硬校验。
 
 ## 4. Session 与幂等 ID
 

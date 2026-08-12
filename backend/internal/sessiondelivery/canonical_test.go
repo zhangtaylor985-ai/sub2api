@@ -1,6 +1,7 @@
 package sessiondelivery
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,6 +60,137 @@ func TestCanonicalizerAnthropicPreservesThinkingSignature(t *testing.T) {
 	require.True(t, strings.HasPrefix(envelope.Delivery.RequestID, "req_"))
 	require.Equal(t, started, envelope.Delivery.Timestamp)
 	require.NoError(t, ValidateDelivery(envelope.Delivery, DefaultPublicModel))
+}
+
+// anthropicSigEnvelopeFields sanity-decodes a synthesized signature: valid
+// base64, protobuf envelope starting with the opus-5 scheme marker, and the
+// embedded model/tag readable in the metadata header.
+func anthropicSigEnvelopeFields(t *testing.T, sig string) []byte {
+	t.Helper()
+	raw, err := base64.StdEncoding.DecodeString(sig)
+	require.NoError(t, err)
+	require.True(t, len(raw) > 200, "synthetic signature should carry a ciphertext payload")
+	require.Equal(t, byte(0x08), raw[0], "opus-5 envelope starts with scheme varint field 1")
+	require.Equal(t, byte(0x02), raw[1])
+	require.Contains(t, string(raw), "claude-opus-5")
+	require.Contains(t, string(raw), "thinking")
+	return raw
+}
+
+func TestCanonicalizerAnthropicSynthesizesThinkingBlockWhenThinkingEnabled(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolAnthropicMessages,
+		Endpoint:         "/v1/messages",
+		Scope:            Scope{APIKeyID: 7},
+		GatewayRequestID: "gateway-thinking-synth",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"claude-opus-5","max_tokens":1024,
+			"thinking":{"type":"adaptive"},
+			"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]
+		}`),
+		// GPT-backed upstream response: no thinking block at all.
+		ResponseBody: []byte(`{
+			"id":"msg_src","type":"message","role":"assistant","model":"gpt-5.6-sol",
+			"content":[{"type":"text","text":"hello"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":10,"output_tokens":500}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+
+	// content[0] must be the synthesized display=omitted thinking block.
+	require.Equal(t, "thinking", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 0, "type"))
+	require.Equal(t, "", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "thinking"))
+	sig := jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "signature")
+	require.NotEmpty(t, sig)
+	anthropicSigEnvelopeFields(t, sig)
+	require.Equal(t, "text", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 1, "type"))
+	require.NoError(t, ValidateDelivery(envelope.Delivery, DefaultPublicModel))
+}
+
+func TestCanonicalizerAnthropicNoThinkingBlockWhenNotRequested(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolAnthropicMessages,
+		Endpoint:         "/v1/messages",
+		Scope:            Scope{APIKeyID: 7},
+		GatewayRequestID: "gateway-no-thinking",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"claude-opus-5","max_tokens":1024,
+			"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"msg_src","type":"message","role":"assistant","model":"gpt-5.6-sol",
+			"content":[{"type":"text","text":"hello"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":10,"output_tokens":5}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	require.Equal(t, "text", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 0, "type"))
+}
+
+func TestCanonicalizerResponsesSynthesizesThinkingForEmptySummaryReasoning(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{APIKeyID: 9},
+		GatewayRequestID: "gateway-responses-empty-reasoning",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"gpt-5.6-sol","reasoning":{"effort":"high"},
+			"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-sol",
+			"output":[
+				{"type":"reasoning","summary":[]},
+				{"type":"message","status":"completed","content":[{"type":"output_text","text":"hello"}]}
+			],
+			"usage":{"input_tokens":10,"output_tokens":120,"total_tokens":130}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	require.Equal(t, "thinking", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 0, "type"))
+	sig := jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "signature")
+	require.NotEmpty(t, sig)
+	anthropicSigEnvelopeFields(t, sig)
+	require.NoError(t, ValidateDelivery(envelope.Delivery, DefaultPublicModel))
+}
+
+func TestValidateDeliveryRejectsUnsignedThinkingBlock(t *testing.T) {
+	record := &DeliveryRecord{
+		SessionID: "session_x",
+		RequestID: "req_x",
+		Timestamp: time.Now().UTC(),
+		Metadata:  DeliveryMetadata{HTTPStatus: 200, LatencyMS: 10},
+		Request:   json.RawMessage(`{"model":"claude-opus-5","messages":[{"role":"user","content":"hi"}]}`),
+		Response: DeliveryResponse{
+			StatusCode: 200,
+			ResponseData: json.RawMessage(`{
+				"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-5",
+				"content":[{"type":"thinking","thinking":"","signature":""}],
+				"stop_reason":"end_turn"
+			}`),
+		},
+	}
+	require.ErrorContains(t, ValidateDelivery(record, DefaultPublicModel), "signature")
 }
 
 func TestCanonicalizerAnthropicSSEBuildsDecodedResponse(t *testing.T) {
@@ -217,7 +349,10 @@ func TestCanonicalizerResponsesProducesAnthropicDelivery(t *testing.T) {
 	require.Equal(t, "You are a coding assistant.\n\nFollow repository rules.", jsonPathString(t, envelope.Delivery.Request, "system"))
 	require.Equal(t, DefaultPublicModel, jsonPathString(t, envelope.Delivery.Response.ResponseData, "model"))
 	require.True(t, strings.HasPrefix(jsonPathString(t, envelope.Delivery.Response.ResponseData, "id"), "msg_"))
-	require.Equal(t, "reasoning summary", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "thinking"))
+	// GPT-projected thinking is normalized to the Opus 5 display=omitted
+	// shape: empty visible text plus a synthesized signature.
+	require.Equal(t, "", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "thinking"))
+	require.NotEmpty(t, jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "signature"))
 	require.Equal(t, "hello", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 1, "text"))
 	require.Equal(t, float64(15), jsonPathNumber(t, envelope.Delivery.Response.ResponseData, "usage", "input_tokens"))
 	require.Equal(t, float64(5), jsonPathNumber(t, envelope.Delivery.Response.ResponseData, "usage", "cache_read_input_tokens"))
@@ -352,6 +487,20 @@ func jsonPathNumber(t *testing.T, raw json.RawMessage, keys ...string) float64 {
 	}
 	result, ok := value.(float64)
 	require.True(t, ok)
+	return result
+}
+
+func jsonArrayPath(t *testing.T, raw json.RawMessage, arrayKey string, index int, key string) string {
+	t.Helper()
+	var object map[string]any
+	require.NoError(t, json.Unmarshal(raw, &object))
+	array, ok := object[arrayKey].([]any)
+	require.True(t, ok)
+	require.Greater(t, len(array), index)
+	element, ok := array[index].(map[string]any)
+	require.True(t, ok)
+	result, ok := element[key].(string)
+	require.True(t, ok, "key %q missing or not a string in content[%d]", key, index)
 	return result
 }
 

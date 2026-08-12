@@ -113,6 +113,14 @@ func (c *Canonicalizer) Build(input CaptureInput) (*Envelope, error) {
 		return envelope, nil
 	}
 
+	// Complete thinking.signature on the stored delivery record only; the
+	// client-facing response was already sent unchanged by the middleware.
+	canonicalResponse, err = c.completeThinkingSignatures(input.Protocol, canonicalRequest, canonicalResponse, decoded.Body)
+	if err != nil {
+		envelope.Rejection = &Rejection{Code: "response_conversion_failed", Message: sanitizeRejectionMessage(err)}
+		return envelope, nil
+	}
+
 	delivery := &DeliveryRecord{
 		SessionID: sessionID,
 		RequestID: publicRequestID,
@@ -192,6 +200,32 @@ func (c *Canonicalizer) canonicalResponse(protocol Protocol, body json.RawMessag
 	default:
 		return nil, fmt.Errorf("unsupported capture protocol %q", protocol)
 	}
+}
+
+// completeThinkingSignatures attaches synthetic Opus 5 shaped signatures to
+// unsigned thinking blocks in the stored delivery response (and inserts the
+// display=omitted thinking block when a thinking-enabled request produced
+// none). Real upstream signatures are never modified.
+func (c *Canonicalizer) completeThinkingSignatures(protocol Protocol, canonicalRequest, canonicalResponse, rawResponse json.RawMessage) (json.RawMessage, error) {
+	var requestMap map[string]json.RawMessage
+	if err := json.Unmarshal(canonicalRequest, &requestMap); err != nil {
+		return nil, fmt.Errorf("decode canonical request: %w", err)
+	}
+	thinkingEnabled := requestThinkingEnabled(requestMap)
+
+	hadReasoning := false
+	if protocol == ProtocolOpenAIResponses {
+		hadReasoning = responseHadReasoningOutput(rawResponse)
+	}
+
+	var responseMap map[string]json.RawMessage
+	if err := json.Unmarshal(canonicalResponse, &responseMap); err != nil {
+		return nil, fmt.Errorf("decode canonical response: %w", err)
+	}
+	if err := ensureThinkingSignatures(responseMap, thinkingEnabled, hadReasoning, responseOutputTokens(responseMap)); err != nil {
+		return nil, err
+	}
+	return json.Marshal(responseMap)
 }
 
 func requestStreamEnabled(body json.RawMessage) bool {

@@ -938,3 +938,5 @@
 - 本次未修改数据库、个人 `/usage` 页面或普通用户 usage 权限；完整 Key 精确匹配由 repository 回归、handler 脱敏回归和 POST body 前端回归覆盖。
 
 ---
+
+- 2026-08-12：thinking.signature 合成接入 sessiondelivery 保存链路（`signature.go` + canonical hook + validator 硬校验 + `internal/pkg/thinkingsig` 包）；主线工作区对 apicompat/openai_gateway_messages 的临时改动已全部撤销并验证无 diff。本地沙盒（pg 5433/redis 6380 + 网关 8080 + sessiond 8091 + forwarder loop）真实流量 E2E 通过：4/4 交付记录带 Opus 5 同构签名，导出归档校验通过。沙盒细节与账号来源见主线 progress.md 同日条目。

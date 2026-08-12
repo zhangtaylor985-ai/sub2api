@@ -83,6 +83,25 @@ func ValidateDelivery(record *DeliveryRecord, publicModel string) error {
 	if err := json.Unmarshal(response["content"], &content); err != nil {
 		return errors.New("response.response_data.content must be an array")
 	}
+	// Spec §5/§6: thinking.signature / redacted_thinking.data must be present
+	// and preserved. The canonicalizer synthesizes missing signatures, so an
+	// unsigned thinking block here means the pipeline regressed.
+	for i, rawBlock := range content {
+		var block map[string]json.RawMessage
+		if err := json.Unmarshal(rawBlock, &block); err != nil {
+			return fmt.Errorf("response.response_data.content[%d] must be an object", i)
+		}
+		switch rawString(block["type"]) {
+		case "thinking":
+			if rawString(block["signature"]) == "" {
+				return fmt.Errorf("response.response_data.content[%d] thinking block must carry a non-empty signature", i)
+			}
+		case "redacted_thinking":
+			if rawString(block["data"]) == "" {
+				return fmt.Errorf("response.response_data.content[%d] redacted_thinking block must carry non-empty data", i)
+			}
+		}
+	}
 	if len(response["stop_reason"]) == 0 {
 		return errors.New("response.response_data.stop_reason is required")
 	}

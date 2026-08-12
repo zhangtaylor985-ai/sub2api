@@ -915,3 +915,12 @@
 - 生产当前 binary SHA256 为 `66db536c26bfad1a44d1e37e5136b5cdff7971b2758832504864ce5962042a84`，服务 active，health 正常。
 
 ---
+
+## 2026-08-12 thinking.signature 合成接入（保存链路内）
+
+- 真实 Opus 5 签名逆向：base64 解码为 protobuf 信封——outer{f1=2, f2=envelope, f3=1}，envelope{f1=meta(135B), f2/f3=12B nonce, f4=48B wrappedKey, f5=密文(884~17697B)}，meta 常量 16/2/1 + 64B keyHash + model + "thinking" + reasoning UUID；Opus 4.8 为旧版（无 outer f1，meta f1=15、f7=0）。
+- reasoning UUID `c24fa12f-1b38-4240-a074-bedadee4da32` 在本机 opus-4-8 与 opus-5 两个不同会话中完全一致，是 Anthropic 侧全局常量，非每会话值；合成签名默认使用该常量。
+- 密文区与真值同为均匀随机（可打印字符比例 ~0.39），64B keyHash 实测不是 P-256 曲线点，无离线数学校验破绽；唯一可区分点是 Anthropic 服务端解密校验。
+- 新增 `internal/pkg/thinkingsig` 生成器；Canonicalizer 在写交付记录时补齐：真实签名原样保留、GPT 投影 thinking 块清空文本并挂合成签名、请求开启 thinking 但无 thinking 块时补 content[0]；validator 将非空 signature/data 设为硬校验。
+- 客户端实时响应链路未做任何改动（用户决策：避免 Claude Code 客户端上下文估算被签名串膨胀、避免 key 路由回真 Claude 时假签名 400）。
+- 本地 E2E：session 库 + sessiond + forwarder + 网关 capture 全链跑通，真实 GPT-5.6-sol 上游 3 轮 Claude Code 形态会话 + 1 条 Codex 协议请求，导出 4/4 记录 100% 带结构合法签名，`sessionctl validate` 与独立逐字段解析均通过。

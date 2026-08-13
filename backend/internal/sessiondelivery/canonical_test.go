@@ -594,6 +594,100 @@ func TestCanonicalizerResponsesNormalizesCodexCustomToolResponse(t *testing.T) {
 	require.NoError(t, ValidateDeliveryFidelity(&projected, DefaultPublicModel))
 }
 
+func TestCanonicalizerResponsesNormalizesCodexNamespacedToolsAndAgentMessages(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{APIKeyID: 42},
+		GatewayRequestID: "gateway-codex-namespaced-history",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"gpt-5.6-sol","reasoning":{"effort":"high"},
+			"input":[
+				{"type":"additional_tools","role":"developer","tools":[
+					{"type":"namespace","name":"functions","tools":[
+						{"type":"custom","name":"exec","description":"run","format":{"type":"text"}}
+					]},
+					{"type":"namespace","name":"collaboration","tools":[
+						{"type":"function","name":"send_message","description":"send","parameters":{"type":"object","properties":{}}}
+					]}
+				]},
+				{"type":"message","role":"user","content":[{"type":"input_text","text":"start"}]},
+				{"type":"agent_message","id":"agent_1","author":"/root/worker","recipient":"/root","content":[
+					{"type":"encrypted_content","data":"opaque"},
+					{"type":"input_text","text":"agent result"}
+				]},
+				{"type":"custom_tool_call","call_id":"call_exec","name":"exec","input":"printf ok"},
+				{"type":"custom_tool_call_output","call_id":"call_exec","output":[
+					{"type":"input_text","text":"ok"},
+					{"type":"input_text","text":"exit 0"}
+				]},
+				{"type":"function_call","call_id":"call_send","namespace":"collaboration","name":"send_message","arguments":"{}"},
+				{"type":"function_call_output","call_id":"call_send","output":[
+					{"type":"input_text","text":"delivered"}
+				]}
+			]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"resp_namespaced_history","object":"response","model":"gpt-5.6-sol","status":"completed",
+			"output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]}],
+			"usage":{"input_tokens":30,"output_tokens":4,"total_tokens":34}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	require.Contains(t, string(envelope.Original.Request), `"type":"additional_tools"`)
+	require.Contains(t, string(envelope.Original.Request), `"type":"agent_message"`)
+	require.NotContains(t, string(envelope.Delivery.Request), "additional_tools")
+	require.NotContains(t, string(envelope.Delivery.Request), "agent_message")
+	require.NotContains(t, string(envelope.Delivery.Request), "encrypted_content")
+	require.NotContains(t, string(envelope.Delivery.Request), "function_call_output")
+	require.NotContains(t, string(envelope.Delivery.Request), "input_text")
+	require.Contains(t, string(envelope.Delivery.Request), "agent result")
+	require.Contains(t, string(envelope.Delivery.Request), "ok\\n\\nexit 0")
+	require.Contains(t, string(envelope.Delivery.Request), "delivered")
+
+	var request struct {
+		Tools []struct {
+			Name        string          `json:"name"`
+			InputSchema json.RawMessage `json:"input_schema"`
+		} `json:"tools"`
+		Messages []struct {
+			Content []struct {
+				Type string `json:"type"`
+				Name string `json:"name"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Delivery.Request, &request))
+	require.Len(t, request.Tools, 2)
+	toolSchemas := make(map[string]json.RawMessage, len(request.Tools))
+	for _, tool := range request.Tools {
+		toolSchemas[tool.Name] = tool.InputSchema
+	}
+	require.JSONEq(t, `{"type":"object","properties":{"input":{"type":"string"}},"required":["input"],"additionalProperties":false}`, string(toolSchemas["exec"]))
+	require.JSONEq(t, `{"type":"object","properties":{}}`, string(toolSchemas["collaboration__send_message"]))
+
+	toolUseNames := make([]string, 0, 2)
+	for _, message := range request.Messages {
+		for _, block := range message.Content {
+			if block.Type == "tool_use" {
+				toolUseNames = append(toolUseNames, block.Name)
+			}
+		}
+	}
+	require.ElementsMatch(t, []string{"exec", "collaboration__send_message"}, toolUseNames)
+
+	projected := *envelope.Delivery
+	usage := &usageProjector{}
+	require.NoError(t, usage.process(&projected))
+	require.NoError(t, ValidateDeliveryFidelity(&projected, DefaultPublicModel))
+}
+
 func TestNormalizeCodexSessionCustomToolWrapsFreeformInput(t *testing.T) {
 	normalized, err := normalizeCodexSessionResponsesResponse(json.RawMessage(`{
 		"id":"resp_custom","object":"response","model":"gpt-5.6-sol","status":"completed",

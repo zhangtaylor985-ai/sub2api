@@ -5,6 +5,7 @@ package sessiondelivery
 import (
 	"archive/tar"
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -256,6 +257,107 @@ func TestHourlyExportPreservesProjectionStateAfterPurge(t *testing.T) {
 	require.Equal(t, 30, creation)
 	require.Equal(t, 98, read)
 	require.Equal(t, 10, output)
+}
+
+func TestStoreRepairsRequestConversionRejectionBeforeExport(t *testing.T) {
+	ctx := context.Background()
+	store := startSessionDeliveryPostgres(t, ctx)
+	require.NoError(t, store.Migrate(ctx))
+
+	hour := time.Date(2026, 8, 9, 5, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return hour.Add(30 * time.Minute) }
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{UserID: 10, APIKeyID: 20, GroupID: 30},
+		GatewayRequestID: "request-repair-array-output",
+		StartedAt:        hour.Add(5 * time.Minute),
+		CompletedAt:      hour.Add(5*time.Minute + time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"gpt-5.6-sol","reasoning":{"effort":"high"},
+			"input":[
+				{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]},
+				{"type":"function_call","call_id":"call_1","name":"wait","arguments":"{}"},
+				{"type":"function_call_output","call_id":"call_1","output":[{"type":"input_text","text":"done"}]}
+			]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"resp_repair","object":"response","model":"gpt-5.6-sol","status":"completed",
+			"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],
+			"usage":{"input_tokens":10,"output_tokens":1,"total_tokens":11}
+		}`),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, envelope.Delivery)
+	envelope.Delivery = nil
+	envelope.Rejection = &Rejection{
+		Code:    "request_conversion_failed",
+		Message: "json: cannot unmarshal array into Go struct field ResponsesInputItem.output of type string",
+	}
+	inserted, err := store.Insert(ctx, envelope)
+	require.NoError(t, err)
+	require.True(t, inserted)
+	var storedBeforeRepair *Envelope
+	require.NoError(t, store.ForEachHour(ctx, hour, func(candidate *Envelope) error {
+		storedBeforeRepair = candidate
+		return nil
+	}))
+	require.NotNil(t, storedBeforeRepair)
+	originalRequest := append([]byte(nil), storedBeforeRepair.Original.Request...)
+	originalResponse := append([]byte(nil), storedBeforeRepair.Original.Response...)
+
+	dryRun, err := store.RepairRequestConversionRejections(ctx, canonicalizer, ConversionRepairOptions{
+		Since: hour, Before: hour.Add(time.Hour), Limit: 10,
+	})
+	require.NoError(t, err)
+	require.Equal(t, ConversionRepairStats{DryRun: true, Scanned: 1, Repairable: 1}, dryRun)
+	stats, err := store.StatsForHour(ctx, hour)
+	require.NoError(t, err)
+	require.Equal(t, HourStats{Records: 1, Rejected: 1}, stats)
+
+	applied, err := store.RepairRequestConversionRejections(ctx, canonicalizer, ConversionRepairOptions{
+		Since: hour, Before: hour.Add(time.Hour), Limit: 10, Apply: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, ConversionRepairStats{Scanned: 1, Repairable: 1, Repaired: 1}, applied)
+	stats, err = store.StatsForHour(ctx, hour)
+	require.NoError(t, err)
+	require.Equal(t, HourStats{Records: 1, Deliverable: 1}, stats)
+
+	var repaired *Envelope
+	require.NoError(t, store.ForEachHour(ctx, hour, func(candidate *Envelope) error {
+		repaired = candidate
+		return nil
+	}))
+	require.NotNil(t, repaired)
+	require.Nil(t, repaired.Rejection)
+	require.NotNil(t, repaired.Delivery)
+	require.True(t, bytes.Equal(originalRequest, repaired.Original.Request))
+	require.True(t, bytes.Equal(originalResponse, repaired.Original.Response))
+	require.Equal(t, envelope.RecordID, repaired.RecordID)
+	require.Equal(t, envelope.SessionID, repaired.SessionID)
+	require.Equal(t, envelope.RequestID, repaired.RequestID)
+
+	archiveBackend, err := NewLocalArchiveBackend(filepath.Join(t.TempDir(), "repaired-archive"))
+	require.NoError(t, err)
+	exporter, err := NewExporter(store, archiveBackend, ExporterConfig{
+		PublicModel: DefaultPublicModel,
+		TempDir:     filepath.Join(t.TempDir(), "repaired-export-tmp"),
+	})
+	require.NoError(t, err)
+	result, err := exporter.ExportHour(ctx, hour)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), result.Manifest.DeliveryCount)
+	_, err = AuditArchivesFidelity(ctx, filepath.Dir(result.Archive.Name), DefaultPublicModel)
+	require.NoError(t, err)
+
+	repeated, err := store.RepairRequestConversionRejections(ctx, canonicalizer, ConversionRepairOptions{
+		Since: hour, Before: hour.Add(time.Hour), Limit: 10, Apply: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, ConversionRepairStats{}, repeated)
 }
 
 type integrationDurableArchive struct {

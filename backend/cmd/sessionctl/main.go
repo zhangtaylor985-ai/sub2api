@@ -41,6 +41,8 @@ func run() error {
 		return runSpoolStatus(os.Args[2:])
 	case "repair-quarantine":
 		return runRepairQuarantine(os.Args[2:])
+	case "repair-conversions":
+		return runRepairConversions(ctx, os.Args[2:])
 	case "export":
 		return runExport(ctx, os.Args[2:])
 	case "validate":
@@ -58,6 +60,78 @@ func run() error {
 	default:
 		return usageError()
 	}
+}
+
+func runRepairConversions(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("repair-conversions", flag.ContinueOnError)
+	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
+	secretEnv := flags.String("secret-env", "SESSION_DELIVERY_HMAC_SECRET", "environment variable containing the Session delivery HMAC secret")
+	sinceValue := flags.String("since", "24h", "repair range start as RFC3339 or a duration before now")
+	beforeValue := flags.String("before", "", "exclusive repair range end as RFC3339 (default: now)")
+	limit := flags.Int("limit", 1000, "maximum rejected records to inspect")
+	apply := flags.Bool("apply", false, "apply eligible repairs; omitted means read-only dry-run")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	since, err := parseRepairTime(*sinceValue, now, true)
+	if err != nil {
+		return fmt.Errorf("parse repair since: %w", err)
+	}
+	before, err := parseRepairTime(*beforeValue, now, false)
+	if err != nil {
+		return fmt.Errorf("parse repair before: %w", err)
+	}
+	secret, err := requiredEnv(*secretEnv)
+	if err != nil {
+		return err
+	}
+	ids, err := sessiondelivery.NewIDGenerator(secret, nil)
+	if err != nil {
+		return err
+	}
+	canonicalizer, err := sessiondelivery.NewCanonicalizer(sessiondelivery.DefaultPublicModel, ids)
+	if err != nil {
+		return err
+	}
+	store, err := openStoreFromEnv(ctx, *dsnEnv)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	stats, err := store.RepairRequestConversionRejections(ctx, canonicalizer, sessiondelivery.ConversionRepairOptions{
+		Since: since, Before: before, Limit: *limit, Apply: *apply,
+	})
+	if err != nil {
+		return err
+	}
+	if err := writeOutput(stats); err != nil {
+		return err
+	}
+	if stats.Failed > 0 {
+		return fmt.Errorf("%d Session conversion repairs failed", stats.Failed)
+	}
+	return nil
+}
+
+func parseRepairTime(value string, now time.Time, allowDuration bool) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return now.UTC(), nil
+	}
+	if allowDuration {
+		if duration, err := time.ParseDuration(value); err == nil {
+			if duration <= 0 {
+				return time.Time{}, errors.New("duration must be positive")
+			}
+			return now.Add(-duration).UTC(), nil
+		}
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed.UTC(), nil
 }
 
 func runRepairQuarantine(args []string) error {
@@ -528,7 +602,7 @@ func writeOutput(value any) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|export|validate|audit-fidelity|rebuild-archives|seed-projection|status|purge> [flags]")
+	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|repair-conversions|export|validate|audit-fidelity|rebuild-archives|seed-projection|status|purge> [flags]")
 }
 
 func envOr(name, fallback string) string {

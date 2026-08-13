@@ -3,7 +3,10 @@ set -euo pipefail
 
 readonly state_file="/run/sub2api-session-tunnel-health/failures"
 readonly pending_dir="/opt/sub2api/data/session-delivery/spool/pending"
-readonly stagnant_limit=8
+# A single captured response can compress to more than 100 MiB. Leave enough
+# time for the oldest in-flight upload to finish on the cross-region relay
+# before treating an unchanged spool window as a dead tunnel.
+readonly stagnant_limit=30
 
 if ! /usr/bin/systemctl is-active --quiet sub2api-session-tunnel.service; then
   /usr/bin/logger -t sub2api-session-tunnel-health \

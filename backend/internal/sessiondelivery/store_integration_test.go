@@ -259,6 +259,94 @@ func TestHourlyExportPreservesProjectionStateAfterPurge(t *testing.T) {
 	require.Equal(t, 10, output)
 }
 
+func TestProjectionReseedArchivesDryRunAndApply(t *testing.T) {
+	ctx := context.Background()
+	store := startSessionDeliveryPostgres(t, ctx)
+	require.NoError(t, store.Migrate(ctx))
+
+	firstHour := time.Date(2026, 8, 9, 18, 0, 0, 0, time.UTC)
+	secondHour := firstHour.Add(time.Hour)
+	thirdHour := secondHour.Add(time.Hour)
+	first := buildCrossHourEnvelope(t, firstHour.Add(58*time.Minute), 1, 100)
+	second := buildCrossHourEnvelope(t, secondHour.Add(time.Minute), 2, 130)
+
+	archiveDir := filepath.Join(t.TempDir(), "projection-reseed-archives")
+	archiveBackend, err := NewLocalArchiveBackend(archiveDir)
+	require.NoError(t, err)
+	exporter, err := NewExporter(store, &integrationDurableArchive{LocalArchiveBackend: archiveBackend}, ExporterConfig{
+		PublicModel: DefaultPublicModel,
+		TempDir:     filepath.Join(t.TempDir(), "projection-reseed-export-tmp"),
+	})
+	require.NoError(t, err)
+
+	store.now = func() time.Time { return firstHour.Add(10 * time.Minute) }
+	inserted, err := store.Insert(ctx, first)
+	require.NoError(t, err)
+	require.True(t, inserted)
+	firstResult, err := exporter.ExportHour(ctx, firstHour)
+	require.NoError(t, err)
+	require.NoError(t, store.PurgeHour(ctx, firstHour, firstResult.Archive.SHA256, true))
+
+	store.now = func() time.Time { return secondHour.Add(10 * time.Minute) }
+	inserted, err = store.Insert(ctx, second)
+	require.NoError(t, err)
+	require.True(t, inserted)
+	secondResult, err := exporter.ExportHour(ctx, secondHour)
+	require.NoError(t, err)
+	require.NoError(t, store.PurgeHour(ctx, secondHour, secondResult.Archive.SHA256, true))
+
+	fullCheckpoint, found, err := store.LoadProjectionCheckpoint(ctx, first.Delivery.SessionID, thirdHour)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Len(t, fullCheckpoint.Echo, 2)
+	partialCheckpoint := fullCheckpoint
+	partialCheckpoint.Echo = append([]projectionEchoTurn(nil), fullCheckpoint.Echo[1:]...)
+	encodedPartial, err := encodeProjectionCheckpoint(first.Delivery.SessionID, partialCheckpoint, secondHour)
+	require.NoError(t, err)
+	_, err = store.db.ExecContext(ctx, `
+		UPDATE session_projection_checkpoints SET
+			checkpoint_version = $2, checkpoint_zstd = $3,
+			checkpoint_sha256 = $4, last_export_hour = $5
+		WHERE session_id = $1`,
+		encodedPartial.SessionID, encodedPartial.Version, encodedPartial.Compressed,
+		encodedPartial.SHA256, encodedPartial.LastExportHour,
+	)
+	require.NoError(t, err)
+	dryRun, err := store.ReseedProjectionArchives(ctx, archiveDir, DefaultPublicModel, false)
+	require.NoError(t, err)
+	require.False(t, dryRun.Applied)
+	require.Equal(t, int64(1), dryRun.Sessions)
+	require.Equal(t, int64(2), dryRun.Records)
+	var checkpointCount int
+	require.NoError(t, store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_projection_checkpoints`).Scan(&checkpointCount))
+	require.Equal(t, 1, checkpointCount)
+	checkpoint, found, err := store.LoadProjectionCheckpoint(ctx, first.Delivery.SessionID, thirdHour)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Len(t, checkpoint.Echo, 1, "dry-run must preserve the partial checkpoint")
+
+	applied, err := store.ReseedProjectionArchives(ctx, archiveDir, DefaultPublicModel, true)
+	require.NoError(t, err)
+	require.True(t, applied.Applied)
+	require.False(t, applied.AlreadyApplied)
+	checkpoint, found, err = store.LoadProjectionCheckpoint(ctx, first.Delivery.SessionID, thirdHour)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Len(t, checkpoint.Echo, 2)
+	require.Equal(t, 128, checkpoint.Usage.PreviousPrefix)
+
+	repeated, err := store.ReseedProjectionArchives(ctx, archiveDir, DefaultPublicModel, true)
+	require.NoError(t, err)
+	require.True(t, repeated.Applied)
+	require.True(t, repeated.AlreadyApplied)
+	var reseedCount int
+	require.NoError(t, store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_projection_reseeds`).Scan(&reseedCount))
+	require.Equal(t, 1, reseedCount)
+	var backupCount int
+	require.NoError(t, store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_projection_reseed_backups`).Scan(&backupCount))
+	require.Equal(t, 1, backupCount)
+}
+
 func TestStoreRepairsRequestConversionRejectionBeforeExport(t *testing.T) {
 	ctx := context.Background()
 	store := startSessionDeliveryPostgres(t, ctx)

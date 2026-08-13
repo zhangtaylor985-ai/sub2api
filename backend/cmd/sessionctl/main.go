@@ -53,6 +53,8 @@ func run() error {
 		return runRebuildArchives(ctx, os.Args[2:])
 	case "seed-projection":
 		return runSeedProjection(ctx, os.Args[2:])
+	case "reseed-projection":
+		return runReseedProjection(ctx, os.Args[2:])
 	case "status":
 		return runStatus(ctx, os.Args[2:])
 	case "purge":
@@ -515,6 +517,29 @@ func runSeedProjection(ctx context.Context, args []string) error {
 	return writeOutput(result)
 }
 
+func runReseedProjection(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("reseed-projection", flag.ContinueOnError)
+	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
+	inputDir := flags.String("input-dir", "", "directory containing a complete chronological archive sequence")
+	apply := flags.Bool("apply", false, "transactionally replace eligible checkpoints; omitted means read-only dry-run")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	store, err := openStoreFromEnv(ctx, *dsnEnv)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		return err
+	}
+	result, err := store.ReseedProjectionArchives(ctx, *inputDir, sessiondelivery.DefaultPublicModel, *apply)
+	if err != nil {
+		return err
+	}
+	return writeOutput(result)
+}
+
 func runStatus(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
@@ -602,7 +627,7 @@ func writeOutput(value any) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|repair-conversions|export|validate|audit-fidelity|rebuild-archives|seed-projection|status|purge> [flags]")
+	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|repair-conversions|export|validate|audit-fidelity|rebuild-archives|seed-projection|reseed-projection|status|purge> [flags]")
 }
 
 func envOr(name, fallback string) string {

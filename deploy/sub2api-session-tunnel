@@ -3,6 +3,12 @@ set -euo pipefail
 
 : "${SESSION_TUNNEL_TARGET:?SESSION_TUNNEL_TARGET is required}"
 
+start_delay="${SESSION_TUNNEL_START_DELAY:-0}"
+if [[ ! "${start_delay}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "SESSION_TUNNEL_START_DELAY must be a non-negative number of seconds" >&2
+  exit 2
+fi
+
 forward_values="${SESSION_TUNNEL_FORWARDS:-${SESSION_TUNNEL_FORWARD:-}}"
 if [[ -z "${forward_values}" ]]; then
   echo "SESSION_TUNNEL_FORWARDS or SESSION_TUNNEL_FORWARD is required" >&2
@@ -62,6 +68,9 @@ for forward in "${forwards[@]}"; do
     -L "${forward}" \
     "${SESSION_TUNNEL_TARGET}" &
   pids+=("$!")
+  if [[ "${start_delay}" != "0" ]]; then
+    sleep "${start_delay}"
+  fi
 done
 
 set +e

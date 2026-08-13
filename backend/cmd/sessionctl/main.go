@@ -124,11 +124,15 @@ func runForward(ctx context.Context, args []string) error {
 	endpoint := flags.String("endpoint", envOr("SESSION_INGEST_ENDPOINT", ""), "sessiond HTTPS base URL")
 	secretEnv := flags.String("secret-env", "SESSION_INGEST_SECRET", "environment variable containing the ingest HMAC secret")
 	batchLimit := flags.Int("batch-limit", 100, "maximum records per pass")
+	concurrency := flags.Int("concurrency", int(envInt64("SESSION_FORWARD_CONCURRENCY", 2)), "maximum concurrent ingest uploads")
 	loop := flags.Bool("loop", false, "run continuously")
 	interval := flags.Duration("interval", 5*time.Second, "delay between passes in loop mode")
 	timeout := flags.Duration("timeout", envDuration("SESSION_INGEST_TIMEOUT", 20*time.Minute), "timeout for one ingest upload")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *concurrency <= 0 || *concurrency > 16 {
+		return errors.New("-concurrency must be between 1 and 16")
 	}
 	secret, err := requiredEnv(*secretEnv)
 	if err != nil {
@@ -139,10 +143,11 @@ func runForward(ctx context.Context, args []string) error {
 		return err
 	}
 	forwarder, err := sessiondelivery.NewForwarder(spool, sessiondelivery.ForwarderConfig{
-		Endpoint:   *endpoint,
-		Secret:     secret,
-		BatchLimit: *batchLimit,
-		Timeout:    *timeout,
+		Endpoint:    *endpoint,
+		Secret:      secret,
+		BatchLimit:  *batchLimit,
+		Concurrency: *concurrency,
+		Timeout:     *timeout,
 	})
 	if err != nil {
 		return err

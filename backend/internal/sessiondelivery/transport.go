@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -30,11 +31,12 @@ const (
 )
 
 type ForwarderConfig struct {
-	Endpoint   string
-	Secret     string
-	BatchLimit int
-	Timeout    time.Duration
-	Client     *http.Client
+	Endpoint    string
+	Secret      string
+	BatchLimit  int
+	Concurrency int
+	Timeout     time.Duration
+	Client      *http.Client
 }
 
 type ForwardStats struct {
@@ -46,11 +48,12 @@ type ForwardStats struct {
 }
 
 type Forwarder struct {
-	spool      *Spool
-	endpoint   string
-	secret     []byte
-	batchLimit int
-	client     *http.Client
+	spool       *Spool
+	endpoint    string
+	secret      []byte
+	batchLimit  int
+	concurrency int
+	client      *http.Client
 }
 
 func NewForwarder(spool *Spool, config ForwarderConfig) (*Forwarder, error) {
@@ -67,6 +70,9 @@ func NewForwarder(spool *Spool, config ForwarderConfig) (*Forwarder, error) {
 	if config.BatchLimit <= 0 {
 		config.BatchLimit = 100
 	}
+	if config.Concurrency <= 0 {
+		config.Concurrency = 1
+	}
 	if config.Timeout <= 0 {
 		config.Timeout = 20 * time.Minute
 	}
@@ -75,11 +81,12 @@ func NewForwarder(spool *Spool, config ForwarderConfig) (*Forwarder, error) {
 		client = &http.Client{Timeout: config.Timeout}
 	}
 	return &Forwarder{
-		spool:      spool,
-		endpoint:   endpoint,
-		secret:     []byte(config.Secret),
-		batchLimit: config.BatchLimit,
-		client:     client,
+		spool:       spool,
+		endpoint:    endpoint,
+		secret:      []byte(config.Secret),
+		batchLimit:  config.BatchLimit,
+		concurrency: config.Concurrency,
+		client:      client,
 	}, nil
 }
 
@@ -92,16 +99,55 @@ func (f *Forwarder) ForwardOnce(ctx context.Context) (ForwardStats, error) {
 	if len(paths) > f.batchLimit {
 		paths = paths[:f.batchLimit]
 	}
+	if err := ctx.Err(); err != nil {
+		return stats, err
+	}
+	type forwardResult struct {
+		status string
+		err    error
+	}
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	jobs := make(chan string, len(paths))
+	results := make(chan forwardResult, len(paths))
 	for _, path := range paths {
-		if err := ctx.Err(); err != nil {
-			return stats, err
-		}
+		jobs <- path
+	}
+	close(jobs)
+	workerCount := f.concurrency
+	if workerCount > len(paths) {
+		workerCount = len(paths)
+	}
+	var workers sync.WaitGroup
+	workers.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer workers.Done()
+			for path := range jobs {
+				if workerCtx.Err() != nil {
+					return
+				}
+				status, err := f.forwardOne(workerCtx, path)
+				results <- forwardResult{status: status, err: err}
+				if err != nil {
+					cancel()
+					return
+				}
+			}
+		}()
+	}
+	workers.Wait()
+	close(results)
+	var firstErr error
+	for result := range results {
 		stats.Attempted++
-		result, err := f.forwardOne(ctx, path)
-		if err != nil {
-			return stats, err
+		if result.err != nil {
+			if firstErr == nil || errors.Is(firstErr, context.Canceled) {
+				firstErr = result.err
+			}
+			continue
 		}
-		switch result {
+		switch result.status {
 		case "inserted":
 			stats.Inserted++
 			stats.Pending--
@@ -112,6 +158,12 @@ func (f *Forwarder) ForwardOnce(ctx context.Context) (ForwardStats, error) {
 			stats.Quarantined++
 			stats.Pending--
 		}
+	}
+	if firstErr != nil {
+		return stats, firstErr
+	}
+	if err := ctx.Err(); err != nil {
+		return stats, err
 	}
 	return stats, nil
 }

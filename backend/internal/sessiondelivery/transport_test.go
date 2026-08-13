@@ -1,0 +1,92 @@
+package sessiondelivery
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestForwarderHonorsConcurrencyAndAcknowledgesBatch(t *testing.T) {
+	spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 8<<20)
+	require.NoError(t, err)
+	for index := range 4 {
+		_, err := spool.Write(&Envelope{
+			SchemaVersion: SchemaVersion,
+			RecordID:      fmt.Sprintf("rec_concurrent_%d", index),
+			CapturedAt:    time.Date(2026, 8, 13, 7, 10, index, 0, time.UTC),
+		})
+		require.NoError(t, err)
+	}
+
+	started := make(chan struct{}, 4)
+	release := make(chan struct{})
+	var inFlight atomic.Int64
+	var maximum atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		current := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for {
+			previous := maximum.Load()
+			if current <= previous || maximum.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		started <- struct{}{}
+		<-release
+		_, _ = io.Copy(io.Discard, request.Body)
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = writer.Write([]byte(`{"status":"inserted"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	forwarder, err := NewForwarder(spool, ForwarderConfig{
+		Endpoint:    server.URL,
+		Secret:      testHMACSecret,
+		BatchLimit:  4,
+		Concurrency: 2,
+	})
+	require.NoError(t, err)
+	result := make(chan struct {
+		stats ForwardStats
+		err   error
+	}, 1)
+	go func() {
+		stats, forwardErr := forwarder.ForwardOnce(context.Background())
+		result <- struct {
+			stats ForwardStats
+			err   error
+		}{stats: stats, err: forwardErr}
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first upload did not start")
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second concurrent upload did not start")
+	}
+	require.Equal(t, int64(2), maximum.Load())
+	close(release)
+
+	select {
+	case output := <-result:
+		require.NoError(t, output.err)
+		require.Equal(t, ForwardStats{Attempted: 4, Inserted: 4, Pending: 0}, output.stats)
+	case <-time.After(5 * time.Second):
+		t.Fatal("forwarder did not finish")
+	}
+	paths, err := spool.ListPending()
+	require.NoError(t, err)
+	require.Empty(t, paths)
+}

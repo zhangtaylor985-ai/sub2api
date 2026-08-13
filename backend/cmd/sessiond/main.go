@@ -94,7 +94,14 @@ func run() error {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		return server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			_ = server.Close()
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil
+			}
+			return err
+		}
+		return nil
 	case err := <-serveErr:
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil

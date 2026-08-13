@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -44,6 +45,13 @@ func run() error {
 	secret, err := requiredEnv(*secretEnv)
 	if err != nil {
 		return err
+	}
+	removed, err := prepareIngestTempDir(*tempDir)
+	if err != nil {
+		return err
+	}
+	if removed > 0 {
+		log.Printf("sessiond removed %d stale ingest temp files", removed)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -93,6 +101,31 @@ func run() error {
 		}
 		return err
 	}
+}
+
+func prepareIngestTempDir(directory string) (int, error) {
+	directory = strings.TrimSpace(directory)
+	if directory == "" {
+		return 0, errors.New("Session ingest temp directory is required")
+	}
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return 0, fmt.Errorf("create Session ingest temp directory: %w", err)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return 0, fmt.Errorf("list Session ingest temp directory: %w", err)
+	}
+	removed := 0
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || !strings.HasPrefix(entry.Name(), ".ingest-") || !strings.HasSuffix(entry.Name(), ".json.zst") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(directory, entry.Name())); err != nil {
+			return removed, fmt.Errorf("remove stale Session ingest temp file: %w", err)
+		}
+		removed++
+	}
+	return removed, nil
 }
 
 func envOr(name, fallback string) string {

@@ -22,6 +22,18 @@ func TestParseHour(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestExportCutoffAppliesSettlingDelayBeforeTruncation(t *testing.T) {
+	now := time.Date(2026, 8, 13, 8, 37, 0, 0, time.UTC)
+	require.Equal(t,
+		time.Date(2026, 8, 13, 6, 0, 0, 0, time.UTC),
+		exportCutoff(now, 2*time.Hour),
+	)
+	require.Equal(t,
+		time.Date(2026, 8, 13, 8, 0, 0, 0, time.UTC),
+		exportCutoff(now, 0),
+	)
+}
+
 func TestVerifyBatchWithBackend(t *testing.T) {
 	backend := &testArchiveBackend{name: "drive", durable: true}
 	batch := &sessiondelivery.ExportBatch{

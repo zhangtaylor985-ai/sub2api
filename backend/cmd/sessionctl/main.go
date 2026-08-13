@@ -188,6 +188,7 @@ func runExport(ctx context.Context, args []string) error {
 	purgeAfterVerify := flags.Bool("purge-after-verify", envBool("SESSION_AUTO_PURGE_ENABLED", false), "drop the ingest-hour partition after durable archive verification")
 	drain := flags.Bool("drain", false, "export oldest pending closed hours instead of one exact hour")
 	maxHours := flags.Int("max-hours", 48, "maximum closed hours to process in drain mode")
+	settleDelay := flags.Duration("settle-delay", envDuration("SESSION_EXPORT_SETTLE_DELAY", 2*time.Hour), "minimum delay after an ingest hour closes before drain mode can export it")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -196,6 +197,9 @@ func runExport(ctx context.Context, args []string) error {
 	}
 	if *maxHours <= 0 || *maxHours > 744 {
 		return errors.New("-max-hours must be between 1 and 744")
+	}
+	if *settleDelay < 0 || *settleDelay > 7*24*time.Hour {
+		return errors.New("-settle-delay must be between 0 and 168h")
 	}
 	store, err := openStoreFromEnv(ctx, *dsnEnv)
 	if err != nil {
@@ -232,7 +236,7 @@ func runExport(ctx context.Context, args []string) error {
 		return writeOutput(output)
 	}
 	results := make([]any, 0, *maxHours)
-	cutoff := time.Now().UTC().Truncate(time.Hour)
+	cutoff := exportCutoff(time.Now(), *settleDelay)
 	for len(results) < *maxHours {
 		hour, err := store.NextExportableHour(ctx, cutoff, *purgeAfterVerify)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -247,7 +251,16 @@ func runExport(ctx context.Context, args []string) error {
 		}
 		results = append(results, output)
 	}
-	return writeOutput(map[string]any{"processed": len(results), "hours": results})
+	return writeOutput(map[string]any{
+		"processed":    len(results),
+		"hours":        results,
+		"cutoff":       cutoff.Format(time.RFC3339),
+		"settle_delay": settleDelay.String(),
+	})
+}
+
+func exportCutoff(now time.Time, settleDelay time.Duration) time.Time {
+	return now.UTC().Add(-settleDelay).Truncate(time.Hour)
 }
 
 func exportOne(

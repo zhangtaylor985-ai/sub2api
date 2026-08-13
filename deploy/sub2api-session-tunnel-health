@@ -19,7 +19,7 @@ fi
 mapfile -t oldest_records < <(
   /usr/bin/find "${pending_dir}" -maxdepth 1 -type f -name '*.json.zst' -printf '%f\n' |
     /usr/bin/sort |
-    /usr/bin/head -n 16
+    /usr/bin/sed -n '1,16p'
 )
 if ((${#oldest_records[@]} == 0)); then
   /usr/bin/rm -f "${state_file}"

@@ -156,8 +156,13 @@ func (s *Store) Insert(ctx context.Context, envelope *Envelope) (bool, error) {
 	defer func() { _ = tx.Rollback() }()
 	ingestedAt := s.now().UTC()
 	hour := hourUTC(ingestedAt)
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, hour.Format(time.RFC3339)); err != nil {
+	var hourWritable bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT pg_try_advisory_xact_lock_shared(hashtext($1))`, hour.Format(time.RFC3339)).Scan(&hourWritable); err != nil {
 		return false, fmt.Errorf("lock Session insert hour: %w", err)
+	}
+	if !hourWritable {
+		return false, ErrExportHourFrozen
 	}
 	var duplicate bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM session_record_keys WHERE record_id = $1)`, envelope.RecordID).Scan(&duplicate); err != nil {

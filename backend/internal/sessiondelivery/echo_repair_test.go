@@ -120,3 +120,59 @@ func TestEchoRepairDoesNotCrossSessions(t *testing.T) {
 	require.NoError(t, repair.process(other))
 	require.Empty(t, requestAssistantThinkingSignature(t, other))
 }
+
+func TestEchoRepairAlignsDuplicateAssistantTextsByTurn(t *testing.T) {
+	repair := &echoRepair{}
+	turn1 := echoTestRecord("session_duplicate", "q1", "", true, "same answer", "sig-AAA")
+	require.NoError(t, repair.process(turn1))
+	turn2 := echoTestRecord("session_duplicate", "q2", "same answer", true, "same answer", "sig-BBB")
+	require.NoError(t, repair.process(turn2))
+
+	turn3 := echoTestRecord("session_duplicate", "q3", "", true, "done", "sig-CCC")
+	turn3.Request = json.RawMessage(`{
+		"model":"claude-opus-5","max_tokens":1024,"thinking":{"type":"adaptive"},
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"q1"}]},
+			{"role":"assistant","content":[{"type":"text","text":"same answer"}]},
+			{"role":"user","content":[{"type":"text","text":"q2"}]},
+			{"role":"assistant","content":[{"type":"text","text":"same answer"}]},
+			{"role":"user","content":[{"type":"text","text":"q3"}]}
+		]
+	}`)
+	require.NoError(t, repair.process(turn3))
+
+	var request struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content []struct {
+				Type      string `json:"type"`
+				Signature string `json:"signature"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal(turn3.Request, &request))
+	var signatures []string
+	for _, message := range request.Messages {
+		if message.Role != "assistant" {
+			continue
+		}
+		for _, block := range message.Content {
+			if block.Type == "thinking" {
+				signatures = append(signatures, block.Signature)
+			}
+		}
+	}
+	require.Equal(t, []string{"sig-AAA", "sig-BBB"}, signatures)
+}
+
+func TestAssistantContentKeySupportsToolOnlyTurns(t *testing.T) {
+	responseContent := []json.RawMessage{
+		json.RawMessage(`{"type":"thinking","thinking":"","signature":"sig"}`),
+		json.RawMessage(`{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/tmp/a"}}`),
+	}
+	requestContent := []json.RawMessage{
+		json.RawMessage(`{"input":{"file_path":"/tmp/a"},"name":"Read","id":"toolu_1","type":"tool_use"}`),
+	}
+	require.NotEmpty(t, assistantContentKey(responseContent))
+	require.Equal(t, assistantContentKey(responseContent), assistantContentKey(requestContent))
+}

@@ -1,6 +1,8 @@
 package sessiondelivery
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 )
@@ -23,7 +25,12 @@ import (
 // response.
 type echoRepair struct {
 	sessionID string
-	prior     map[string][]json.RawMessage // assistant text -> thinking blocks of that response
+	prior     []echoAssistantTurn
+}
+
+type echoAssistantTurn struct {
+	key      string
+	thinking []json.RawMessage
 }
 
 func (r *echoRepair) process(record *DeliveryRecord) error {
@@ -32,7 +39,7 @@ func (r *echoRepair) process(record *DeliveryRecord) error {
 	}
 	if record.SessionID != r.sessionID {
 		r.sessionID = record.SessionID
-		r.prior = make(map[string][]json.RawMessage)
+		r.prior = nil
 	}
 
 	request, err := decodeJSONObject(record.Request, "request")
@@ -65,7 +72,12 @@ func (r *echoRepair) repairMessages(request map[string]json.RawMessage) (bool, e
 		}
 	}
 	changed := false
-	for i, rawMsg := range messages {
+	priorIndex := len(r.prior) - 1
+	// Match backwards so duplicate assistant texts align with their most
+	// recent corresponding responses. This also naturally handles compacted
+	// histories that retain only a suffix of the original conversation.
+	for i := len(messages) - 1; i >= 0 && priorIndex >= 0; i-- {
+		rawMsg := messages[i]
 		var msg map[string]json.RawMessage
 		if err := json.Unmarshal(rawMsg, &msg); err != nil {
 			continue
@@ -79,14 +91,29 @@ func (r *echoRepair) repairMessages(request map[string]json.RawMessage) (bool, e
 				continue // string content or other shapes: leave untouched
 			}
 		}
-		if len(content) == 0 || contentHasBlock(content, "thinking") {
+		if len(content) == 0 {
 			continue
 		}
-		blocks, ok := r.prior[assistantTextKey(content)]
-		if !ok || len(blocks) == 0 {
+		key := assistantContentKey(content)
+		if key == "" {
 			continue
 		}
-		msg["content"] = mustJSON(append(append([]json.RawMessage{}, blocks...), content...))
+		matched := -1
+		for j := priorIndex; j >= 0; j-- {
+			if r.prior[j].key == key {
+				matched = j
+				break
+			}
+		}
+		if matched < 0 {
+			continue
+		}
+		turn := r.prior[matched]
+		priorIndex = matched - 1
+		if contentHasBlock(content, "thinking") || len(turn.thinking) == 0 {
+			continue
+		}
+		msg["content"] = mustJSON(append(append([]json.RawMessage{}, turn.thinking...), content...))
 		reencoded, err := json.Marshal(msg)
 		if err != nil {
 			return false, fmt.Errorf("re-encode assistant message: %w", err)
@@ -131,7 +158,10 @@ func (r *echoRepair) collectResponse(responseData json.RawMessage) error {
 	if len(thinking) == 0 {
 		return nil
 	}
-	r.prior[assistantTextKey(content)] = thinking
+	key := assistantContentKey(content)
+	if key != "" {
+		r.prior = append(r.prior, echoAssistantTurn{key: key, thinking: thinking})
+	}
 	return nil
 }
 
@@ -150,21 +180,41 @@ func contentHasBlock(content []json.RawMessage, blockType string) bool {
 	return false
 }
 
-// assistantTextKey concatenates visible text blocks in order; it is the echo
-// match key a real client would reproduce verbatim.
-func assistantTextKey(content []json.RawMessage) string {
-	key := ""
+// assistantContentKey prefers visible text because request and response
+// canonicalization may rewrite opaque tool IDs. Length-prefixing prevents
+// collisions between differently split text blocks. Tool-only turns fall back
+// to a canonical JSON digest of their non-thinking blocks.
+func assistantContentKey(content []json.RawMessage) string {
+	textKey := ""
+	var fallback []json.RawMessage
 	for _, block := range content {
-		var parsed struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		}
+		var parsed map[string]json.RawMessage
 		if err := json.Unmarshal(block, &parsed); err != nil {
 			continue
 		}
-		if parsed.Type == "text" {
-			key += parsed.Text
+		blockType := rawString(parsed["type"])
+		if blockType == "thinking" || blockType == "redacted_thinking" {
+			continue
+		}
+		if blockType == "text" {
+			text := rawString(parsed["text"])
+			textKey += fmt.Sprintf("%d:%s", len(text), text)
+		}
+		canonical, err := json.Marshal(parsed)
+		if err == nil {
+			fallback = append(fallback, canonical)
 		}
 	}
-	return key
+	if textKey != "" {
+		return "text:" + textKey
+	}
+	if len(fallback) == 0 {
+		return ""
+	}
+	canonical, err := json.Marshal(fallback)
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(canonical)
+	return "content:" + hex.EncodeToString(digest[:])
 }

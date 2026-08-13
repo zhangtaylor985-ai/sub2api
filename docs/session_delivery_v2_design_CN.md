@@ -57,10 +57,10 @@ Claude Code 请求直接规范化原 Anthropic body；Codex HTTP/WS 请求在实
 
 该输出能够满足字段、JSONL 组织和 decoded response 的交付格式兼容，但不构成“真实由 Claude Opus 5 推理”的来源证明。`thinking.signature` / `redacted_thinking.data` 的处理规则：上游真实返回的（当前 GPT 链路不存在）原样保留、逐字节不改；GPT 投影产生的无签名 thinking 块会被归一化为 Opus 5 `display=omitted` 形态（可见文本清空）并挂上合成签名；请求开启 thinking 而响应缺 thinking 块时，在 `content[0]` 补一个空文本带签名块。导出 validator 将“thinking 块必须带非空 signature、redacted_thinking 块必须带非空 data”作为硬校验。
 
-为使交付会话与真实 Claude Code × Opus 5 流量完全一致，交付侧还有两处投影归一化（均不触碰实时响应）：
+为使交付会话与真实 Claude Code × Opus 5 流量完全一致，交付侧还有三处投影归一化（均不触碰实时响应）：
 
-- **Codex 请求 thinking 归一**：共享转换器把 `reasoning.effort` 投影为老式 `thinking:{enabled,budget_tokens}`；Canonicalizer 在交付记录里将其归一为 Opus 5 时代的 `thinking:{type:"adaptive"}`（保留 `output_config.effort`）。Anthropic 协议来源的请求保持客户端原样。
-- **导出时回声修复**：真实 Claude Code 会把上一轮响应的 thinking 块（含签名）原样回传进下一轮请求的 messages；本网关客户端看不到 thinking 块，录制请求里自然没有。导出器按 `(session_id, occurred_at, request_id)` 有序流式处理，按 assistant 文本精确匹配，把前轮响应的 thinking 块补进后续请求的对应 assistant 消息；未开启 thinking 的请求、匹配不上（如客户端压缩历史）的消息保持原样。
+- **Codex 请求 thinking 归一**：共享转换器把 `reasoning.effort` 投影为老式 `thinking:{enabled,budget_tokens}`；Canonicalizer 在交付记录里将其归一为 Opus 5 时代的 `thinking:{type:"adaptive",display:"omitted"}`（保留 `output_config.effort`）。Anthropic 协议来源的请求保持客户端原样。
+- **导出时回声修复**：真实 Claude Code 会把上一轮响应的 thinking 块（含签名）原样回传进下一轮请求的 messages；本网关客户端看不到 thinking 块，录制请求里自然没有。导出器按 `(session_id, occurred_at, request_id)` 有序流式处理，优先按 assistant 文本、纯工具回合按规范化内容匹配，并按时序反向对齐重复文本，把前轮响应的 thinking 块补进后续请求的对应 assistant 消息；未开启 thinking 的请求或匹配不上的消息保持原样。
 - **导出时 usage 投影**：GPT 上游没有 Anthropic 提示缓存语义，录制的 usage 恒为 `cache_creation=0`，与真实 CC×Opus 5 流量（每轮 `input=2`、`read=前轮 prefix`、`creation=新增量`）形态差异巨大。导出器按会话模拟缓存链：token 总量取真实上游计数，`input_tokens` 投影为 2；首轮、客户端压缩（首条消息内容变化）或间隔超过 5 分钟 TTL 时 `read=0` 全量重建，否则 `read=前轮 prefix`、`creation=差值`；同时补齐 `server_tool_use`（按响应中 server_tool_use 块计数）、`service_tier`、`cache_creation{ephemeral_5m/1h}`、`inference_geo`、`iterations`、`speed` 全字段。该投影已用真实 Opus 5 会话的六轮 usage 序列逐值回放验证。
 
 ## 4. Session 与幂等 ID

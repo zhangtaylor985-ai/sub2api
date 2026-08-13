@@ -657,3 +657,52 @@ func TestRepairMissingSessionIDQuarantine(t *testing.T) {
 	require.True(t, strings.HasPrefix(repaired.SessionID, "session_"))
 	require.NoError(t, validateEnvelopeForStorage(repaired))
 }
+
+func TestRepairMissingSessionIDSpoolIncludesPending(t *testing.T) {
+	spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 16<<20)
+	require.NoError(t, err)
+	ids, err := NewIDGenerator(testHMACSecret, nil)
+	require.NoError(t, err)
+
+	envelope := &Envelope{
+		SchemaVersion: SchemaVersion,
+		RecordID:      "rec_pending_repair",
+		RequestID:     "req_pending_repair",
+		OccurredAt:    time.Date(2026, 8, 13, 7, 15, 0, 0, time.UTC),
+		CapturedAt:    time.Date(2026, 8, 13, 7, 15, 1, 0, time.UTC),
+		Source: SourceInfo{
+			Protocol: ProtocolOpenAIResponses,
+			Scope:    Scope{UserID: 4, APIKeyID: 5, GroupID: 6},
+		},
+		Original:  OriginalPayload{Request: mustJSONText([]byte("not-json"))},
+		Rejection: &Rejection{Code: "invalid_request_json", Message: "captured request is not valid JSON"},
+	}
+	_, err = spool.Write(envelope)
+	require.NoError(t, err)
+
+	dryRun, err := spool.RepairMissingSessionIDSpool(ids, false)
+	require.NoError(t, err)
+	require.Equal(t, 1, dryRun.PendingScanned)
+	require.Equal(t, 1, dryRun.PendingCandidates)
+	require.Equal(t, 1, dryRun.Candidates)
+	require.Zero(t, dryRun.PendingStaged)
+
+	applied, err := spool.RepairMissingSessionIDSpool(ids, true)
+	require.NoError(t, err)
+	require.Equal(t, 1, applied.PendingScanned)
+	require.Equal(t, 1, applied.PendingCandidates)
+	require.Equal(t, 1, applied.PendingStaged)
+	require.Equal(t, 1, applied.Scanned)
+	require.Equal(t, 1, applied.Candidates)
+	require.Equal(t, 1, applied.Repaired)
+
+	stats, err := spool.Stats()
+	require.NoError(t, err)
+	require.Equal(t, 1, stats.PendingRecords)
+	require.Zero(t, stats.QuarantinedRecords)
+	paths, err := spool.ListPending()
+	require.NoError(t, err)
+	repaired, err := spool.ReadEnvelope(paths[0])
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(repaired.SessionID, "session_"))
+}

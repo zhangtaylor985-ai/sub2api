@@ -53,11 +53,15 @@ type SpoolDetailedStats struct {
 }
 
 type QuarantineRepairStats struct {
-	Scanned    int  `json:"scanned"`
-	Candidates int  `json:"candidates"`
-	Repaired   int  `json:"repaired"`
-	Skipped    int  `json:"skipped"`
-	Applied    bool `json:"applied"`
+	Scanned           int  `json:"scanned"`
+	Candidates        int  `json:"candidates"`
+	Repaired          int  `json:"repaired"`
+	Skipped           int  `json:"skipped"`
+	PendingScanned    int  `json:"pending_scanned"`
+	PendingCandidates int  `json:"pending_candidates"`
+	PendingStaged     int  `json:"pending_staged"`
+	PendingSkipped    int  `json:"pending_skipped"`
+	Applied           bool `json:"applied"`
 }
 
 func NewSpool(dir string, maxBytes int64) (*Spool, error) {
@@ -287,6 +291,58 @@ func (s *Spool) Quarantine(path, reason string) (string, error) {
 	return destination, nil
 }
 
+// RepairMissingSessionIDSpool stages legacy invalid-JSON records that have not
+// reached the ingest service yet, then repairs them together with matching
+// quarantine records. Callers must stop the forwarder before apply=true.
+func (s *Spool) RepairMissingSessionIDSpool(ids *IDGenerator, apply bool) (QuarantineRepairStats, error) {
+	if ids == nil {
+		return QuarantineRepairStats{}, errors.New("session delivery ID generator is required")
+	}
+	paths, err := s.ListPending()
+	if err != nil {
+		return QuarantineRepairStats{}, err
+	}
+	pendingScanned := 0
+	pendingCandidates := 0
+	pendingStaged := 0
+	pendingSkipped := 0
+	for _, path := range paths {
+		pendingScanned++
+		envelope, readErr := s.ReadEnvelope(path)
+		if readErr != nil {
+			pendingSkipped++
+			continue
+		}
+		candidate, resolveErr := repairMissingSessionIDEnvelope(ids, envelope)
+		if resolveErr != nil {
+			return QuarantineRepairStats{}, resolveErr
+		}
+		if !candidate {
+			continue
+		}
+		pendingCandidates++
+		if !apply {
+			continue
+		}
+		if _, quarantineErr := s.Quarantine(path, "invalid_envelope"); quarantineErr != nil {
+			return QuarantineRepairStats{}, fmt.Errorf("stage pending Session repair: %w", quarantineErr)
+		}
+		pendingStaged++
+	}
+	stats, err := s.RepairMissingSessionIDQuarantine(ids, apply)
+	if err != nil {
+		return stats, err
+	}
+	stats.PendingScanned = pendingScanned
+	stats.PendingCandidates = pendingCandidates
+	stats.PendingStaged = pendingStaged
+	stats.PendingSkipped = pendingSkipped
+	if !apply {
+		stats.Candidates += pendingCandidates
+	}
+	return stats, nil
+}
+
 // RepairMissingSessionIDQuarantine repairs records created by the legacy
 // invalid-JSON early-return bug. It never touches other quarantine reasons or
 // records that fail the complete storage validator.
@@ -323,23 +379,11 @@ func (s *Spool) RepairMissingSessionIDQuarantine(ids *IDGenerator, apply bool) (
 			stats.Skipped++
 			continue
 		}
-		if envelope.SessionID != "" || envelope.Rejection == nil || envelope.Rejection.Code != "invalid_request_json" {
-			stats.Skipped++
-			continue
-		}
-		sessionID, resolveErr := ids.ResolveSession(
-			envelope.Source.Protocol,
-			envelope.Source.Scope,
-			"",
-			nil,
-			nil,
-			envelope.RequestID,
-		)
+		candidate, resolveErr := repairMissingSessionIDEnvelope(ids, envelope)
 		if resolveErr != nil {
-			return stats, fmt.Errorf("resolve quarantined Session ID: %w", resolveErr)
+			return stats, resolveErr
 		}
-		envelope.SessionID = sessionID
-		if validateErr := validateEnvelopeForStorage(envelope); validateErr != nil {
+		if !candidate {
 			stats.Skipped++
 			continue
 		}
@@ -359,6 +403,28 @@ func (s *Spool) RepairMissingSessionIDQuarantine(ids *IDGenerator, apply bool) (
 		stats.Repaired++
 	}
 	return stats, nil
+}
+
+func repairMissingSessionIDEnvelope(ids *IDGenerator, envelope *Envelope) (bool, error) {
+	if envelope == nil || envelope.SessionID != "" || envelope.Rejection == nil || envelope.Rejection.Code != "invalid_request_json" {
+		return false, nil
+	}
+	sessionID, err := ids.ResolveSession(
+		envelope.Source.Protocol,
+		envelope.Source.Scope,
+		"",
+		nil,
+		nil,
+		envelope.RequestID,
+	)
+	if err != nil {
+		return false, fmt.Errorf("resolve quarantined Session ID: %w", err)
+	}
+	envelope.SessionID = sessionID
+	if err := validateEnvelopeForStorage(envelope); err != nil {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (s *Spool) OpenCompressed(path string) (*os.File, error) {

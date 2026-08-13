@@ -75,7 +75,7 @@ func runRepairQuarantine(args []string) error {
 	if err != nil {
 		return err
 	}
-	stats, err := spool.RepairMissingSessionIDQuarantine(ids, *apply)
+	stats, err := spool.RepairMissingSessionIDSpool(ids, *apply)
 	if err != nil {
 		return err
 	}

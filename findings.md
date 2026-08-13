@@ -1071,3 +1071,25 @@
 - 经现生产 Oracle `161.153.91.242` 单跳代理的 8MiB 基准 66.43 秒仍未完成，同样差于直连；下一步仅测试已验证的 Oracle→回滚机→腾讯完整分段路径。
 - 用户再次明确目标是“把 Google Drive 上已经存在的交付文件按最新代码重生成”，不是恢复旧版被排除的数据。因此无需下载 2.62GB 原始 DB 快照；七个 Drive 对象合计 76,878,591 bytes，现有 delivery JSONL 足以重跑导出侧 echo/cache/usage 与严格 validator。
 - Drive 正式目录经生产 rclone 实时列举确认包含 05–11 UTC 七个 `.tar.zst` 对象；Google Drive connector 当前授权视图搜索为空，采用已验证的生产 rclone 通道下载和后续独立目录上传。
+
+## 2026-08-14 最终 Opus 5 黑盒保真验收
+
+- 最终 V4 由 10 个 UTC 小时归档组成，共 1,798 条交付记录、186 个 Session、23 个跨小时 Session；Claude 形态 1,319 条，Codex 转换形态 479 条。
+- 严格校验覆盖固定 `claude-opus-5` 模型投影、adaptive/display thinking、签名字节结构、逐字节多轮回声、tool/server-tool ID、cache/usage 与内部路由字段隔离；Google Drive 独立回读全量扫描的违规数为 0。
+- V4 幂等重建的 `changed_records=0`，10 个归档与首次 V4 的 SHA-256 全部一致；这证明转换是确定性的，不依赖随机修补。
+- 生产中 683 条历史 `request_conversion_failed` 先 dry-run 全部可修复，再显式 apply；修复后剩余转换拒绝为 0，且原始请求、响应、标识、时间和作用域均保留。
+- 14 UTC 正式批次完成生成、严格校验、Google Drive 上传、独立回读和数据库清理；258 条内部记录中交付 245 条、按规则排除 13 条。
+- V4 上传到独立私有目录 `Sub2API/session-delivery-rebuild-20260814-opus5-fidelity-v4-406b60377`，folder ID 为 `12hDL0A4EqMExqCACWCSfUoUDUu3dimKC`；10 个对象合计 88,072,892 bytes。
+- `rclone link` 曾临时创建公开权限，发现后立即撤销；权限元数据复核没有 `anyone` 类型，后续不再使用该命令获取目录链接。
+- 最终结论必须保留来源边界：实际上游仍为 GPT-5.6；验收确认的是交付文件尽可能贴近 Claude Code × Claude Opus 5 的黑盒形态，不是 Anthropic 推理来源证明。
+
+### V5 连续性追补
+
+- 15 UTC 正式对象自身通过结构、逐条字段与 SHA 校验，但把它直接接到 V4 05–14 后出现 262 个跨小时 thinking 回声差异；这证明最终门禁必须扫描完整时间序列，不能只验单个小时。
+- V5 仅改动 15 UTC 的 30 条记录，修复 262 处可由前序响应逐字节恢复的 thinking 回声；05–14 的 10 个 SHA 不变，usage 与其他投影字段不变。
+- V5 共 11 个对象、2,081 条记录、214 个 Session、26 个跨小时 Session；thinking 精确回声 22,018，严格违规 0。幂等复跑 `changed_records=0`，11/11 SHA 一致。
+- V5 私有 Drive 目录 ID 为 `1_UgrZfIyW73bUlBXOVPSkAdSpWzkNGOr`，11 个对象合计 100,226,299 bytes；Drive 权限元数据无 `anyone` 类型。
+- 生产 checkpoint 已从 V5 全序列重建：dry-run 不改库，apply 输入摘要 `d9ea28c466eec64d2de7abe998fd4fae097c344fd60fa827f5928d29792498d6`；新旧集合均为 214 个 Session，全部旧状态已事务备份。
+- reseed 后首个闭合小时 16 UTC 正式导出成功：783 条内部记录、772 条交付、11 条排除；Drive 对象大小 18,128,150 bytes、SHA-256 `ced8f070e6afdfa93b3229331103003d1065cce345bbaf2b3bfd650aa5ebf83b`，回读匹配后数据库该小时残留为 0。
+- 把 16 UTC 正式对象接到 V5 后，全序列审计覆盖 12 个归档、2,853 条记录、228 个 Session、29 个跨小时 Session；Claude/Codex 形态分别 1,734/1,119 条，严格违规 0，证明生产 checkpoint 与 V5 连续。
+- 16 UTC exporter 峰值约 259.3 MiB、swap 0；验收后定时器已恢复 active/waiting。隔离机根盘占用 40%、可用 23GB，继续适合在线增量导出。

@@ -14,14 +14,14 @@
 | 七批归档全量机器审计 | complete | 1,240 条、118 Session 全量扫描；发现并修复 1,038 条旧投影差异，V3 严格审计 0 违规 |
 | 分层代表性深检 | complete | Claude/Codex、low/medium/high/xhigh/max、工具、server tool、多轮/跨小时/cache 均有确定性样本；真实客户端合并审计 0 违规 |
 | 缺口处置与再生成 | complete | 补齐 toolu、OpenAI block、thinking-disabled、严格 validator、小时导出门禁及 Codex 0.147 custom tool 兼容；V3 幂等复跑逐字节一致 |
-| 独立回读与最终结论 | pending | Drive 同字节证据、抽样报告、已知边界与是否达到最终交付标准 |
+| 独立回读与最终结论 | complete | V5 11 个对象/2,081 条 Drive 独立回读；checkpoint 重建后的 16 UTC 正式对象继续串联为 12 个归档/2,853 条记录，严格审计 0 违规 |
 
 ### 安全边界
 
 - 真实 Claude 会话仅作只读结构对照，不 resume、不发送新请求，不输出用户正文、完整签名或本机敏感路径到交付报告。
 - 不修改用户指定不可妥协的 `backend/internal/sessiondelivery/signature.go`。
 - 不覆盖或删除 Drive 现有对象；若需重生成，使用新的版本化目录。
-- 本轮不清理本地或远端临时数据，清理需用户另行明确确认。
+- 本地与远端验收证据目录暂时保留；删除这些临时副本需用户另行明确确认，正式 Drive 对象和数据库回滚证据不得清理。
 
 ## 2026-08-13 历史交付文件按最新代码重生成
 
@@ -121,6 +121,13 @@
 | 2026-08-14 | Testcontainers 未自动识别 OrbStack socket并误报 rootless Docker | 显式使用当前可信 OrbStack socket 后，两项 PostgreSQL 18 导出生命周期测试均通过 |
 | 2026-08-14 | 本地黑盒专用 API Key 已过期且 Redis 保留旧认证快照 | 只对该本地 Key 临时延长两小时并失效单项缓存；测试后已恢复原到期时间并再次失效缓存 |
 | 2026-08-14 | 真实 Codex 0.147 使用 `custom_tool_call` 与数组型 `custom_tool_call_output.output`，旧捕获转换产生 rejection | 仅在 Session 投影层归一为 function-call 语义，free-form input 安全包装为对象；第三次真实 Codex 两轮均 deliverable |
+| 2026-08-14 | 生产 Codex 长会话还包含数组型 `function_call_output`、`agent_message`、namespace/flat `additional_tools` | 新增 Session-only 语义归一与 dry-run-first 数据库修复；683/683 恢复，剩余转换拒绝为 0 |
+| 2026-08-14 | 整点 exporter 严格门禁拦截一条旧 `adaptive` 但无 `display=omitted` 的记录 | 正常小时导出复用已验证的历史形态升级；PostgreSQL 测试通过，14 UTC 重跑上传/回读/purge 成功 |
+| 2026-08-14 | 手工 Drive 回读未继承 exporter 的代理环境而直连超时 | 停止重复只读进程，改用 systemd `EnvironmentFile` 与正式 Xray 出口；回读 10/10 SHA 和全量审计通过 |
+| 2026-08-14 | 为获取 folder ID 调用 `rclone link` 会创建公开链接 | 立即执行 `link --unlink`，权限元数据复核无 `anyone` 权限；最终目录保持 OAuth 账号私有 |
+| 2026-08-14 | 15 UTC 正式对象单文件校验通过，但与 V4 05–14 连续审计出现 262 处 thinking 回声缺失 | 暂停 timer，在本机重建 V5；仅 15 UTC 的 30 条记录变化，连续审计 2,081 条/0 违规，11 文件幂等 SHA 一致 |
+| 2026-08-14 | 生产 checkpoint 来源于旧正式对象，与 V5 的签名字节状态不一致 | 新增 dry-run-first 全序列 reseed；事务内备份全部 214 条旧状态并精确替换，旧表 dump 与数据库备份均保留 |
+| 2026-08-14 | `systemd-run --wait` 在远端单元成功退出后，本机 SSH 包装进程未结束 | 先以 systemd、结果文件和数据库事实确认远端完成，再只终止失去远端子进程的本地 SSH wrapper；未中断 Session 服务 |
 
 ---
 

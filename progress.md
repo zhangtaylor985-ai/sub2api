@@ -1089,3 +1089,27 @@
 - 已启用 Google Drive skill；连接器授权视图无法搜索到 rclone 创建的对象，因此回退到同一生产 rclone OAuth 通道，不要求用户重新授权。
 - 首次并行 `scp` 直接读取 projection seed 目录时，`ubuntu` 用户因 0700/0600 权限得到统一 `No such file`；没有文件被下载或远端修改。保持目录最小权限不变，改用受控 `sudo dd` 只读流到本地。
 - 首次复用 Oracle→回滚机→腾讯完整分段链路时，回滚机对腾讯 SSH host key 尚未登记，严格校验下安全失败；未使用 `StrictHostKeyChecking=no`，下一步先从本机可信 known_hosts 取精确 key 建立临时只读校验文件。
+
+## 2026-08-14 最终 V4 与生产收尾
+
+- 已发布 Session-only Codex 长会话兼容：数组型 function/custom-tool output、agent message、namespace 与 flat additional tools；实时 AI 请求/响应链路未改动。
+- 已运行生产拒绝恢复 dry-run（683/683 可修复、0 失败）与显式 apply（683 成功、0 stale、0 失败），复查 `request_conversion_failed=0`。
+- 已发布 Sub2API SHA-256 `2197157d3c430ba61da3054a99bec84e824e824e3d79da0cf781f183a9023ac9` 与 sessionctl SHA-256 `739f3e2ca2cbe29cf7085187d25afee75dafe75d9e51336dd107fb698e2b7b8e`；健康检查通过且 `NRestarts=0`。
+- 已为小时 exporter 增加 CPU、内存、调度优先级与 OOM 护栏；任一严格校验、上传或回读步骤失败仍禁止 purge。
+- 已在本机生成 V4 10 批、1,798 条记录并完成幂等重放；10/10 SHA 不变、严格违规 0。
+- 已将 V4 上传到新的 Google Drive 私有目录并下载到全新远端目录回读；10/10 SHA、总大小 88,072,892 bytes 与 1,798 条全量严格审计全部通过。
+- 已撤销验收期间误创建的公开分享权限，并通过权限元数据复核不存在 `anyone` 权限；旧 Drive 对象和 V3 均保留。
+- 已生成 `docs/session_delivery_final_fidelity_audit_20260814_CN.md`，明确最终交付优先级、统计、逐文件 SHA、生产证据、回滚点和“上游仍为 GPT-5.6”的诚实边界。
+
+### 2026-08-14 V5 连续性与 checkpoint 收口
+
+- 15 UTC 正式批次先因请求历史空签名被严格门禁拦截；补齐 exporter 的排队历史签名处理并通过 PostgreSQL 回归后，292 条中交付 283 条、排除 9 条，上传/回读/purge 成功。
+- 把正式 15 UTC 对象接到 V4 05–14 做连续审计时发现 262 处 thinking 回声差异；立即暂停 timer，保留 Session 入库，不把单文件通过误报为最终通过。
+- 在本机生成 V5：仅 15 UTC 的 30 条记录变化，修复 262 处逐字节回声；最终 2,081 条、214 Session、26 个跨小时 Session、0 违规。
+- V5 幂等复跑 `changed_records=0`，11/11 SHA 相同；上传到新私有 Drive 目录并回读，11/11 SHA 一致，总大小 100,226,299 bytes。
+- 新增 `sessionctl reseed-projection`：默认 dry-run；apply 前重新验证输入；与 exporter 串行；拒绝更新较新的 checkpoint；事务内备份全部旧状态并精确替换；保存完整输入哈希审计。
+- 生产 dry-run 退出成功且 reseed/backup 表均为 0；apply 结果为 11 归档、2,081 记录、214 Session，输入摘要 `d9ea28c466eec64d2de7abe998fd4fae097c344fd60fa827f5928d29792498d6`。
+- apply 前生成 checkpoint custom dump `/opt/sub2api/backups/session-projection-before-v5-reseed-20260813T184300Z.dump`，SHA-256 `5064046931c0efd0d1f9faa69495ca2cdf75a092ba730ac5ca755f50e2f4e0ca`；数据库内另保存全部 214 条旧 checkpoint。
+- 已完成 reseed 后首小时生产验证：16 UTC 批次 783/772/11，正式 Drive 对象 SHA-256 `ced8f070e6afdfa93b3229331103003d1065cce345bbaf2b3bfd650aa5ebf83b`，远端回读一致、批次 `purged`、数据库残留 0。
+- 已把 16 UTC 正式对象接到 V5 05–15 UTC 做最终连续审计：12 个归档、2,853 条记录、228 个 Session、29 个跨小时 Session、严格违规 0；Claude/Codex 两类均有抽样。
+- 已恢复 `sub2api-session-export.timer`；当前 active/waiting，最近 service result=success。最终健康复核：主应用和 sessiond 均 `NRestarts=0`，无 panic/fatal/OOM；隔离机磁盘 40%、可用 23GB。

@@ -45,6 +45,8 @@ func run() error {
 		return runExport(ctx, os.Args[2:])
 	case "validate":
 		return runValidate(os.Args[2:])
+	case "audit-fidelity":
+		return runAuditFidelity(ctx, os.Args[2:])
 	case "rebuild-archives":
 		return runRebuildArchives(ctx, os.Args[2:])
 	case "seed-projection":
@@ -374,6 +376,28 @@ func runValidate(args []string) error {
 	return writeOutput(validation)
 }
 
+func runAuditFidelity(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("audit-fidelity", flag.ContinueOnError)
+	inputDir := flags.String("input-dir", "", "directory containing chronological Session tar.zst archives")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*inputDir) == "" {
+		return errors.New("-input-dir is required")
+	}
+	report, err := sessiondelivery.AuditArchivesFidelity(ctx, *inputDir, sessiondelivery.DefaultPublicModel)
+	if err != nil {
+		return err
+	}
+	if err := writeOutput(report); err != nil {
+		return err
+	}
+	if !report.Passed {
+		return fmt.Errorf("fidelity audit found %d violation(s)", report.ViolationCount)
+	}
+	return nil
+}
+
 func runRebuildArchives(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("rebuild-archives", flag.ContinueOnError)
 	inputDir := flags.String("input-dir", "", "directory containing validated historical Session tar.zst archives")
@@ -504,7 +528,7 @@ func writeOutput(value any) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|export|validate|rebuild-archives|seed-projection|status|purge> [flags]")
+	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|export|validate|audit-fidelity|rebuild-archives|seed-projection|status|purge> [flags]")
 }
 
 func envOr(name, fallback string) string {

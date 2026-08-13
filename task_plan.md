@@ -1,5 +1,28 @@
 # Session Delivery 可观测性实施计划
 
+## 2026-08-14 最终 Claude Code × Opus 5 保真抽样验收
+
+### 验收优先级
+
+1. 交付记录尽可能贴近真实 Claude Code 客户端请求 Claude Opus 5 时的请求、响应、多轮回声、thinking、cache 与 usage 形态。
+2. 在第一优先级基础上，再满足 `docs/vendor-delivery-spec-claude-20260811_CN.md` 的文件组织、字段与基础质量要求。
+3. 真实上游仍为 GPT-5.6；本验收只确认交付文件的黑盒形态，不把投影字段表述为 Claude 来源证明。
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 真实基准与规范盘点 | complete | 真实 Claude Code 2.1.220 × Opus 5 签名、tool ID、adaptive/display、六轮 cache 序列均作为只读基准通过同一校验器 |
+| 七批归档全量机器审计 | complete | 1,240 条、118 Session 全量扫描；发现并修复 1,038 条旧投影差异，V3 严格审计 0 违规 |
+| 分层代表性深检 | complete | Claude/Codex、low/medium/high/xhigh/max、工具、server tool、多轮/跨小时/cache 均有确定性样本；真实客户端合并审计 0 违规 |
+| 缺口处置与再生成 | complete | 补齐 toolu、OpenAI block、thinking-disabled、严格 validator、小时导出门禁及 Codex 0.147 custom tool 兼容；V3 幂等复跑逐字节一致 |
+| 独立回读与最终结论 | pending | Drive 同字节证据、抽样报告、已知边界与是否达到最终交付标准 |
+
+### 安全边界
+
+- 真实 Claude 会话仅作只读结构对照，不 resume、不发送新请求，不输出用户正文、完整签名或本机敏感路径到交付报告。
+- 不修改用户指定不可妥协的 `backend/internal/sessiondelivery/signature.go`。
+- 不覆盖或删除 Drive 现有对象；若需重生成，使用新的版本化目录。
+- 本轮不清理本地或远端临时数据，清理需用户另行明确确认。
+
 ## 2026-08-13 历史交付文件按最新代码重生成
 
 ### 目标
@@ -95,6 +118,9 @@
 | 2026-08-13 | 内置浏览器阻止访问 localhost 非标准端口 | 保留 API/自动化验收结果，视觉验收移到发布后的正式 HTTPS 页面 |
 | 2026-08-13 | 首个闭合小时因 rclone 配置把 Google `client_secret` 错写为 obscured 值而刷新失败 | 用官方 token endpoint 证明凭据有效；升级到校验过 SHA-256 的 rclone v1.75.0，迁移到 0600 可写私有配置后重跑成功 |
 | 2026-08-13 | 生产批次后端名为 `google-drive-rclone`，状态 SQL 误按 `rclone` 精确匹配 | 统一复用生产 backend 常量并新增真实 PostgreSQL 聚合断言，避免 Drive 累计指标显示 0 |
+| 2026-08-14 | Testcontainers 未自动识别 OrbStack socket并误报 rootless Docker | 显式使用当前可信 OrbStack socket 后，两项 PostgreSQL 18 导出生命周期测试均通过 |
+| 2026-08-14 | 本地黑盒专用 API Key 已过期且 Redis 保留旧认证快照 | 只对该本地 Key 临时延长两小时并失效单项缓存；测试后已恢复原到期时间并再次失效缓存 |
+| 2026-08-14 | 真实 Codex 0.147 使用 `custom_tool_call` 与数组型 `custom_tool_call_output.output`，旧捕获转换产生 rejection | 仅在 Session 投影层归一为 function-call 语义，free-form input 安全包装为对象；第三次真实 Codex 两轮均 deliverable |
 
 ---
 

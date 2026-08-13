@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/thinkingsig"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -191,6 +192,7 @@ func TestHourlyExportPreservesProjectionStateAfterPurge(t *testing.T) {
 	secondHour := firstHour.Add(time.Hour)
 	first := buildCrossHourEnvelope(t, firstHour.Add(58*time.Minute), 1, 100)
 	second := buildCrossHourEnvelope(t, secondHour.Add(time.Minute), 2, 130)
+	firstSignature := responseThinkingSignature(t, first.Delivery)
 
 	store.now = func() time.Time { return firstHour.Add(10 * time.Minute) }
 	inserted, err := store.Insert(ctx, first)
@@ -248,7 +250,7 @@ func TestHourlyExportPreservesProjectionStateAfterPurge(t *testing.T) {
 
 	records := readDeliveryRecordsFromArchive(t, secondResult.Archive.Name)
 	require.Len(t, records, 1)
-	require.Equal(t, "sig-cross-hour-one", requestAssistantThinkingSignature(t, &records[0]))
+	require.Equal(t, firstSignature, requestAssistantThinkingSignature(t, &records[0]))
 	input, creation, read, output := usageNumbers(t, &records[0])
 	require.Equal(t, 2, input)
 	require.Equal(t, 30, creation)
@@ -282,7 +284,7 @@ func buildIntegrationAnthropicEnvelope(
 	status int,
 ) *Envelope {
 	t.Helper()
-	response := `{"id":"msg_anthropic","type":"message","role":"assistant","model":"gpt-5.6-sol","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}`
+	response := `{"id":"msg_anthropic","type":"message","role":"assistant","model":"gpt-5.6-sol","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":1}}`
 	if status != 200 {
 		response = `{"type":"error","error":{"type":"api_error","message":"failed"}}`
 	}
@@ -314,7 +316,7 @@ func buildIntegrationResponsesEnvelope(t *testing.T, canonicalizer *Canonicalize
 		CompletedAt:      started.Add(2 * time.Second),
 		HTTPStatus:       200,
 		RequestBody:      []byte(`{"model":"gpt-5.6-sol","instructions":"Be helpful.","input":[{"role":"user","content":[{"type":"input_text","text":"hello"}]}]}`),
-		ResponseBody:     []byte(`{"id":"resp_codex","object":"response","model":"gpt-5.6-sol","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`),
+		ResponseBody:     []byte(`{"id":"resp_codex","object":"response","model":"gpt-5.6-sol","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":10,"output_tokens":1}}`),
 	})
 	require.NoError(t, err)
 	return envelope
@@ -330,7 +332,7 @@ func buildCrossHourEnvelope(t *testing.T, started time.Time, turn, totalInput in
 		"messages":[{"role":"user","content":[{"type":"text","text":"first question"}]}]
 	}`
 	answer := "answer one"
-	signature := "sig-cross-hour-one"
+	signature := thinkingsig.Generate(DefaultPublicModel, 1480)
 	if turn == 2 {
 		request = `{
 			"model":"claude-opus-5",
@@ -344,7 +346,7 @@ func buildCrossHourEnvelope(t *testing.T, started time.Time, turn, totalInput in
 			]
 		}`
 		answer = "answer two"
-		signature = "sig-cross-hour-two"
+		signature = thinkingsig.Generate(DefaultPublicModel, 1480)
 	}
 	response := json.RawMessage(
 		`{"id":"msg_cross_hour_` + strconv.Itoa(turn) + `","type":"message","role":"assistant","model":"claude-opus-5",` +

@@ -32,6 +32,9 @@ type RebuildChangeStats struct {
 	ChangedRecords                  int64 `json:"changed_records"`
 	RequestShapeNormalized          int64 `json:"request_shape_normalized"`
 	CodexBootstrapFragmentsRemoved  int64 `json:"codex_bootstrap_fragments_removed"`
+	ToolIDsNormalized               int64 `json:"tool_ids_normalized"`
+	OpenAIContentBlocksNormalized   int64 `json:"openai_content_blocks_normalized"`
+	ResponseThinkingRemoved         int64 `json:"response_thinking_removed"`
 	ResponseThinkingCompleted       int64 `json:"response_thinking_completed"`
 	RequestThinkingEchoRepaired     int64 `json:"request_thinking_echo_repaired"`
 	RequestHistoryThinkingCompleted int64 `json:"request_history_thinking_completed"`
@@ -56,11 +59,12 @@ type RebuildArchiveResult struct {
 
 // RebuildArchivesResult is the complete offline rebuild report.
 type RebuildArchivesResult struct {
-	InputDir  string                 `json:"input_dir"`
-	OutputDir string                 `json:"output_dir"`
-	Sessions  int                    `json:"sessions"`
-	Changes   RebuildChangeStats     `json:"changes"`
-	Archives  []RebuildArchiveResult `json:"archives"`
+	InputDir      string                 `json:"input_dir"`
+	OutputDir     string                 `json:"output_dir"`
+	Sessions      int                    `json:"sessions"`
+	Changes       RebuildChangeStats     `json:"changes"`
+	Archives      []RebuildArchiveResult `json:"archives"`
+	FidelityAudit *FidelityAuditReport   `json:"fidelity_audit"`
 }
 
 type rebuildArchiveInput struct {
@@ -115,6 +119,14 @@ func RebuildArchives(ctx context.Context, config RebuildArchivesConfig) (*Rebuil
 		addRebuildStats(&result.Changes, rebuilt.Changes)
 	}
 	result.Sessions = len(lastTimestamp)
+	fidelityAudit, err := AuditArchivesFidelity(ctx, outputDir, publicModel)
+	if err != nil {
+		return nil, fmt.Errorf("audit rebuilt Session archives: %w", err)
+	}
+	result.FidelityAudit = fidelityAudit
+	if !fidelityAudit.Passed {
+		return nil, fmt.Errorf("rebuilt Session archives failed fidelity audit with %d violation(s)", fidelityAudit.ViolationCount)
+	}
 	return result, nil
 }
 
@@ -350,6 +362,23 @@ func buildReprojectedArchive(
 			if err != nil {
 				return err
 			}
+			requestShape, err := decodeJSONObject(record.Request, "request")
+			if err != nil {
+				return fmt.Errorf("decode record %s before fidelity normalization: %w", record.RequestID, err)
+			}
+			normalizedRequest, normalizedResponse, fidelityStats, err := normalizeProjectionFidelity(
+				record.Request,
+				record.Response.ResponseData,
+				fidelityNormalizationOptions{
+					CodexProjection:          isLegacyCodexDeliveryRequest(requestShape),
+					RemoveSignedWhenDisabled: true,
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("fidelity-normalize record %s: %w", record.RequestID, err)
+			}
+			record.Request = normalizedRequest
+			record.Response.ResponseData = normalizedResponse
 			requestChanged, bootstrapFragmentsRemoved, responseCompleted, err := normalizeHistoricalDelivery(record)
 			if err != nil {
 				return fmt.Errorf("normalize record %s: %w", record.RequestID, err)
@@ -378,6 +407,9 @@ func buildReprojectedArchive(
 				changes.RequestShapeNormalized++
 			}
 			changes.CodexBootstrapFragmentsRemoved += bootstrapFragmentsRemoved
+			changes.ToolIDsNormalized += fidelityStats.ToolIDsNormalized
+			changes.OpenAIContentBlocksNormalized += fidelityStats.OpenAIContentBlocksNormalized
+			changes.ResponseThinkingRemoved += fidelityStats.ResponseThinkingRemoved
 			if responseCompleted {
 				changes.ResponseThinkingCompleted++
 			}
@@ -737,6 +769,9 @@ func addRebuildStats(total *RebuildChangeStats, value RebuildChangeStats) {
 	total.ChangedRecords += value.ChangedRecords
 	total.RequestShapeNormalized += value.RequestShapeNormalized
 	total.CodexBootstrapFragmentsRemoved += value.CodexBootstrapFragmentsRemoved
+	total.ToolIDsNormalized += value.ToolIDsNormalized
+	total.OpenAIContentBlocksNormalized += value.OpenAIContentBlocksNormalized
+	total.ResponseThinkingRemoved += value.ResponseThinkingRemoved
 	total.ResponseThinkingCompleted += value.ResponseThinkingCompleted
 	total.RequestThinkingEchoRepaired += value.RequestThinkingEchoRepaired
 	total.RequestHistoryThinkingCompleted += value.RequestHistoryThinkingCompleted

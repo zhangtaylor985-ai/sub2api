@@ -482,6 +482,136 @@ func TestCanonicalizerResponsesProducesAnthropicDelivery(t *testing.T) {
 	require.Equal(t, float64(5), jsonPathNumber(t, envelope.Delivery.Response.ResponseData, "usage", "cache_read_input_tokens"))
 }
 
+func TestCanonicalizerResponsesNormalizesCodexCustomToolHistory(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{APIKeyID: 42},
+		GatewayRequestID: "gateway-codex-custom-tool-history",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"gpt-5.6-sol","reasoning":{"effort":"high"},
+			"input":[
+				{"type":"message","role":"user","content":[{"type":"input_text","text":"run a command"}]},
+				{"type":"custom_tool_call","call_id":"call_custom123","name":"exec","input":"{\"cmd\":\"printf ok\"}"},
+				{"type":"custom_tool_call_output","call_id":"call_custom123","output":[
+					{"type":"input_text","text":"ok"},
+					{"type":"input_text","text":"Process exited with code 0"}
+				]}
+			]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"resp_custom_history","object":"response","model":"gpt-5.6-sol","status":"completed",
+			"output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]}],
+			"usage":{"input_tokens":20,"output_tokens":4,"total_tokens":24}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	require.Contains(t, string(envelope.Original.Request), "custom_tool_call")
+	require.NotContains(t, string(envelope.Delivery.Request), "custom_tool_call")
+	require.NotContains(t, string(envelope.Delivery.Request), "input_text")
+
+	var request struct {
+		Messages []struct {
+			Content []struct {
+				Type      string          `json:"type"`
+				ID        string          `json:"id"`
+				ToolUseID string          `json:"tool_use_id"`
+				Input     json.RawMessage `json:"input"`
+				Content   json.RawMessage `json:"content"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Delivery.Request, &request))
+	var toolUseID, toolResultID, toolResultText string
+	for _, message := range request.Messages {
+		for _, block := range message.Content {
+			switch block.Type {
+			case "tool_use":
+				toolUseID = block.ID
+				require.JSONEq(t, `{"cmd":"printf ok"}`, string(block.Input))
+			case "tool_result":
+				toolResultID = block.ToolUseID
+				require.NoError(t, json.Unmarshal(block.Content, &toolResultText))
+			}
+		}
+	}
+	require.Equal(t, "toolu_custom123", toolUseID)
+	require.Equal(t, toolUseID, toolResultID)
+	require.Equal(t, "ok\n\nProcess exited with code 0", toolResultText)
+}
+
+func TestCanonicalizerResponsesNormalizesCodexCustomToolResponse(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{APIKeyID: 42},
+		GatewayRequestID: "gateway-codex-custom-tool-response",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"gpt-5.6-sol","reasoning":{"effort":"high"},
+			"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"run a command"}]}]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"resp_custom_tool","object":"response","model":"gpt-5.6-sol","status":"completed",
+			"output":[
+				{"type":"reasoning","summary":[]},
+				{"type":"custom_tool_call","id":"ct_1","call_id":"call_custom456","name":"exec","input":"{\"cmd\":\"printf ok\"}","status":"completed"}
+			],
+			"usage":{"input_tokens":20,"output_tokens":4,"total_tokens":24}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	require.Contains(t, string(envelope.Original.Response), "custom_tool_call")
+	require.NotContains(t, string(envelope.Delivery.Response.ResponseData), "custom_tool_call")
+	require.Equal(t, "thinking", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 0, "type"))
+	require.Equal(t, "tool_use", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 1, "type"))
+	require.Equal(t, "toolu_custom456", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 1, "id"))
+	require.Equal(t, "exec", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 1, "name"))
+	var response struct {
+		Content []struct {
+			Input map[string]string `json:"input"`
+		} `json:"content"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Delivery.Response.ResponseData, &response))
+	require.Len(t, response.Content, 2)
+	require.Equal(t, "printf ok", response.Content[1].Input["cmd"])
+	require.Equal(t, "tool_use", jsonPathString(t, envelope.Delivery.Response.ResponseData, "stop_reason"))
+
+	projected := *envelope.Delivery
+	usage := &usageProjector{}
+	require.NoError(t, usage.process(&projected))
+	require.NoError(t, ValidateDeliveryFidelity(&projected, DefaultPublicModel))
+}
+
+func TestNormalizeCodexSessionCustomToolWrapsFreeformInput(t *testing.T) {
+	normalized, err := normalizeCodexSessionResponsesResponse(json.RawMessage(`{
+		"id":"resp_custom","object":"response","model":"gpt-5.6-sol","status":"completed",
+		"output":[{"type":"custom_tool_call","call_id":"call_freeform","name":"exec","input":"printf ok"}]
+	}`))
+	require.NoError(t, err)
+	var response struct {
+		Output []struct {
+			Type      string `json:"type"`
+			Arguments string `json:"arguments"`
+		} `json:"output"`
+	}
+	require.NoError(t, json.Unmarshal(normalized, &response))
+	require.Len(t, response.Output, 1)
+	require.Equal(t, "function_call", response.Output[0].Type)
+	require.JSONEq(t, `{"input":"printf ok"}`, response.Output[0].Arguments)
+}
+
 func TestCanonicalizerResponsesStripsCodexBootstrapContextFromDeliveryOnly(t *testing.T) {
 	canonicalizer := newTestCanonicalizer(t)
 	request := []byte(`{

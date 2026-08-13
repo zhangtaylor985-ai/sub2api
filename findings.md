@@ -1,5 +1,18 @@
 # Session Delivery 可观测性发现记录
 
+## 2026-08-14 最终 Claude Code × Opus 5 保真审计
+
+- 真实本机 Claude Code × `claude-opus-5` 参考会话显示：工具 ID 为 `toolu_`，adaptive thinking 使用 `display=omitted`；同一组六轮缓存序列固定为 `input_tokens=2`，并按前轮 prefix 形成 creation/read 链。参考会话中的四个真实签名均通过当前结构校验器，校验过程不输出签名或正文。
+- 对前一版 Drive 重建候选全量深审发现 1,038 条记录仍有至少一项第一优先级差异：OpenAI `input_text/encrypted_content`、`call_*` 工具 ID、thinking-disabled 响应残留。该 Drive 目录保留作历史版本，不作为最终候选。
+- V3 采用 delivery-only 确定性归一：`call_*`/`fc_*` 在响应、请求历史和 tool result 中一致转换为 `toolu_`/`srvtoolu_`；Codex content 转为 Anthropic text 并移除 encrypted block；请求未启用 thinking 时删除已知 GPT 投影残留。实时客户端响应不变，用户指定的 `signature.go` 未修改。
+- 严格 validator 在基础 schema 之上校验 Opus 5 签名 envelope、thinking 首块及开关一致性、adaptive/display、工具 ID、OpenAI block 禁止项和完整 usage/cache/server-tool 字段；正式小时导出与离线重建都必须逐条通过，失败时不生成可上传归档。
+- V3 七个归档共 79,451,140 bytes、1,240 条、118 Session；全量审计结果：938 条 Claude shape、302 条 Codex shape、1,053 条 thinking 响应、14,446 个请求历史 thinking、12,690 次精确回声、761 条工具记录、32 条 server tool、811 次 cache continuation、429 次 restart，违规为 0。
+- V3 作为输入再次重建时全部变更计数为 0，七个 SHA-256 逐个一致，证明最新投影幂等。
+- 真实 Claude Code 2.1.220 本地工具会话产生三条 deliverable；最终投影有两条 thinking 响应、一次 byte-exact thinking 回声和一致 `toolu_`。
+- 真实 Codex 0.147 黑盒揭示其最新工具形态为 `custom_tool_call` 和数组型 `custom_tool_call_output.output`。Session 专用兼容层补齐后，真实两轮均 deliverable，公开请求/响应模型均为 `claude-opus-5`，OpenAI block 为 0，response/request history/tool result 的 `toolu_` 一致。
+- 合并两种真实客户端的最终投影审计为六条 deliverable、五条 thinking 响应、两次精确 thinking 回声、两条工具记录、一次 cache continuation、五次 restart，严格违规为 0。
+- 事实边界：这些证据确认的是“Claude Code × Opus 5 黑盒交付形态兼容”；实际推理上游仍为 GPT-5.6，合成 signature 不能作为 Anthropic 来源或服务器可解密认证证明。
+
 ## 2026-08-13 Google Drive 历史交付文件重生成
 
 - 用户纠正了处理对象：目标是 Google Drive 中已有的 05–11 UTC 交付归档，不是 Session 数据库。已停止数据库备份下载，后续重生成完全使用七个旧 `tar.zst` 文件作为输入。

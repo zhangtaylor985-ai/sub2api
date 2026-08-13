@@ -1,5 +1,17 @@
 # Session Delivery 可观测性进度记录
 
+## 2026-08-14 最终保真门禁与 Codex 0.147 兼容
+
+- 完成真实 Opus 5 只读基准、旧候选全量差异审计、V3 重建与幂等复跑；`signature.go` 保持未修改。
+- 新增严格交付 validator、全量 archive fidelity audit、`sessionctl audit-fidelity`、tool/content/thinking 归一和正式小时导出门禁；正式导出会同时处理部署前已入库记录，避免旧投影绕过。
+- V3 本地候选位于仓库外 `output-fidelity-v3`：7 个归档、1,240 条、118 Session、79,451,140 bytes；严格审计 0 违规，幂等复跑 7/7 SHA 相同。
+- 本地隔离 `127.0.0.1:28082` 真实 Claude Code 2.1.220 工具调用通过；投影审计确认 thinking/tool/cache 和 byte-exact echo。
+- 首次真实 Codex 0.147 请求本身成功，但两条 Session 记录因 `custom_tool_call` 和数组 output 被正确拒绝；没有把 rejection 当成成功交付。
+- 新增仅限 Session 保存链路的 Codex custom tool 归一，并补 free-form tool input 对象包装；第三次真实 Codex 两轮均 deliverable，合并 canary 投影严格审计 0 违规。
+- 本地测试 Key 仅临时延长两小时，测试完成后已恢复 `2026-08-13 10:22:22.538247+00` 原值；对应 Redis 缓存已失效，28082 canary 已停止。
+- 发布前门禁通过：`go test ./... -count=1`、Session/middleware race、`go vet ./...`、server/sessiond/sessionctl build、两项 PostgreSQL 18 integration、真实 Opus 5 reference test、V3 全量 audit。
+- 下一步：提交并推送、生产只读预检、ARM64 app 与 AMD64 sessionctl 原子发布、真实生产客户端 smoke、Drive 新版本目录上传及独立回读严格审计。
+
 ## 2026-08-13 Google Drive 历史交付文件重生成
 
 - 已按用户纠正停止数据库恢复方向；此前误启动的数据库 dump 下载在 17,203,200 bytes 时停止，未用于重生成，线上数据库无写入。

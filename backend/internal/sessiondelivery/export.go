@@ -312,6 +312,27 @@ func (e *Exporter) buildArchive(
 		if err := activateSession(delivery.SessionID); err != nil {
 			return fmt.Errorf("load projection state for record %s: %w", recordID, err)
 		}
+		// Records may have entered the database before the current capture
+		// normalizer was deployed. Apply the same deterministic delivery-only
+		// normalization at export time so queued records cannot retain Codex /
+		// OpenAI wire artifacts in a newly produced archive.
+		request, err := decodeJSONObject(delivery.Request, "request")
+		if err != nil {
+			return fmt.Errorf("decode delivery request for record %s: %w", recordID, err)
+		}
+		normalizedRequest, normalizedResponse, _, err := normalizeProjectionFidelity(
+			delivery.Request,
+			delivery.Response.ResponseData,
+			fidelityNormalizationOptions{
+				CodexProjection:          isLegacyCodexDeliveryRequest(request),
+				RemoveSignedWhenDisabled: true,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("normalize delivery fidelity for record %s: %w", recordID, err)
+		}
+		delivery.Request = normalizedRequest
+		delivery.Response.ResponseData = normalizedResponse
 		// Re-insert thinking-block echoes into later requests of the session
 		// before validation, so delivered conversations match real Claude
 		// Code multi-turn shape.
@@ -323,7 +344,7 @@ func (e *Exporter) buildArchive(
 		if err := usage.process(delivery); err != nil {
 			return fmt.Errorf("usage projection record %s: %w", recordID, err)
 		}
-		if err := ValidateDelivery(delivery, e.publicModel); err != nil {
+		if err := ValidateDeliveryFidelity(delivery, e.publicModel); err != nil {
 			return fmt.Errorf("validate delivery record %s: %w", recordID, err)
 		}
 		stats.Deliverable++

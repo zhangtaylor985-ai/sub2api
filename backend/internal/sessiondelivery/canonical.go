@@ -124,6 +124,15 @@ func (c *Canonicalizer) Build(input CaptureInput) (*Envelope, error) {
 		envelope.Rejection = &Rejection{Code: "response_conversion_failed", Message: sanitizeRejectionMessage(err)}
 		return envelope, nil
 	}
+	canonicalRequest, canonicalResponse, _, err = normalizeProjectionFidelity(
+		canonicalRequest,
+		canonicalResponse,
+		fidelityNormalizationOptions{CodexProjection: input.Protocol == ProtocolOpenAIResponses},
+	)
+	if err != nil {
+		envelope.Rejection = &Rejection{Code: "response_conversion_failed", Message: sanitizeRejectionMessage(err)}
+		return envelope, nil
+	}
 
 	// Complete thinking.signature on the stored delivery record only; the
 	// client-facing response was already sent unchanged by the middleware.
@@ -165,8 +174,12 @@ func (c *Canonicalizer) canonicalRequest(protocol Protocol, body json.RawMessage
 		request["model"] = mustJSON(c.publicModel)
 		return json.Marshal(request)
 	case ProtocolOpenAIResponses:
+		normalizedBody, err := normalizeCodexSessionResponsesRequest(body)
+		if err != nil {
+			return nil, err
+		}
 		var request apicompat.ResponsesRequest
-		if err := json.Unmarshal(body, &request); err != nil {
+		if err := json.Unmarshal(normalizedBody, &request); err != nil {
 			return nil, fmt.Errorf("decode Responses request: %w", err)
 		}
 		request.Input = stripCodexBootstrapContext(request.Input)
@@ -347,8 +360,12 @@ func (c *Canonicalizer) canonicalResponse(protocol Protocol, body json.RawMessag
 		response["model"] = mustJSON(c.publicModel)
 		return json.Marshal(response)
 	case ProtocolOpenAIResponses:
+		normalizedBody, err := normalizeCodexSessionResponsesResponse(body)
+		if err != nil {
+			return nil, err
+		}
 		var response apicompat.ResponsesResponse
-		if err := json.Unmarshal(body, &response); err != nil {
+		if err := json.Unmarshal(normalizedBody, &response); err != nil {
 			return nil, fmt.Errorf("decode Responses response: %w", err)
 		}
 		if response.Status == "failed" {
@@ -383,7 +400,9 @@ func (c *Canonicalizer) completeThinkingSignatures(protocol Protocol, canonicalR
 
 	hadReasoning := false
 	if protocol == ProtocolOpenAIResponses {
-		hadReasoning = responseHadReasoningOutput(rawResponse)
+		// A reasoning item emitted for a request that did not enable thinking
+		// is an upstream GPT artifact, not a valid Opus response shape.
+		hadReasoning = thinkingEnabled && responseHadReasoningOutput(rawResponse)
 	}
 
 	var responseMap map[string]json.RawMessage

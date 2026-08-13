@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/thinkingsig"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 )
@@ -25,6 +26,7 @@ func TestRebuildArchivesReplaysLatestProjectionAcrossHours(t *testing.T) {
 	secondHour := firstHour.Add(time.Hour)
 
 	first := historicalRebuildRecord(firstHour.Add(58*time.Minute), 1, 100)
+	firstSignature := responseThinkingSignature(t, first)
 	second := historicalRebuildRecord(secondHour.Add(time.Minute), 2, 130)
 	writeRebuildFixtureArchive(t, inputDir, firstHour, 2, []*DeliveryRecord{first})
 	writeRebuildFixtureArchive(t, inputDir, secondHour, 1, []*DeliveryRecord{second})
@@ -57,10 +59,10 @@ func TestRebuildArchivesReplaysLatestProjectionAcrossHours(t *testing.T) {
 	requireAdaptiveOmitted(t, firstRecords[0].Request)
 	requireAdaptiveOmitted(t, secondRecords[0].Request)
 	require.NotContains(t, string(firstRecords[0].Request), "budget_tokens")
-	require.Equal(t, "sig-rebuild-hour-one", responseThinkingSignature(t, &firstRecords[0]))
+	require.Equal(t, firstSignature, responseThinkingSignature(t, &firstRecords[0]))
 	secondSignature := responseThinkingSignature(t, &secondRecords[0])
 	require.NotEmpty(t, secondSignature)
-	require.Equal(t, "sig-rebuild-hour-one", requestAssistantThinkingSignature(t, &secondRecords[0]))
+	require.Equal(t, firstSignature, requestAssistantThinkingSignature(t, &secondRecords[0]))
 
 	input, creation, read, output := usageNumbers(t, &firstRecords[0])
 	require.Equal(t, 2, input)
@@ -194,7 +196,8 @@ func historicalRebuildRecord(timestamp time.Time, turn, totalInput int) *Deliver
 		"output_config":{"effort":"high"},
 		"messages":[{"role":"user","content":[{"type":"text","text":"first question"}]}]
 	}`
-	content := `[{"type":"thinking","thinking":"","signature":"sig-rebuild-hour-one"},{"type":"text","text":"answer one"}]`
+	content := fmt.Sprintf(`[{"type":"thinking","thinking":"","signature":%s},{"type":"text","text":"answer one"}]`,
+		mustJSONString(thinkingsig.Generate(DefaultPublicModel, 900)))
 	if turn == 2 {
 		request = `{
 			"model":"claude-opus-5",

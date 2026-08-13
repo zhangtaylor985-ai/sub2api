@@ -74,6 +74,50 @@ func TestSessionDeliveryCaptureLimitNeverChangesClientResponse(t *testing.T) {
 	require.Empty(t, paths)
 }
 
+type releasableResponseWriter struct {
+	gin.ResponseWriter
+}
+
+func TestSessionDeliveryRestoresWriterBeforeOuterPoolRelease(t *testing.T) {
+	recorder := newSessionDeliveryTestRecorder(t, 1<<20)
+	engine := gin.New()
+	observedStatus := 0
+	engine.Use(func(c *gin.Context) {
+		c.Next()
+		observedStatus = c.Writer.Status()
+	})
+	engine.Use(func(c *gin.Context) {
+		original := c.Writer
+		pooled := &releasableResponseWriter{ResponseWriter: original}
+		c.Writer = pooled
+		c.Next()
+		if c.Writer == pooled {
+			c.Writer = original
+		}
+		pooled.ResponseWriter = nil
+	})
+	engine.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 1, APIKeyID: 2, GroupID: 3})
+		c.Next()
+	})
+	engine.Use(SessionDelivery(recorder))
+	engine.POST("/v1/messages", func(c *gin.Context) {
+		_, _ = io.ReadAll(c.Request.Body)
+		c.Data(http.StatusOK, "application/json", []byte(`{"id":"msg_source","type":"message","role":"assistant","model":"gpt-5.6-sol","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}`))
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-8","messages":[{"role":"user","content":"hello"}]}`))
+	request = request.WithContext(context.WithValue(request.Context(), ctxkey.RequestID, "writer-restore-request"))
+	response := httptest.NewRecorder()
+
+	require.NotPanics(t, func() { engine.ServeHTTP(response, request) })
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, http.StatusOK, observedStatus)
+	paths, err := recorder.Spool().ListPending()
+	require.NoError(t, err)
+	require.Len(t, paths, 1)
+}
+
 type sessionCapturePolicyStub map[int64]bool
 
 func (p sessionCapturePolicyStub) ShouldCapture(apiKeyID int64) bool {

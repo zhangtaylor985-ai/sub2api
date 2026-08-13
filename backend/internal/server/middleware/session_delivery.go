@@ -81,13 +81,22 @@ func SessionDelivery(recorder *sessiondelivery.Recorder, policies ...SessionCapt
 			target:         responseFile,
 			limit:          recorder.CaptureMaxBytes(),
 		}
+		originalWriter := c.Writer
 		c.Writer = responseCapture
+		restoreWriter := func() {
+			if c.Writer == responseCapture {
+				c.Writer = originalWriter
+			}
+		}
+		defer restoreWriter()
 		startedAt := time.Now().UTC()
 		sessionHeader := firstSessionHeader(c)
 
 		c.Next()
 
 		completedAt := time.Now().UTC()
+		httpStatus := responseCapture.Status()
+		restoreWriter()
 		_ = requestFile.Close()
 		_ = responseFile.Close()
 		if requestCapture.captureErr != nil || responseCapture.captureErr != nil {
@@ -113,7 +122,7 @@ func SessionDelivery(recorder *sessiondelivery.Recorder, policies ...SessionCapt
 			SessionHeader:    sessionHeader,
 			StartedAt:        startedAt,
 			CompletedAt:      completedAt,
-			HTTPStatus:       c.Writer.Status(),
+			HTTPStatus:       httpStatus,
 		}, requestPath, responsePath)
 		if err != nil {
 			logger.FromContext(c.Request.Context()).Error("Session delivery spool write failed", zap.Error(err))

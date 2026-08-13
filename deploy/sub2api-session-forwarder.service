@@ -1,7 +1,7 @@
 [Unit]
 Description=Sub2API Session Delivery V2 Spool Forwarder
-After=network-online.target sub2api.service
-Wants=network-online.target
+After=network-online.target sub2api.service sub2api-session-tunnel.service
+Wants=network-online.target sub2api-session-tunnel.service
 
 [Service]
 Type=simple

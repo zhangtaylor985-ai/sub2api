@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${SESSION_TUNNEL_FORWARD:?SESSION_TUNNEL_FORWARD is required}"
+: "${SESSION_TUNNEL_TARGET:?SESSION_TUNNEL_TARGET is required}"
+
+proxy_jump=()
+if [[ -n "${SESSION_TUNNEL_PROXY_JUMP:-}" ]]; then
+  proxy_target="${SESSION_TUNNEL_PROXY_JUMP%:*}"
+  proxy_port="${SESSION_TUNNEL_PROXY_JUMP##*:}"
+  if [[ ! "${proxy_target}" =~ ^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+$ ||
+        ! "${proxy_port}" =~ ^[0-9]+$ ||
+        "${proxy_port}" -lt 1 || "${proxy_port}" -gt 65535 ]]; then
+    echo "SESSION_TUNNEL_PROXY_JUMP must use user@host:port" >&2
+    exit 2
+  fi
+  proxy_command="/usr/bin/ssh -i /var/lib/sub2api/session-delivery/private/session_tunnel_ed25519 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/lib/sub2api/session-delivery/private/ssh_known_hosts -p ${proxy_port} -W %h:%p ${proxy_target}"
+  proxy_jump=(-o "ProxyCommand=${proxy_command}")
+fi
+
+exec /usr/bin/ssh \
+  -NT \
+  -o BatchMode=yes \
+  -o IdentitiesOnly=yes \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile=/var/lib/sub2api/session-delivery/private/ssh_known_hosts \
+  -i /var/lib/sub2api/session-delivery/private/session_tunnel_ed25519 \
+  "${proxy_jump[@]}" \
+  -L "${SESSION_TUNNEL_FORWARD}" \
+  "${SESSION_TUNNEL_TARGET}"

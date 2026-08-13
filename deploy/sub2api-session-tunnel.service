@@ -1,0 +1,25 @@
+[Unit]
+Description=Sub2API Session Delivery V2 Restricted SSH Tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sub2api
+Group=sub2api
+UMask=0077
+EnvironmentFile=/etc/sub2api/session-tunnel.env
+ExecStart=/opt/sub2api/session-tunnel
+Restart=always
+RestartSec=3s
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

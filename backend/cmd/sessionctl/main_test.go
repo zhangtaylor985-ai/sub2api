@@ -34,6 +34,14 @@ func TestExportCutoffAppliesSettlingDelayBeforeTruncation(t *testing.T) {
 	)
 }
 
+func TestSplitNonEmptyEndpoints(t *testing.T) {
+	require.Equal(t,
+		[]string{"http://127.0.0.1:18092", "http://127.0.0.1:18093"},
+		splitNonEmpty(" http://127.0.0.1:18092, ,http://127.0.0.1:18093 "),
+	)
+	require.Empty(t, splitNonEmpty(" , "))
+}
+
 func TestVerifyBatchWithBackend(t *testing.T) {
 	backend := &testArchiveBackend{name: "drive", durable: true}
 	batch := &sessiondelivery.ExportBatch{

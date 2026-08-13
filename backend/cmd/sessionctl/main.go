@@ -122,6 +122,7 @@ func runForward(ctx context.Context, args []string) error {
 	spoolDir := flags.String("spool-dir", envOr("SESSION_DELIVERY_SPOOL_DIR", "/opt/sub2api/data/session-delivery/spool"), "gateway spool directory")
 	spoolMax := flags.Int64("spool-max-bytes", envInt64("SESSION_DELIVERY_SPOOL_MAX_BYTES", defaultSpoolMaxBytes), "spool byte limit")
 	endpoint := flags.String("endpoint", envOr("SESSION_INGEST_ENDPOINT", ""), "sessiond HTTPS base URL")
+	endpoints := flags.String("endpoints", envOr("SESSION_INGEST_ENDPOINTS", ""), "comma-separated sessiond HTTPS base URLs")
 	secretEnv := flags.String("secret-env", "SESSION_INGEST_SECRET", "environment variable containing the ingest HMAC secret")
 	batchLimit := flags.Int("batch-limit", 100, "maximum records per pass")
 	concurrency := flags.Int("concurrency", int(envInt64("SESSION_FORWARD_CONCURRENCY", 2)), "maximum concurrent ingest uploads")
@@ -142,8 +143,10 @@ func runForward(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	configuredEndpoints := splitNonEmpty(*endpoints)
 	forwarder, err := sessiondelivery.NewForwarder(spool, sessiondelivery.ForwarderConfig{
 		Endpoint:    *endpoint,
+		Endpoints:   configuredEndpoints,
 		Secret:      secret,
 		BatchLimit:  *batchLimit,
 		Concurrency: *concurrency,
@@ -173,6 +176,17 @@ func runForward(ctx context.Context, args []string) error {
 		case <-time.After(*interval):
 		}
 	}
+}
+
+func splitNonEmpty(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func runExport(ctx context.Context, args []string) error {

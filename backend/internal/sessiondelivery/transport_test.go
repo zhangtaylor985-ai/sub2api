@@ -91,6 +91,47 @@ func TestForwarderHonorsConcurrencyAndAcknowledgesBatch(t *testing.T) {
 	require.Empty(t, paths)
 }
 
+func TestForwarderDistributesWorkersAcrossIndependentEndpoints(t *testing.T) {
+	spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 8<<20)
+	require.NoError(t, err)
+	for index := range 4 {
+		_, err := spool.Write(&Envelope{
+			SchemaVersion: SchemaVersion,
+			RecordID:      fmt.Sprintf("rec_endpoint_%d", index),
+			CapturedAt:    time.Date(2026, 8, 13, 7, 15, index, 0, time.UTC),
+		})
+		require.NoError(t, err)
+	}
+
+	var firstCalls atomic.Int64
+	var secondCalls atomic.Int64
+	newServer := func(calls *atomic.Int64) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			calls.Add(1)
+			_, _ = io.Copy(io.Discard, request.Body)
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = writer.Write([]byte(`{"status":"inserted"}`))
+		}))
+	}
+	first := newServer(&firstCalls)
+	defer first.Close()
+	second := newServer(&secondCalls)
+	defer second.Close()
+
+	forwarder, err := NewForwarder(spool, ForwarderConfig{
+		Endpoints:   []string{first.URL, second.URL},
+		Secret:      testHMACSecret,
+		BatchLimit:  4,
+		Concurrency: 2,
+	})
+	require.NoError(t, err)
+	stats, err := forwarder.ForwardOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 4, stats.Inserted)
+	require.Positive(t, firstCalls.Load())
+	require.Positive(t, secondCalls.Load())
+}
+
 func TestForwarderKeepsOtherInFlightUploadsAfterTransientFailure(t *testing.T) {
 	spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 8<<20)
 	require.NoError(t, err)

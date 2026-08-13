@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${SESSION_TUNNEL_FORWARD:?SESSION_TUNNEL_FORWARD is required}"
 : "${SESSION_TUNNEL_TARGET:?SESSION_TUNNEL_TARGET is required}"
+
+forward_values="${SESSION_TUNNEL_FORWARDS:-${SESSION_TUNNEL_FORWARD:-}}"
+if [[ -z "${forward_values}" ]]; then
+  echo "SESSION_TUNNEL_FORWARDS or SESSION_TUNNEL_FORWARD is required" >&2
+  exit 2
+fi
+IFS=',' read -r -a forwards <<<"${forward_values}"
+if ((${#forwards[@]} == 0)); then
+  echo "No Session tunnel forwards were configured" >&2
+  exit 2
+fi
+for index in "${!forwards[@]}"; do
+  forwards[index]="${forwards[index]//[[:space:]]/}"
+  if [[ ! "${forwards[index]}" =~ ^[A-Za-z0-9._-]+:[0-9]+:[A-Za-z0-9._-]+:[0-9]+$ ]]; then
+    echo "Invalid Session tunnel forward: ${forwards[index]}" >&2
+    exit 2
+  fi
+done
 
 proxy_jump=()
 if [[ -n "${SESSION_TUNNEL_PROXY_JUMP:-}" ]]; then
@@ -18,17 +35,37 @@ if [[ -n "${SESSION_TUNNEL_PROXY_JUMP:-}" ]]; then
   proxy_jump=(-o "ProxyCommand=${proxy_command}")
 fi
 
-exec /usr/bin/ssh \
-  -NT \
-  -o BatchMode=yes \
-  -o IdentitiesOnly=yes \
-  -o IPQoS=none \
-  -o ExitOnForwardFailure=yes \
-  -o ServerAliveInterval=30 \
-  -o ServerAliveCountMax=3 \
-  -o StrictHostKeyChecking=yes \
-  -o UserKnownHostsFile=/var/lib/sub2api/session-delivery/private/ssh_known_hosts \
-  -i /var/lib/sub2api/session-delivery/private/session_tunnel_ed25519 \
-  "${proxy_jump[@]}" \
-  -L "${SESSION_TUNNEL_FORWARD}" \
-  "${SESSION_TUNNEL_TARGET}"
+pids=()
+cleanup() {
+  trap - EXIT TERM INT
+  if ((${#pids[@]} > 0)); then
+    kill "${pids[@]}" 2>/dev/null || true
+    wait "${pids[@]}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+trap 'exit 0' TERM INT
+
+for forward in "${forwards[@]}"; do
+  /usr/bin/ssh \
+    -NT \
+    -o BatchMode=yes \
+    -o IdentitiesOnly=yes \
+    -o IPQoS=none \
+    -o ExitOnForwardFailure=yes \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=3 \
+    -o StrictHostKeyChecking=yes \
+    -o UserKnownHostsFile=/var/lib/sub2api/session-delivery/private/ssh_known_hosts \
+    -i /var/lib/sub2api/session-delivery/private/session_tunnel_ed25519 \
+    "${proxy_jump[@]}" \
+    -L "${forward}" \
+    "${SESSION_TUNNEL_TARGET}" &
+  pids+=("$!")
+done
+
+set +e
+wait -n "${pids[@]}"
+exit_status=$?
+set -e
+exit "${exit_status}"

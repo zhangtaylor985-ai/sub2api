@@ -32,6 +32,7 @@ const (
 
 type ForwarderConfig struct {
 	Endpoint    string
+	Endpoints   []string
 	Secret      string
 	BatchLimit  int
 	Concurrency int
@@ -49,7 +50,7 @@ type ForwardStats struct {
 
 type Forwarder struct {
 	spool       *Spool
-	endpoint    string
+	endpoints   []string
 	secret      []byte
 	batchLimit  int
 	concurrency int
@@ -63,9 +64,22 @@ func NewForwarder(spool *Spool, config ForwarderConfig) (*Forwarder, error) {
 	if len(config.Secret) < minimumHMACSecretBytes {
 		return nil, fmt.Errorf("Session ingest secret must be at least %d bytes", minimumHMACSecretBytes)
 	}
-	endpoint, err := normalizeIngestEndpoint(config.Endpoint)
-	if err != nil {
-		return nil, err
+	rawEndpoints := config.Endpoints
+	if len(rawEndpoints) == 0 {
+		rawEndpoints = []string{config.Endpoint}
+	}
+	endpoints := make([]string, 0, len(rawEndpoints))
+	seenEndpoints := make(map[string]struct{}, len(rawEndpoints))
+	for _, rawEndpoint := range rawEndpoints {
+		endpoint, err := normalizeIngestEndpoint(rawEndpoint)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := seenEndpoints[endpoint]; exists {
+			continue
+		}
+		seenEndpoints[endpoint] = struct{}{}
+		endpoints = append(endpoints, endpoint)
 	}
 	if config.BatchLimit <= 0 {
 		config.BatchLimit = 100
@@ -82,7 +96,7 @@ func NewForwarder(spool *Spool, config ForwarderConfig) (*Forwarder, error) {
 	}
 	return &Forwarder{
 		spool:       spool,
-		endpoint:    endpoint,
+		endpoints:   endpoints,
 		secret:      []byte(config.Secret),
 		batchLimit:  config.BatchLimit,
 		concurrency: config.Concurrency,
@@ -118,14 +132,15 @@ func (f *Forwarder) ForwardOnce(ctx context.Context) (ForwardStats, error) {
 	}
 	var workers sync.WaitGroup
 	workers.Add(workerCount)
-	for range workerCount {
+	for workerIndex := range workerCount {
+		endpoint := f.endpoints[workerIndex%len(f.endpoints)]
 		go func() {
 			defer workers.Done()
 			for path := range jobs {
 				if ctx.Err() != nil {
 					return
 				}
-				status, err := f.forwardOne(ctx, path)
+				status, err := f.forwardOne(ctx, endpoint, path)
 				results <- forwardResult{status: status, err: err}
 				if err != nil {
 					// Stop only this worker. Other in-flight uploads may still
@@ -168,7 +183,7 @@ func (f *Forwarder) ForwardOnce(ctx context.Context) (ForwardStats, error) {
 	return stats, nil
 }
 
-func (f *Forwarder) forwardOne(ctx context.Context, path string) (string, error) {
+func (f *Forwarder) forwardOne(ctx context.Context, endpoint, path string) (string, error) {
 	sha, size, err := fileSHA256(path)
 	if err != nil {
 		return "", err
@@ -180,7 +195,7 @@ func (f *Forwarder) forwardOne(ctx context.Context, path string) (string, error)
 	defer file.Close()
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	signature := signIngest(f.secret, timestamp, sha)
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, f.endpoint, file)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, file)
 	if err != nil {
 		return "", err
 	}

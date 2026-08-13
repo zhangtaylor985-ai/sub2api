@@ -245,6 +245,18 @@ func (s *Spool) Write(envelope *Envelope) (string, error) {
 	return destination, nil
 }
 
+// HasCapacity checks the in-memory spool budget before an expensive request or
+// response capture starts. Write remains the authoritative final guard because
+// concurrent requests may consume the remaining budget after this snapshot.
+func (s *Spool) HasCapacity() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.usedBytes < s.maxBytes
+}
+
 func (s *Spool) ListPending() ([]string, error) {
 	entries, err := os.ReadDir(s.pendingDir)
 	if err != nil {

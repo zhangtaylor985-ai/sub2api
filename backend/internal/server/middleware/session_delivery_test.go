@@ -5,9 +5,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/sessiondelivery"
@@ -72,6 +74,53 @@ func TestSessionDeliveryCaptureLimitNeverChangesClientResponse(t *testing.T) {
 	paths, err := recorder.Spool().ListPending()
 	require.NoError(t, err)
 	require.Empty(t, paths)
+}
+
+func TestSessionDeliveryFullSpoolSkipsCaptureWithoutChangingClientResponse(t *testing.T) {
+	recorder, err := sessiondelivery.NewRecorder(sessiondelivery.RecorderConfig{
+		Enabled:         true,
+		PublicModel:     sessiondelivery.DefaultPublicModel,
+		HMACSecret:      sessionDeliveryTestSecret,
+		SpoolDir:        filepath.Join(t.TempDir(), "spool"),
+		SpoolMaxBytes:   1,
+		CaptureMaxBytes: 1 << 20,
+	})
+	require.NoError(t, err)
+	_, err = recorder.Spool().Write(&sessiondelivery.Envelope{
+		SchemaVersion: sessiondelivery.SchemaVersion,
+		RecordID:      "rec_fill_spool",
+		CapturedAt:    time.Now().UTC(),
+	})
+	require.ErrorIs(t, err, sessiondelivery.ErrSpoolFull)
+
+	// A one-byte spool with no committed records is technically available, so
+	// commit a one-byte placeholder to exercise the pre-capture capacity gate.
+	require.NoError(t, os.WriteFile(filepath.Join(recorder.Spool().Dir(), "pending", "placeholder.json.zst"), []byte("x"), 0o600))
+	recorder, err = sessiondelivery.NewRecorder(sessiondelivery.RecorderConfig{
+		Enabled:         true,
+		PublicModel:     sessiondelivery.DefaultPublicModel,
+		HMACSecret:      sessionDeliveryTestSecret,
+		SpoolDir:        recorder.Spool().Dir(),
+		SpoolMaxBytes:   1,
+		CaptureMaxBytes: 1 << 20,
+	})
+	require.NoError(t, err)
+
+	engine := gin.New()
+	engine.Use(SessionDelivery(recorder))
+	engine.POST("/v1/messages", func(c *gin.Context) {
+		_, _ = io.ReadAll(c.Request.Body)
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 1, APIKeyID: 2})
+		c.String(http.StatusOK, "client-ok")
+	})
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"x"}`)))
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, "client-ok", response.Body.String())
+	temporary, err := filepath.Glob(filepath.Join(recorder.Spool().TempDir(), "*"))
+	require.NoError(t, err)
+	require.Empty(t, temporary)
 }
 
 type releasableResponseWriter struct {

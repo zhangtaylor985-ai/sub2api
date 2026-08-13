@@ -40,12 +40,20 @@ func SessionDelivery(recorder *sessiondelivery.Recorder, policies ...SessionCapt
 			}
 		}
 		if sessionCaptureWebSocketRoute(c) {
+			if !recorder.CanCapture() {
+				c.Next()
+				return
+			}
 			c.Set(sessionDeliveryRecorderContextKey, recorder)
 			c.Next()
 			return
 		}
 		protocol, endpoint, eligible := sessionCaptureRoute(c)
 		if !eligible {
+			c.Next()
+			return
+		}
+		if !recorder.CanCapture() {
 			c.Next()
 			return
 		}

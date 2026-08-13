@@ -68,6 +68,10 @@ func (r *Recorder) CaptureMaxBytes() int64 {
 	return r.captureMaxBytes
 }
 
+func (r *Recorder) CanCapture() bool {
+	return r != nil && r.Enabled() && r.spool != nil && r.spool.HasCapacity()
+}
+
 func (r *Recorder) NewCaptureFile(kind string) (*os.File, error) {
 	if !r.Enabled() {
 		return nil, errors.New("session delivery recorder is disabled")

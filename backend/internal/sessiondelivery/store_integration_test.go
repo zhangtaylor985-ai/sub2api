@@ -126,6 +126,14 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "verified", batch.Status)
 	require.NotNil(t, batch.VerifiedAt)
+	storeStatus, err := store.Status(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), storeStatus.ArchiveFilesVerified)
+	require.Equal(t, durableResult.Archive.Size, storeStatus.ArchiveBytesUploaded)
+	require.Equal(t, int64(3), storeStatus.RecordsArchived)
+	require.Equal(t, int64(2), storeStatus.DeliveriesArchived)
+	require.Equal(t, int64(1), storeStatus.RejectedArchived)
+	require.NotNil(t, storeStatus.LastVerifiedAt)
 	_, err = store.NextExportableHour(ctx, hour.Add(time.Hour), false)
 	require.ErrorIs(t, err, sql.ErrNoRows)
 	nextHour, err = store.NextExportableHour(ctx, hour.Add(time.Hour), true)
@@ -163,7 +171,7 @@ type integrationDurableArchive struct {
 }
 
 func (b *integrationDurableArchive) Name() string {
-	return "test-durable-archive"
+	return rcloneArchiveBackendName
 }
 
 func (b *integrationDurableArchive) Durable() bool {

@@ -43,6 +43,9 @@
 - Drive 累计数量与字节只统计 `archive_backend=rclone` 且状态为 `verified/purged` 的批次；它代表 immutable 上传后完整回读 SHA-256 已成功，不依赖页面实时调用 Google Drive API。
 - 本地隔离 canary 使用独立 PostgreSQL、Redis 和 Linux `sessiond`，状态为 healthy；策略矩阵逐步实测 `all → exclude → selected → include → only → disabled → restore all` 全部符合预期。
 - 真实 PostgreSQL 18 集成测试解包归档并验证：Claude Messages 与 Codex Responses 原始数据可含 `gpt-5.6-sol`，交付 JSONL 中不含 `gpt-5.6`，请求与响应模型均为 `claude-opus-5`。
+- 首个生产闭合小时暴露 rclone 延迟故障：初始 access token 在有效期内能上传健康对象，但 token 到期后，手工配置把 `client_secret` 写成 obscured 值，rclone 将其作为 OAuth client secret 发送并收到 `invalid_client`。相同值经 `rclone reveal` 后直接请求 Google 官方 token endpoint 能成功刷新，排除 OAuth 项目、用户授权与 refresh token 故障。
+- 生产修复采用固定官方 rclone v1.75.0（ZIP 按官方 `SHA256SUMS` 校验）、`sub2api:sub2api 0600` 私有可写配置与明文 client secret 兼容格式；原系统 rclone、旧配置和 env 均保留回滚。05:00 UTC 批次随后上传、回读、verified、purged 全链路成功。
+- `RcloneArchiveBackend.Name()` 的真实持久值是 `google-drive-rclone`；可观测聚合必须复用该常量，不能猜测缩写 `rclone`。
 
 ---
 

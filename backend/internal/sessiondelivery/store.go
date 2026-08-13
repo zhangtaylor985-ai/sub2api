@@ -345,26 +345,26 @@ func (s *Store) Status(ctx context.Context) (StoreStatus, error) {
 	}
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FILTER (
-		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
 		       ),
 		       COALESCE(SUM(archive_size) FILTER (
-		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
 		       ), 0),
 		       COALESCE(SUM(record_count) FILTER (
-		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
 		       ), 0),
 		       COALESCE(SUM(delivery_count) FILTER (
-		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
 		       ), 0),
 		       COALESCE(SUM(rejected_count) FILTER (
-		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
 		       ), 0),
 		       COUNT(*) FILTER (WHERE status = 'failed'),
 		       COUNT(*) FILTER (WHERE status = 'exporting'),
 		       MAX(verified_at) FILTER (
-		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
 		       )
-		FROM session_export_batches`).Scan(
+		FROM session_export_batches`, rcloneArchiveBackendName).Scan(
 		&status.ArchiveFilesVerified,
 		&status.ArchiveBytesUploaded,
 		&status.RecordsArchived,

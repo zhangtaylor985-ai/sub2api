@@ -62,6 +62,8 @@
 | 2026-08-13 | 本地候选端口 18080/18082 已被既有服务占用 | 未停止既有进程，改用隔离端口 28082 |
 | 2026-08-13 | macOS 直跑 `sessiond` 无法读取 Linux `/proc`，状态端点正确降级 | 改用 Linux AMD64 容器运行候选 `sessiond`，完整状态链路恢复 healthy |
 | 2026-08-13 | 内置浏览器阻止访问 localhost 非标准端口 | 保留 API/自动化验收结果，视觉验收移到发布后的正式 HTTPS 页面 |
+| 2026-08-13 | 首个闭合小时因 rclone 配置把 Google `client_secret` 错写为 obscured 值而刷新失败 | 用官方 token endpoint 证明凭据有效；升级到校验过 SHA-256 的 rclone v1.75.0，迁移到 0600 可写私有配置后重跑成功 |
+| 2026-08-13 | 生产批次后端名为 `google-drive-rclone`，状态 SQL 误按 `rclone` 精确匹配 | 统一复用生产 backend 常量并新增真实 PostgreSQL 聚合断言，避免 Drive 累计指标显示 0 |
 
 ---
 

@@ -13,7 +13,10 @@ import (
 	"strings"
 )
 
-const rcloneErrorOutputLimit = 4096
+const (
+	rcloneErrorOutputLimit   = 4096
+	rcloneArchiveBackendName = "google-drive-rclone"
+)
 
 type RcloneArchiveConfig struct {
 	Binary string
@@ -51,7 +54,7 @@ func NewRcloneArchiveBackend(config RcloneArchiveConfig) (*RcloneArchiveBackend,
 }
 
 func (b *RcloneArchiveBackend) Name() string {
-	return "google-drive-rclone"
+	return rcloneArchiveBackendName
 }
 
 func (b *RcloneArchiveBackend) Durable() bool {

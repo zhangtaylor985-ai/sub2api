@@ -22,6 +22,13 @@
 - 本地隔离 canary 使用主库 PostgreSQL 55432、Session PostgreSQL 55433、Redis 56379、Linux `sessiond` 19091 和候选主站 28082；状态链路 healthy，策略矩阵所有模式与恢复默认均实测通过。
 - macOS 原生 `sessiond` 因没有 Linux `/proc` 返回 `status_unavailable`，改为 Linux AMD64 容器后通过；既有 18080/18082 服务均未停止。内置浏览器阻止本地非标准端口，视觉验收安排在正式 HTTPS 发布后完成。
 - 发布前生产只读检查：Oracle 主站 active/health ok，根盘 64%、约 11GB 可用；腾讯 Session 机 `sessiond`/export timer active/health ok，根盘 17%、约 32GB 可用。生产尚未替换或重启。
+- 生产备份完成：主库完整 dump、主站 binary/env，以及 Session 库完整 dump、sessiond binary 均已生成 SHA-256 并通过 `pg_restore --list`；候选 release SHA 与本地一致。
+- 隔离机已发布新 `sessiond`，binary sha256=`c6eb3570611397a06ad0b15fdddbe4ac0e8cf45263460681b84a3ff635f6f7f0`；HMAC 状态端点、health、timer 与 Cloudflare Tunnel 正常。
+- 新状态端点发现 05:00 UTC Drive 批次 failed；定位为 rclone 配置错误地保存 obscured client secret，access token 到期后 Google 拒绝刷新。正式 OAuth JSON 的 id/secret hash 与服务器一致，Google 官方 token endpoint 直接刷新成功，无需用户重新授权。
+- 从 rclone 官方下载 v1.75.0 Linux AMD64，ZIP 按官方 `SHA256SUMS` 验证；binary sha256=`f3f9aff817f9766029e50adf9a7963c169e475b8f10c7927823568a0d9443db7`。安装为独立 `/opt/sub2api/rclone-v1.75.0`，旧系统包保留。
+- rclone 配置迁到 `/var/lib/sub2api/session-delivery/private/rclone.conf`，owner `sub2api:sub2api`、mode 0600，可持久化 OAuth token；旧 config/env 已备份。只读 Drive 列表成功。
+- 重跑 05:00 UTC：624 条记录（209 deliverable、415 rejected）归档约 9.82 MB，Google Drive immutable 上传、完整回读 SHA、verified 和 purge 全部成功，export service Result=success。
+- 修正 Drive 聚合 SQL：生产后端名是 `google-drive-rclone`，此前误匹配 `rclone` 会显示累计 0；新增真实 PostgreSQL Status 断言并通过定向单元/集成测试。
 
 ---
 

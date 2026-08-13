@@ -199,9 +199,19 @@ func stripCodexBootstrapContext(input json.RawMessage) json.RawMessage {
 	filtered := make([]apicompat.ResponsesInputItem, 0, len(items))
 	changed := false
 	for _, item := range items {
-		if item.Role == "user" && isCodexBootstrapContext(item.Content) {
-			changed = true
-			continue
+		if item.Role == "user" {
+			if isCodexBootstrapContext(item.Content) {
+				changed = true
+				continue
+			}
+			strippedContent, partChanged := stripCodexBootstrapContentParts(item.Content)
+			if partChanged {
+				changed = true
+				if len(strippedContent) == 0 {
+					continue
+				}
+				item.Content = strippedContent
+			}
 		}
 		filtered = append(filtered, item)
 	}
@@ -213,6 +223,67 @@ func stripCodexBootstrapContext(input json.RawMessage) json.RawMessage {
 		return input
 	}
 	return encoded
+}
+
+// stripCodexBootstrapContentParts handles the shape used by current Codex
+// clients: the real user prompt and a standalone runtime context block are
+// separate input_text parts of the same user message. Removing the whole item
+// would lose the prompt, so only exact machine-owned wrapper blocks are
+// removed. Prose that merely mentions one of these tags remains untouched.
+func stripCodexBootstrapContentParts(content json.RawMessage) (json.RawMessage, bool) {
+	var parts []apicompat.ResponsesContentPart
+	if err := json.Unmarshal(content, &parts); err != nil {
+		return content, false
+	}
+
+	filtered := make([]apicompat.ResponsesContentPart, 0, len(parts))
+	changed := false
+	for _, part := range parts {
+		if part.Type == "input_text" && isStandaloneCodexBootstrapPart(part.Text) {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, part)
+	}
+	if !changed {
+		return content, false
+	}
+	if len(filtered) == 0 {
+		return nil, true
+	}
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return content, false
+	}
+	return encoded, true
+}
+
+func isStandaloneCodexBootstrapPart(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "# AGENTS.md instructions for ") {
+		return true
+	}
+
+	wrappers := [][2]string{
+		{"<environment_context>", "</environment_context>"},
+		{"<permissions instructions>", "</permissions instructions>"},
+		{"<collaboration_mode>", "</collaboration_mode>"},
+		{"<apps_instructions>", "</apps_instructions>"},
+		{"<plugins_instructions>", "</plugins_instructions>"},
+		{"<skills_instructions>", "</skills_instructions>"},
+		{"<recommended_plugins>", "</recommended_plugins>"},
+		{"<app-context>", "</app-context>"},
+		{"<multi_agent_mode>", "</multi_agent_mode>"},
+	}
+	for _, wrapper := range wrappers {
+		if strings.HasPrefix(trimmed, wrapper[0]) && strings.HasSuffix(trimmed, wrapper[1]) {
+			return true
+		}
+	}
+	return false
 }
 
 func isCodexBootstrapContext(content json.RawMessage) bool {

@@ -394,7 +394,10 @@ func TestCanonicalizerResponsesStripsCodexBootstrapContextFromDeliveryOnly(t *te
 				{"type":"input_text","text":"<environment_context>\n<cwd>/workspace</cwd>\n</environment_context>"}
 			]},
 			{"type":"message","role":"user","content":[{"type":"input_text","text":"Explain the literal <environment_context> tag."}]},
-			{"type":"message","role":"user","content":[{"type":"input_text","text":"Keep this actual user request."}]}
+			{"type":"message","role":"user","content":[
+				{"type":"input_text","text":"Keep this actual user request."},
+				{"type":"input_text","text":"<environment_context>\n<cwd>/runtime-only</cwd>\n</environment_context>"}
+			]}
 		]
 	}`)
 	response := []byte(`{
@@ -425,6 +428,7 @@ func TestCanonicalizerResponsesStripsCodexBootstrapContextFromDeliveryOnly(t *te
 	require.Contains(t, string(envelope.Delivery.Request), "Explain the literal")
 	require.Contains(t, string(envelope.Delivery.Request), "environment_context")
 	require.Contains(t, string(envelope.Delivery.Request), "Keep this actual user request")
+	require.NotContains(t, string(envelope.Delivery.Request), "/runtime-only")
 }
 
 func TestCanonicalizerResponsesSSERequiresTerminalResponse(t *testing.T) {

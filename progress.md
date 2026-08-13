@@ -1,4 +1,31 @@
-# Session Delivery V2 进度记录
+# Session Delivery 可观测性进度记录
+
+## 2026-08-13
+
+- 用户授权自行完成产品设计、实现与生产发布；已说明会修改前后端、隔离机服务和生产二进制，并可能产生一次短暂 systemd 重启。
+- 已完整读取 `planning-with-files`、`frontend-design`、`sub2api-production-inspection`、`sub2api-production-regression` 与 `sub2api-deploy` Skills。
+- `planning-with-files` catchup 因不支持 Codex 原生 session 跳过；通过 Git 和现有计划恢复上下文。
+- 确认主工作区存在大量无关业务改动；本任务保持在干净 Session V2 hourly worktree，不覆盖或提交其他现场。
+- 已建立六阶段计划、指标口径、安全边界、测试门禁和回滚要求；开始现状审计。
+- 创建并切换到 `codex/session-delivery-observability` 分支，父提交为已上线 Session V2 hourly `394764c3f`。
+- 完成第一轮代码审计：定位 `sessiond` HMAC handler、Session Store/batch 元数据、admin handler/wire/route 和前端 router/sidebar/API barrel；确定新增独立 admin-only 页面与服务端代理，不复用通用 dashboard。
+- 完成生产只读基线：记录腾讯/Oracle 的 CPU、内存、磁盘、服务、Session DB、记录与 spool 水位；确认尚无闭合小时归档批次属于正常状态。
+- 一次腾讯 `df /var/lib/sub2api/session-delivery` 因普通 SSH 用户无法遍历专用目录而使组合只读命令提前结束；改用 `sudo df` 后完成核验，未产生写入。
+- 完成第二轮结构审计：确认 config 默认/验证、Wire provider 链、admin route guard、API response 包装、前端 Ops 轮询模式和 Session spool 统计能力；API schema 与新增文件位置已收敛。
+- 新增 `docs/session_delivery_observability_CN.md`，固化页面信息架构、Drive/DB/spool 指标口径、HMAC 安全边界、状态判定、API schema 与性能约束；阶段 1 完成，进入隔离机状态端点实现。
+- 用户追加 Session 采集管理需求；已在不中断监控实现的前提下扩展计划，确定全局 `all/selected/disabled` 与 Key `inherit/include/exclude` 三态模型、热路径缓存和不追溯删除原则。
+- 已完成隔离机受 HMAC 保护的 `/v1/status`、Linux CPU/load/内存/swap/磁盘/uptime 采集、Session PostgreSQL/归档聚合与脱敏最近批次；无 payload 解压、无 Drive 在线扫描。
+- 已完成主站 admin-only 状态代理、gateway spool 元数据聚合、三态全局策略、Key 三态覆盖、“只记录此 Key”事务、审计表、原子内存快照和鉴权后 capture middleware。
+- 已完成 `/admin/session-delivery` 管理页面：15 秒非重叠轮询、手动刷新、资源与流水线状态、Drive verified 累计、批次台账、策略确认弹窗、Key 搜索分页、中文/英文文案及侧边栏入口。
+- 自动化门禁通过：`go test ./...`、前端 `vue-tsc`、定向 ESLint、Session API/页面 Vitest 5/5、`git diff --check`。
+- 真实 PostgreSQL 18 集成门禁通过：Session export/verify/purge 生命周期与主库 migration/repository 策略生命周期均成功，迁移重复执行保持幂等。
+- 本地隔离 canary 使用主库 PostgreSQL 55432、Session PostgreSQL 55433、Redis 56379、Linux `sessiond` 19091 和候选主站 28082；状态链路 healthy，策略矩阵所有模式与恢复默认均实测通过。
+- macOS 原生 `sessiond` 因没有 Linux `/proc` 返回 `status_unavailable`，改为 Linux AMD64 容器后通过；既有 18080/18082 服务均未停止。内置浏览器阻止本地非标准端口，视觉验收安排在正式 HTTPS 发布后完成。
+- 发布前生产只读检查：Oracle 主站 active/health ok，根盘 64%、约 11GB 可用；腾讯 Session 机 `sessiond`/export timer active/health ok，根盘 17%、约 32GB 可用。生产尚未替换或重启。
+
+---
+
+# Session Delivery V2 前置进度记录
 
 ## 2026-08-11
 

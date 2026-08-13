@@ -1,4 +1,71 @@
-# Session Delivery V2 实施计划
+# Session Delivery 可观测性实施计划
+
+## 当前任务目标（2026-08-13）
+
+在现有 Sub2API 管理后台上线“Session 交付监控与策略”页面，以 15 秒轮询提供一套不暴露数据库、OAuth 与 HMAC 凭据的实时可观测性，并支持动态控制全局或指定 API Key 的 Session 采集。监控或策略服务失败不得影响 AI 网关。
+
+## 当前任务范围
+
+- `sessiond` 新增受 HMAC 签名保护的只读状态端点，直接从 Linux `/proc`、`statfs` 与 Session PostgreSQL 聚合事实。
+- Sub2API 新增 admin-only 状态代理 API；浏览器不直连隔离机，也不持有监控密钥。
+- 管理后台新增独立监控页、侧边栏入口、15 秒自动刷新、手动刷新与异常/陈旧状态提示。
+- 新增三种全局采集模式：`all`、`selected`、`disabled`；API Key 使用 `inherit/include/exclude` 三态覆盖，支持搜索与批量修改。
+- 策略写入主业务 PostgreSQL，内存快照用于请求热路径；管理变更原子刷新快照，只影响后续请求，不删除历史数据。
+- 指标覆盖 CPU、load、内存、swap、根盘/数据盘、运行时间、数据库连接/大小、Session 记录与 payload、spool pending/quarantine、归档批次/文件/上传字节/最近成功与失败。
+- 先在本地和隔离 canary 验证，再构建 ARM64 二进制、备份并发布生产；保留明确回滚点。
+
+## 当前任务阶段
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 现状审计与指标口径设计 | complete | `docs/session_delivery_observability_CN.md`、API schema、数据来源、安全边界、页面信息架构 |
+| 2. 隔离机状态端点与聚合查询 | complete | HMAC GET、主机/DB/归档指标与测试 |
+| 3. Sub2API 监控代理与采集策略 | complete | 配置、迁移、内存快照策略、handler、route、错误降级与测试 |
+| 4. 管理后台监控与策略页面 | complete | 页面、导航、i18n、轮询、策略操作与响应式设计 |
+| 5. 全量回归与真实数据验收 | in_progress | 自动化与本地隔离 canary 已通过；待正式 HTTPS 页面和真实客户端发布门禁 |
+| 6. 生产部署与观察 | pending | sessiond/主应用发布、健康检查、回滚点和最终报告 |
+
+## 当前任务决策
+
+- 页面采用“工业控制台 / 交付流水线”方向：高信息密度但保持清晰，不复刻通用卡片仪表盘。
+- Google Drive 指标以数据库中已完成 immutable 上传并全量回读 SHA-256 的 `verified/purged` 批次为权威；页面请求不实时扫描 Drive，避免慢查询和 OAuth 依赖放大。
+- 生产 spool 指标由 Oracle 主机本地采集后随 admin API 合并；隔离机不反向访问生产主机。
+- 监控只读链路独立超时；远端不可用时返回局部降级状态，不能让管理后台或 AI 请求挂起。
+- 自动清理规则不变：只有 Drive 回读验证成功才 purge 对应闭合 UTC 小时分区。
+- 策略求值固定为：`disabled` 全部拒绝；否则 `exclude` 始终拒绝、`include` 始终允许；`inherit` 在 `all` 允许、在 `selected` 拒绝。未知/加载失败策略采用启动时持久快照；没有可用快照时 fail-closed 停止采集但不影响 AI 请求。
+
+## 当前任务验收标准
+
+- 非管理员无法访问监控 API；前端不出现 DSN、HMAC、OAuth token、原始请求内容或客户身份字段。
+- 管理员可实时切换全局模式，并对指定 API Key 设置继承/强制记录/永不记录或“一键只记录此 Key”；响应显示每个 Key 的实际结果和来源。
+- 策略切换不需要重启，且不会影响已存在的 spool、数据库记录和 Drive 文件。
+- CPU/内存/磁盘/数据库/Session/归档指标均有测试或线上只读事实校验；数字口径与 PostgreSQL/systemd/rclone 交叉一致。
+- 页面在正常、无归档、远端超时、存在 quarantine/失败批次、磁盘预警等状态下可读且不误报健康。
+- 15 秒轮询不会重叠请求，页面离开后停止；手动刷新、最近更新时间、UTC 小时口径明确。
+- `go test ./...`、必要竞态测试、frontend lint/typecheck/test/build、`git diff --check` 和 ARM64 build 均通过。
+- 上线后生产 `/health`、admin API、页面资源、Session forwarder、sessiond 与 export timer 均正常。
+
+## 当前任务风险与回滚
+
+- 资源风险：聚合 SQL 必须使用已有索引/批次表，禁止每 15 秒解压 payload 或扫描 Google Drive；远端端点设置超时和并发保护。
+- 安全风险：监控 API 复用 HMAC 认证但使用独立用途签名；日志不输出密钥或 DSN。
+- 策略风险：`selected`/`disabled` 会减少后续采集；UI 必须二次确认并显示预计受影响 Key 数，数据库更新与缓存发布失败时不得出现“界面成功、热路径未生效”。
+- 发布风险：sessiond 与主应用分别保留时间戳二进制/配置备份；任一步健康失败立即回滚该服务。
+- UI 风险：生产前端为 embed binary，必须先做浏览器回归和资源检查。
+
+## 当前任务错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-08-13 | `planning-with-files` catchup 不支持 Codex 原生 session | 使用 Git、现有 planning 文件与本轮上下文恢复；未修改代码 |
+| 2026-08-13 | 腾讯只读基线命令对 Session 数据目录执行非 sudo `df`，permission denied 后提前结束 | 改用 `sudo df` 并拆分查询，完成核验；无写入 |
+| 2026-08-13 | 本地候选端口 18080/18082 已被既有服务占用 | 未停止既有进程，改用隔离端口 28082 |
+| 2026-08-13 | macOS 直跑 `sessiond` 无法读取 Linux `/proc`，状态端点正确降级 | 改用 Linux AMD64 容器运行候选 `sessiond`，完整状态链路恢复 healthy |
+| 2026-08-13 | 内置浏览器阻止访问 localhost 非标准端口 | 保留 API/自动化验收结果，视觉验收移到发布后的正式 HTTPS 页面 |
+
+---
+
+# Session Delivery V2 前置实施记录
 
 ## 当前目标
 

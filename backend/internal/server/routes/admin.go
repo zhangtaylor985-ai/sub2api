@@ -62,6 +62,9 @@ func RegisterAdminRoutes(
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
+		// Session 交付与采集策略
+		registerSessionDeliveryRoutes(admin, h)
+
 		// 系统管理
 		registerSystemRoutes(admin, h)
 
@@ -132,6 +135,17 @@ func registerBusinessRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		business.GET("/reconciliation", h.Admin.Business.Reconciliation)
 		business.POST("/initialize", h.Admin.Business.InitializeDefaults)
 		business.POST("/snapshots/:month/close", h.Admin.Business.CloseMonth)
+	}
+}
+
+func registerSessionDeliveryRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	sessions := admin.Group("/session-delivery")
+	{
+		sessions.GET("/overview", h.Admin.SessionDelivery.Overview)
+		sessions.GET("/policy", h.Admin.SessionDelivery.GetPolicy)
+		sessions.PUT("/policy/mode", h.Admin.SessionDelivery.UpdateMode)
+		sessions.PUT("/policy/api-keys/:id", h.Admin.SessionDelivery.UpdateAPIKey)
+		sessions.POST("/policy/api-keys/:id/only", h.Admin.SessionDelivery.SetOnlyAPIKey)
 	}
 }
 

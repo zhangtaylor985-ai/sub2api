@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -34,6 +35,21 @@ type SpoolStats struct {
 	MaxBytes           int64 `json:"max_bytes"`
 	PendingRecords     int   `json:"pending_records"`
 	QuarantinedRecords int   `json:"quarantined_records"`
+}
+
+// SpoolDetailedStats contains file metadata only. Session payloads are never
+// opened while collecting observability data.
+type SpoolDetailedStats struct {
+	UsedBytes          int64      `json:"used_bytes"`
+	MaxBytes           int64      `json:"max_bytes"`
+	UsedPercent        float64    `json:"used_percent"`
+	PendingRecords     int        `json:"pending_records"`
+	PendingBytes       int64      `json:"pending_bytes"`
+	QuarantinedRecords int        `json:"quarantined_records"`
+	QuarantinedBytes   int64      `json:"quarantined_bytes"`
+	TemporaryFiles     int        `json:"temporary_files"`
+	TemporaryBytes     int64      `json:"temporary_bytes"`
+	OldestPendingAt    *time.Time `json:"oldest_pending_at,omitempty"`
 }
 
 func NewSpool(dir string, maxBytes int64) (*Spool, error) {
@@ -90,6 +106,59 @@ func (s *Spool) Stats() (SpoolStats, error) {
 		PendingRecords:     pending,
 		QuarantinedRecords: quarantined,
 	}, nil
+}
+
+// InspectSpool scans spool file metadata without decoding any Session record.
+// It is safe to call while the recorder and forwarder are active.
+func InspectSpool(dir string, maxBytes int64) (SpoolDetailedStats, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return SpoolDetailedStats{}, errors.New("session delivery spool directory is required")
+	}
+	if maxBytes <= 0 {
+		return SpoolDetailedStats{}, errors.New("session delivery spool max bytes must be positive")
+	}
+	stats := SpoolDetailedStats{MaxBytes: maxBytes}
+	oldest, err := inspectSpoolDirectory(filepath.Join(dir, "pending"), &stats.PendingRecords, &stats.PendingBytes, true)
+	if err != nil {
+		return SpoolDetailedStats{}, err
+	}
+	_, err = inspectSpoolDirectory(filepath.Join(dir, "quarantine"), &stats.QuarantinedRecords, &stats.QuarantinedBytes, false)
+	if err != nil {
+		return SpoolDetailedStats{}, err
+	}
+	_, err = inspectSpoolDirectory(filepath.Join(dir, "tmp"), &stats.TemporaryFiles, &stats.TemporaryBytes, false)
+	if err != nil {
+		return SpoolDetailedStats{}, err
+	}
+	stats.UsedBytes = stats.PendingBytes + stats.QuarantinedBytes
+	stats.UsedPercent = float64(stats.UsedBytes) * 100 / float64(maxBytes)
+	stats.OldestPendingAt = oldest
+	return stats, nil
+}
+
+func inspectSpoolDirectory(directory string, count *int, size *int64, trackOldest bool) (*time.Time, error) {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil, fmt.Errorf("list spool directory %s: %w", directory, err)
+	}
+	var oldest *time.Time
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json.zst") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("stat spool record: %w", err)
+		}
+		(*count)++
+		*size += info.Size()
+		if trackOldest && (oldest == nil || info.ModTime().Before(*oldest)) {
+			value := info.ModTime().UTC()
+			oldest = &value
+		}
+	}
+	return oldest, nil
 }
 
 func (s *Spool) Write(envelope *Envelope) (string, error) {

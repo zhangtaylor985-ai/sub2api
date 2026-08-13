@@ -19,11 +19,26 @@ var errSessionCaptureTooLarge = errors.New("Session capture exceeded configured 
 
 const sessionDeliveryRecorderContextKey = "session_delivery_recorder"
 
-func SessionDelivery(recorder *sessiondelivery.Recorder) gin.HandlerFunc {
+type SessionCapturePolicy interface {
+	ShouldCapture(apiKeyID int64) bool
+}
+
+func SessionDelivery(recorder *sessiondelivery.Recorder, policies ...SessionCapturePolicy) gin.HandlerFunc {
 	if recorder == nil || !recorder.Enabled() {
 		return func(c *gin.Context) { c.Next() }
 	}
+	var policy SessionCapturePolicy
+	if len(policies) > 0 {
+		policy = policies[0]
+	}
 	return func(c *gin.Context) {
+		if policy != nil {
+			subject, ok := GetAuthSubjectFromContext(c)
+			if !ok || !policy.ShouldCapture(subject.APIKeyID) {
+				c.Next()
+				return
+			}
+		}
 		if sessionCaptureWebSocketRoute(c) {
 			c.Set(sessionDeliveryRecorderContextKey, recorder)
 			c.Next()

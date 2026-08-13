@@ -54,6 +54,32 @@ type ExportBatch struct {
 	PurgedAt       *time.Time      `json:"purged_at,omitempty"`
 }
 
+// StoreStatus is a payload-free operational snapshot of the isolated Session
+// database. It is safe to expose to the admin observability API.
+type StoreStatus struct {
+	DatabaseSizeBytes      int64      `json:"database_size_bytes"`
+	ConnectionsActive      int        `json:"connections_active"`
+	ConnectionsTotal       int        `json:"connections_total"`
+	ConnectionsMax         int        `json:"connections_max"`
+	Partitions             int        `json:"partitions"`
+	RecordsInDatabase      int64      `json:"records_in_database"`
+	DeliverableInDatabase  int64      `json:"deliverable_in_database"`
+	RejectedInDatabase     int64      `json:"rejected_in_database"`
+	PayloadBytesInDatabase int64      `json:"payload_bytes_in_database"`
+	CurrentHourRecords     int64      `json:"current_hour_records"`
+	RecordsLast5Minutes    int64      `json:"records_last_5m"`
+	FirstIngestedAt        *time.Time `json:"first_ingested_at,omitempty"`
+	LastIngestedAt         *time.Time `json:"last_ingested_at,omitempty"`
+	ArchiveFilesVerified   int64      `json:"archive_files_verified"`
+	ArchiveBytesUploaded   int64      `json:"archive_bytes_uploaded"`
+	RecordsArchived        int64      `json:"records_archived"`
+	DeliveriesArchived     int64      `json:"deliveries_archived"`
+	RejectedArchived       int64      `json:"rejected_archived"`
+	FailedBatches          int64      `json:"failed_batches"`
+	ExportingBatches       int64      `json:"exporting_batches"`
+	LastVerifiedAt         *time.Time `json:"last_verified_at,omitempty"`
+}
+
 func OpenStore(ctx context.Context, dsn string) (*Store, error) {
 	dsn = strings.TrimSpace(dsn)
 	if dsn == "" {
@@ -270,6 +296,122 @@ func (s *Store) StatsForHour(ctx context.Context, hour time.Time) (HourStats, er
 		return HourStats{}, fmt.Errorf("count Session hour: %w", err)
 	}
 	return stats, nil
+}
+
+// Status returns aggregate metadata only. It never reads or decompresses the
+// captured Session payloads.
+func (s *Store) Status(ctx context.Context) (StoreStatus, error) {
+	var status StoreStatus
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT pg_database_size(current_database()),
+		       COUNT(*) FILTER (WHERE state = 'active'),
+		       COUNT(*),
+		       current_setting('max_connections')::integer
+		FROM pg_stat_activity
+		WHERE datname = current_database()`).Scan(
+		&status.DatabaseSizeBytes,
+		&status.ConnectionsActive,
+		&status.ConnectionsTotal,
+		&status.ConnectionsMax,
+	); err != nil {
+		return StoreStatus{}, fmt.Errorf("read Session database status: %w", err)
+	}
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM pg_inherits
+		WHERE inhparent = 'session_records'::regclass`).Scan(&status.Partitions); err != nil {
+		return StoreStatus{}, fmt.Errorf("count Session partitions: %w", err)
+	}
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*),
+		       COUNT(*) FILTER (WHERE deliverable),
+		       COUNT(*) FILTER (WHERE NOT deliverable),
+		       COALESCE(SUM(octet_length(payload_zstd)), 0),
+		       COUNT(*) FILTER (WHERE ingested_at >= date_trunc('hour', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),
+		       COUNT(*) FILTER (WHERE ingested_at >= NOW() - INTERVAL '5 minutes'),
+		       MIN(ingested_at),
+		       MAX(ingested_at)
+		FROM session_records`).Scan(
+		&status.RecordsInDatabase,
+		&status.DeliverableInDatabase,
+		&status.RejectedInDatabase,
+		&status.PayloadBytesInDatabase,
+		&status.CurrentHourRecords,
+		&status.RecordsLast5Minutes,
+		&status.FirstIngestedAt,
+		&status.LastIngestedAt,
+	); err != nil {
+		return StoreStatus{}, fmt.Errorf("read Session record status: %w", err)
+	}
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FILTER (
+		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		       ),
+		       COALESCE(SUM(archive_size) FILTER (
+		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		       ), 0),
+		       COALESCE(SUM(record_count) FILTER (
+		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		       ), 0),
+		       COALESCE(SUM(delivery_count) FILTER (
+		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		       ), 0),
+		       COALESCE(SUM(rejected_count) FILTER (
+		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		       ), 0),
+		       COUNT(*) FILTER (WHERE status = 'failed'),
+		       COUNT(*) FILTER (WHERE status = 'exporting'),
+		       MAX(verified_at) FILTER (
+		           WHERE archive_backend = 'rclone' AND status IN ('verified', 'purged')
+		       )
+		FROM session_export_batches`).Scan(
+		&status.ArchiveFilesVerified,
+		&status.ArchiveBytesUploaded,
+		&status.RecordsArchived,
+		&status.DeliveriesArchived,
+		&status.RejectedArchived,
+		&status.FailedBatches,
+		&status.ExportingBatches,
+		&status.LastVerifiedAt,
+	); err != nil {
+		return StoreStatus{}, fmt.Errorf("read Session archive status: %w", err)
+	}
+	return status, nil
+}
+
+func (s *Store) RecentExportBatches(ctx context.Context, limit int) ([]ExportBatch, error) {
+	if limit <= 0 {
+		limit = 12
+	}
+	if limit > 48 {
+		limit = 48
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT export_hour, status, record_count, delivery_count, rejected_count,
+		       archive_backend, archive_size, started_at, archived_at, verified_at, purged_at
+		FROM session_export_batches
+		ORDER BY export_hour DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list recent Session export batches: %w", err)
+	}
+	defer rows.Close()
+	batches := make([]ExportBatch, 0, limit)
+	for rows.Next() {
+		var batch ExportBatch
+		if err := rows.Scan(
+			&batch.Hour, &batch.Status, &batch.RecordCount, &batch.DeliveryCount, &batch.RejectedCount,
+			&batch.ArchiveBackend, &batch.ArchiveSize,
+			&batch.StartedAt, &batch.ArchivedAt, &batch.VerifiedAt, &batch.PurgedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan recent Session export batch: %w", err)
+		}
+		batches = append(batches, batch)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recent Session export batches: %w", err)
+	}
+	return batches, nil
 }
 
 func (s *Store) NextExportableHour(ctx context.Context, before time.Time, includeVerified bool) (time.Time, error) {

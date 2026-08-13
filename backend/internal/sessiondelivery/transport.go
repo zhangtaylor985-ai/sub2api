@@ -26,6 +26,7 @@ const (
 	ingestSHAHeader       = "X-Session-Content-SHA256"
 	ingestSignatureHeader = "X-Session-Signature"
 	ingestMediaType       = "application/vnd.sub2api.session-envelope+zstd"
+	statusSignatureDomain = "v1/status"
 )
 
 type ForwarderConfig struct {
@@ -226,6 +227,7 @@ type IngestHandler struct {
 	allowedSkew     time.Duration
 	diskPath        string
 	rejectDiskUsage int
+	hostCollector   HostStatusCollector
 }
 
 func NewIngestHandler(store *Store, config IngestHandlerConfig) (*IngestHandler, error) {
@@ -269,6 +271,7 @@ func NewIngestHandler(store *Store, config IngestHandlerConfig) (*IngestHandler,
 		allowedSkew:     config.AllowedSkew,
 		diskPath:        config.DiskPath,
 		rejectDiskUsage: config.RejectDiskUsage,
+		hostCollector:   &LinuxHostStatusCollector{},
 	}, nil
 }
 
@@ -282,6 +285,20 @@ func (h *IngestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			return
 		}
 		writeIngestJSON(writer, http.StatusOK, map[string]any{"status": "ok"})
+		return
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/status":
+		if !h.authenticateStatusRequest(request) {
+			writeIngestJSON(writer, http.StatusUnauthorized, map[string]any{"status": "error", "code": "invalid_signature"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(request.Context(), 5*time.Second)
+		defer cancel()
+		snapshot, err := BuildStatusSnapshot(ctx, h.store, h.hostCollector, h.diskPath, h.rejectDiskUsage)
+		if err != nil {
+			writeIngestJSON(writer, http.StatusServiceUnavailable, map[string]any{"status": "error", "code": "status_unavailable"})
+			return
+		}
+		writeIngestJSON(writer, http.StatusOK, snapshot)
 		return
 	case request.Method != http.MethodPost || request.URL.Path != "/v1/records":
 		writeIngestJSON(writer, http.StatusNotFound, map[string]any{"status": "error", "code": "not_found"})
@@ -381,6 +398,17 @@ func (h *IngestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	writeIngestJSON(writer, http.StatusOK, map[string]any{"status": "duplicate", "record_id": envelope.RecordID})
 }
 
+func (h *IngestHandler) authenticateStatusRequest(request *http.Request) bool {
+	timestamp := strings.TrimSpace(request.Header.Get(ingestTimestampHeader))
+	signature := strings.TrimSpace(request.Header.Get(ingestSignatureHeader))
+	requestTime, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil || time.Since(requestTime).Abs() > h.allowedSkew {
+		return false
+	}
+	expected := signStatus(h.secret, timestamp)
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(signature)) == 1
+}
+
 func DiskUsagePercent(path string) (int, error) {
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(strings.TrimSpace(path), &stat); err != nil {
@@ -399,6 +427,14 @@ func signIngest(secret []byte, timestamp, contentSHA string) string {
 	_, _ = mac.Write([]byte(timestamp))
 	_, _ = mac.Write([]byte{'\n'})
 	_, _ = mac.Write([]byte(contentSHA))
+	return "v1=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func signStatus(secret []byte, timestamp string) string {
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(statusSignatureDomain))
+	_, _ = mac.Write([]byte{'\n'})
+	_, _ = mac.Write([]byte(timestamp))
 	return "v1=" + hex.EncodeToString(mac.Sum(nil))
 }
 

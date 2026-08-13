@@ -1,4 +1,52 @@
-# Session Delivery V2 发现记录
+# Session Delivery 可观测性发现记录
+
+## 2026-08-13 初始产品与技术口径
+
+- 用户要求在现有线上 Sub2API 管理 UI 中实时查看隔离 DB 服务器与 Session 交付流水线，授权完成设计、实现、测试和发布。
+- 监控页面需要回答三类问题：机器是否健康、Session 是否持续入库/有无积压、已经有多少小时批次和字节通过 Google Drive 回读验证并可安全清理。
+- 不应在每次页面刷新时调用 Google Drive 列表 API；`session_export_batches` 的 `verified/purged + archive_backend=rclone + archive_size` 已经代表 Drive immutable 上传与回读成功，是稳定且低成本的事实源。
+- 浏览器不能直连 `session-ingest.claudepool.com` 或获得 HMAC secret；应由 admin-only Sub2API API 服务端签名访问并返回脱敏聚合。
+- 现有 Session V2 已按 UTC 小时分区，归档批次在 purge 后仍保留小型元数据，因此累计归档数量/字节不会随分区删除丢失。
+- 生产主工作区包含大量其他业务未提交改动；本任务继续在干净 worktree `/Users/taylor/sdk/sub2api-session-delivery-v2-hourly` 基于 `394764c3f` 实施。
+- `sessiond` 当前只有公开 `/health` 与 HMAC `POST /v1/records`；现有签名串是 `v1 + timestamp + body SHA-256`，可扩展为独立 `v1/status` 请求签名，避免弱化 ingest 认证。
+- Session `Store` 已持有 PostgreSQL 连接池，`session_export_batches` 在 `verified/purged` 后保留 `record_count/delivery_count/rejected_count/archive_backend/archive_size/verified_at/purged_at`，无需解压 payload 即可聚合归档指标。
+- 主应用 admin 路由已有统一 `requiresAdmin` 保护和 handler/wire 组织；新增独立 service/handler 更符合现有依赖注入方式，不应把远端 HTTP 调用塞进 dashboard 现有业务聚合。
+- 前端已有 `/admin/ops` 通用运维页面，但 Session 数据是独立交付域；新页面应放在管理导航靠近“运维监控”，使用独立 `/admin/session-delivery` 路由，避免把跨主机状态混入主业务 dashboard。
+- 前端采用 Vue 3、组合式 API、admin API barrel、懒加载路由与集中 i18n；页面可按现有框架实现，无需引入图表库。资源水位适合用 CSS 仪表/流水线表达，减少额外 bundle 和实时图表误导。
+- 2026-08-13 05:18Z 线上事实：腾讯 2 vCPU/2.06 GB RAM，load 0.01，根盘 42.16 GB、使用 16%、可用 34.00 GB；Session PostgreSQL 约 35.9 MB、2 个连接（1 active）。
+- 同一时点隔离库有 109 条记录，其中 37 可交付、72 rejected、压缩 payload 约 26.45 MB；当前均在未闭合 05:00 UTC 小时，因此 `session_export_batches` 为空是正常状态，不能在 UI 中误报“归档故障”。
+- Oracle 生产机根盘使用 64%、可用约 11.60 GB；主应用/forwarder/PostgreSQL/Redis/Caddy 均 active，spool pending 2 条约 0.75 MB、quarantine 0。
+- `Spool.Stats()` 已提供总 used/max 与 pending/quarantine 条数，但没有分目录字节和最老 pending age；为可观测性应补充只读 `DetailedStats`，不解压文件。
+- 主配置现有 `SessionDeliveryConfig` 只有 capture 参数；可在同一命名空间增加 observability endpoint/secret/timeout，保持默认关闭且不影响 capture 的既有验证。
+- sessiond systemd 已通过 `ProtectSystem=strict`、`PrivateDevices`、专用用户运行，数据目录可读写；主机指标读取 `/proc` 和 `statfs` 不需要额外权限。
+- 现有 `sessionctl status` 只支持单一 UTC 小时，不能直接满足累计/最近批次/主机资源监控；应在 Store 新增一次聚合查询和有界最近批次查询，并由 sessiond 状态端点统一返回。
+- Admin 依赖注入由 `service.ProviderSet -> admin.NewXHandler -> ProvideAdminHandlers -> RegisterAdminRoutes` 串联；新组件需要同时更新 Wire provider、聚合 struct 和 `wire_gen.go`，并补 wire 构造测试。
+- 前端通用 Ops 页面功能很重且带 feature flag；Session 页面选择独立轻量 15 秒轮询，复用 `AppLayout`、API client、集中 i18n 与现有 admin route guard。
+- API 响应沿用 `response.Success` 的 `{code,message,data}` 包装；前端 API module 返回 `data.data`，避免新接口形成例外。
+- 状态聚合的建议结构已经收敛为：`health`（overall/observed_at/warnings）、`host`、`database`、`sessions`、`delivery`、`recent_batches`、`gateway_spool`；其中 spool 在 Oracle 本地合并，其他字段来自签名远端。
+
+## 2026-08-13 Session 采集策略补充需求
+
+- 用户要求可从线上管理 UI 全局停止/恢复 Session 记录，并支持对特定 API Key 排除记录或进入“只记录指定 Key”的范围。
+- 单纯给 API Key 一个布尔值无法同时表达“全局记录时排除”和“selected 模式时纳入”；最小且无歧义的模型是全局 `all/selected/disabled` + Key `inherit/include/exclude`。
+- 求值矩阵：`disabled` 无条件不采集；`exclude` 在其他模式下不采集；`include` 在 `all/selected` 均采集；`inherit` 在 `all` 采集、在 `selected` 不采集。
+- 策略只决定是否创建新的 capture envelope；切换后不能删除已有 spool/数据库/Drive 数据，否则会破坏审计与归档状态机。
+- 热路径不能每次访问 PostgreSQL。应由独立策略服务维护不可变内存快照，启动时加载数据库，admin 写入成功后同步替换；多实例时通过 Redis pub/sub 或短周期刷新收敛。当前生产单实例，但实现应预留跨实例失效。
+- 策略加载失败时不能阻塞或改变 AI 响应；无可用快照时应 fail-closed 停止 Session 采集并记录脱敏告警，避免意外采集被明确排除的 Key。
+
+## 2026-08-13 实现与验收结论
+
+- 主库新增单例全局策略、API Key 覆盖和审计日志三张小表；默认 `all` 保持现有生产行为。策略热路径使用原子不可变快照，不对每个 AI 请求查询数据库。
+- Session capture middleware 已移动到 API Key 鉴权之后；`disabled/exclude/selected+inherit` 在创建临时 capture 文件前直接跳过，因此被排除请求不会产生 spool、临时正文或隔离库记录。
+- “只记录此 Key”使用单事务切换到 `selected`、清除旧覆盖并写入目标 `include`，避免管理员分多步操作时出现短暂错误采集窗口。
+- 隔离机 `/v1/status` 使用与 ingest 分域的 `v1/status` HMAC 签名；返回值只有 Linux 资源、PostgreSQL 聚合、Session/归档计数和脱敏批次元数据，不包含 DSN、HMAC、Drive 路径、SHA、错误正文或 Session payload。
+- Drive 累计数量与字节只统计 `archive_backend=rclone` 且状态为 `verified/purged` 的批次；它代表 immutable 上传后完整回读 SHA-256 已成功，不依赖页面实时调用 Google Drive API。
+- 本地隔离 canary 使用独立 PostgreSQL、Redis 和 Linux `sessiond`，状态为 healthy；策略矩阵逐步实测 `all → exclude → selected → include → only → disabled → restore all` 全部符合预期。
+- 真实 PostgreSQL 18 集成测试解包归档并验证：Claude Messages 与 Codex Responses 原始数据可含 `gpt-5.6-sol`，交付 JSONL 中不含 `gpt-5.6`，请求与响应模型均为 `claude-opus-5`。
+
+---
+
+# Session Delivery V2 前置发现记录
 
 ## 2026-08-11 需求与交付边界
 

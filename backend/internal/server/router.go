@@ -33,6 +33,7 @@ func SetupRouter(
 	settingService *service.SettingService,
 	cfg *config.Config,
 	redisClient *redis.Client,
+	sessionDeliveryService *service.SessionDeliveryAdminService,
 	sessionRecorders ...*sessiondelivery.Recorder,
 ) *gin.Engine {
 	// 缓存 iframe 页面的 origin 列表，用于动态注入 CSP frame-src
@@ -55,9 +56,6 @@ func SetupRouter(
 	// 应用中间件
 	r.Use(middleware2.RequestLogger())
 	r.Use(middleware2.Logger())
-	if len(sessionRecorders) > 0 {
-		r.Use(middleware2.SessionDelivery(sessionRecorders[0]))
-	}
 	r.Use(middleware2.CORS(cfg.CORS))
 	r.Use(middleware2.SecurityHeaders(cfg.Security.CSP, func() []string {
 		if p := cachedFrameOrigins.Load(); p != nil {
@@ -86,7 +84,11 @@ func SetupRouter(
 	}
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
+	var sessionRecorder *sessiondelivery.Recorder
+	if len(sessionRecorders) > 0 {
+		sessionRecorder = sessionRecorders[0]
+	}
+	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient, sessionRecorder, sessionDeliveryService)
 
 	return r
 }
@@ -104,6 +106,8 @@ func registerRoutes(
 	settingService *service.SettingService,
 	cfg *config.Config,
 	redisClient *redis.Client,
+	sessionRecorder *sessiondelivery.Recorder,
+	sessionDeliveryService *service.SessionDeliveryAdminService,
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
@@ -115,7 +119,7 @@ func registerRoutes(
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, redisClient, settingService)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, settingService)
 	routes.RegisterAdminRoutes(v1, h, adminAuth)
-	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
+	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, sessionRecorder, sessionDeliveryService)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, settingService)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)

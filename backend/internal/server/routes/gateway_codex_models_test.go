@@ -117,6 +117,8 @@ func TestGatewayRoutesClaudeOnlyOpenAIKeyKeepsClaudeModelsList(t *testing.T) {
 		nil,
 		nil,
 		&config.Config{},
+		nil,
+		nil,
 	)
 
 	recorder := httptest.NewRecorder()

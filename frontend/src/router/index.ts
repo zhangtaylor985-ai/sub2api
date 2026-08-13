@@ -402,6 +402,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/session-delivery',
+    name: 'AdminSessionDelivery',
+    component: () => import('@/views/admin/SessionDeliveryView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Session Delivery',
+      titleKey: 'admin.sessionDelivery.title',
+      descriptionKey: 'admin.sessionDelivery.description'
+    }
+  },
+  {
     path: '/admin/users',
     name: 'AdminUsers',
     component: () => import('@/views/admin/UsersView.vue'),

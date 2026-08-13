@@ -74,6 +74,37 @@ func TestSessionDeliveryCaptureLimitNeverChangesClientResponse(t *testing.T) {
 	require.Empty(t, paths)
 }
 
+type sessionCapturePolicyStub map[int64]bool
+
+func (p sessionCapturePolicyStub) ShouldCapture(apiKeyID int64) bool {
+	return p[apiKeyID]
+}
+
+func TestSessionDeliveryPolicySkipsCaptureBeforeTemporaryFilesAreCreated(t *testing.T) {
+	recorder := newSessionDeliveryTestRecorder(t, 1<<20)
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 1, APIKeyID: 22})
+		c.Next()
+	})
+	engine.Use(SessionDelivery(recorder, sessionCapturePolicyStub{22: false}))
+	engine.POST("/v1/messages", func(c *gin.Context) {
+		_, _ = io.ReadAll(c.Request.Body)
+		c.JSON(http.StatusOK, gin.H{"type": "message"})
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-5"}`))
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+	require.Equal(t, http.StatusOK, response.Code)
+	paths, err := recorder.Spool().ListPending()
+	require.NoError(t, err)
+	require.Empty(t, paths)
+	temporary, err := filepath.Glob(filepath.Join(recorder.Spool().TempDir(), "*"))
+	require.NoError(t, err)
+	require.Empty(t, temporary)
+}
+
 func TestSessionCaptureRoute(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, testCase := range []struct {

@@ -177,12 +177,15 @@ type IdempotencyConfig struct {
 }
 
 type SessionDeliveryConfig struct {
-	Enabled         bool   `mapstructure:"enabled"`
-	PublicModel     string `mapstructure:"public_model"`
-	HMACSecret      string `mapstructure:"hmac_secret"`
-	SpoolDir        string `mapstructure:"spool_dir"`
-	SpoolMaxBytes   int64  `mapstructure:"spool_max_bytes"`
-	CaptureMaxBytes int64  `mapstructure:"capture_max_bytes"`
+	Enabled              bool   `mapstructure:"enabled"`
+	PublicModel          string `mapstructure:"public_model"`
+	HMACSecret           string `mapstructure:"hmac_secret"`
+	SpoolDir             string `mapstructure:"spool_dir"`
+	SpoolMaxBytes        int64  `mapstructure:"spool_max_bytes"`
+	CaptureMaxBytes      int64  `mapstructure:"capture_max_bytes"`
+	StatusEndpoint       string `mapstructure:"status_endpoint"`
+	StatusSecret         string `mapstructure:"status_secret"`
+	StatusTimeoutSeconds int    `mapstructure:"status_timeout_seconds"`
 }
 
 type LinuxDoConnectConfig struct {
@@ -1436,6 +1439,8 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.SessionDelivery.PublicModel = strings.TrimSpace(cfg.SessionDelivery.PublicModel)
 	cfg.SessionDelivery.HMACSecret = strings.TrimSpace(cfg.SessionDelivery.HMACSecret)
 	cfg.SessionDelivery.SpoolDir = strings.TrimSpace(cfg.SessionDelivery.SpoolDir)
+	cfg.SessionDelivery.StatusEndpoint = strings.TrimSpace(cfg.SessionDelivery.StatusEndpoint)
+	cfg.SessionDelivery.StatusSecret = strings.TrimSpace(cfg.SessionDelivery.StatusSecret)
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 		if err != nil {
@@ -1788,6 +1793,9 @@ func setDefaults() {
 	viper.SetDefault("session_delivery.spool_dir", "./data/session-delivery/spool")
 	viper.SetDefault("session_delivery.spool_max_bytes", int64(4*1024*1024*1024))
 	viper.SetDefault("session_delivery.capture_max_bytes", int64(256*1024*1024))
+	viper.SetDefault("session_delivery.status_endpoint", "")
+	viper.SetDefault("session_delivery.status_secret", "")
+	viper.SetDefault("session_delivery.status_timeout_seconds", 5)
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
@@ -2426,6 +2434,12 @@ func (c *Config) Validate() error {
 		}
 		if c.SessionDelivery.CaptureMaxBytes <= 0 {
 			return fmt.Errorf("session_delivery.capture_max_bytes must be positive when enabled")
+		}
+		if c.SessionDelivery.StatusTimeoutSeconds <= 0 {
+			return fmt.Errorf("session_delivery.status_timeout_seconds must be positive when enabled")
+		}
+		if c.SessionDelivery.StatusEndpoint != "" && len([]byte(c.SessionDelivery.StatusSecret)) < 32 {
+			return fmt.Errorf("session_delivery.status_secret must be at least 32 bytes when status_endpoint is configured")
 		}
 	}
 	if c.Gateway.MaxBodySize <= 0 {

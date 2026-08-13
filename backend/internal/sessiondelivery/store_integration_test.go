@@ -360,6 +360,46 @@ func TestStoreRepairsRequestConversionRejectionBeforeExport(t *testing.T) {
 	require.Equal(t, ConversionRepairStats{}, repeated)
 }
 
+func TestHourlyExportUpgradesPreDeploymentThinkingShape(t *testing.T) {
+	ctx := context.Background()
+	store := startSessionDeliveryPostgres(t, ctx)
+	require.NoError(t, store.Migrate(ctx))
+
+	hour := time.Date(2026, 8, 9, 4, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return hour.Add(30 * time.Minute) }
+	canonicalizer := newTestCanonicalizer(t)
+	envelope := buildIntegrationResponsesEnvelope(t, canonicalizer, hour.Add(5*time.Minute), "pre-deployment-thinking")
+	var request map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(envelope.Delivery.Request, &request))
+	request["thinking"] = json.RawMessage(`{"type":"adaptive"}`)
+	request["output_config"] = json.RawMessage(`{"effort":"high"}`)
+	envelope.Delivery.Request, _ = json.Marshal(request)
+	require.NoError(t, ValidateDelivery(envelope.Delivery, DefaultPublicModel))
+	inserted, err := store.Insert(ctx, envelope)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	archiveBackend, err := NewLocalArchiveBackend(filepath.Join(t.TempDir(), "legacy-thinking-archive"))
+	require.NoError(t, err)
+	exporter, err := NewExporter(store, archiveBackend, ExporterConfig{
+		PublicModel: DefaultPublicModel,
+		TempDir:     filepath.Join(t.TempDir(), "legacy-thinking-export-tmp"),
+	})
+	require.NoError(t, err)
+	result, err := exporter.ExportHour(ctx, hour)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), result.Manifest.DeliveryCount)
+	report, err := AuditArchivesFidelity(ctx, filepath.Dir(result.Archive.Name), DefaultPublicModel)
+	require.NoError(t, err)
+	require.True(t, report.Passed)
+	require.Zero(t, report.ViolationCount)
+
+	records := readDeliveryRecordsFromArchive(t, result.Archive.Name)
+	require.Len(t, records, 1)
+	require.Equal(t, "adaptive", jsonPathString(t, records[0].Request, "thinking", "type"))
+	require.Equal(t, "omitted", jsonPathString(t, records[0].Request, "thinking", "display"))
+}
+
 type integrationDurableArchive struct {
 	*LocalArchiveBackend
 }

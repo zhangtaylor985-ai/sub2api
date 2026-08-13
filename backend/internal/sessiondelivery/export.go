@@ -333,6 +333,12 @@ func (e *Exporter) buildArchive(
 		}
 		delivery.Request = normalizedRequest
 		delivery.Response.ResponseData = normalizedResponse
+		// The offline rebuild path also upgrades legacy thinking request shapes
+		// and completes delivery-only signatures. Reuse that deterministic step
+		// here so a pre-upgrade record cannot block the normal hourly drain.
+		if _, _, _, err := normalizeHistoricalDelivery(delivery); err != nil {
+			return fmt.Errorf("upgrade historical delivery for record %s: %w", recordID, err)
+		}
 		// Re-insert thinking-block echoes into later requests of the session
 		// before validation, so delivered conversations match real Claude
 		// Code multi-turn shape.

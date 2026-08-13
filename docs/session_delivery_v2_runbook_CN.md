@@ -168,6 +168,8 @@ timer 每 30 分钟完成：冻结上一 ingest hour → 生成/严格验证交�
 
 受限 SSH 中继由 `sub2api-session-tunnel-health.timer` 每分钟检查一次最早 16 个 pending 文件的窗口指纹。窗口连续 8 次没有任何文件被确认后，只重启 `sub2api-session-tunnel.service`，不会重启 Sub2API 或删除 spool 文件；中断中的上传继续按幂等键重试。这里不使用同一 SSH TCP 连接上的 HTTP health，因为大记录上传可能让 health 请求产生队头阻塞并导致误判。
 
+中继内外两层 SSH 必须显式设置 `IPQoS=none`。生产实测默认 DSCP 会让跨境持久连接在传输若干大记录后停止推进；关闭 IPQoS 后，4 路并发恢复连续批量确认。
+
 ```bash
 systemctl status sub2api-session-tunnel-health.timer --no-pager
 journalctl -t sub2api-session-tunnel-health -n 50 --no-pager

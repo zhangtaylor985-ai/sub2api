@@ -997,3 +997,9 @@
 - 2026-08-13：将任务分支安全 rebase 到最新 `origin/main`，同时保留管理员 API Key 搜索、经营看板与 Session V2；冲突仅涉及 Wire/路由/API 汇总和计划文档，合并后重新生成 Wire，工作树无生成差异。
 - 2026-08-13：合并后 `go test ./... -count=1`、前端 ESLint/typecheck、Session UI 5 个专项 Vitest、Vite 生产构建全部通过；Session 核心、middleware、repository、sessionctl/sessiond 与 Session 管理服务的 Race Detector 通过。全 `internal/service` race 仍暴露主线测试并行修改 Gin 全局 mode 的既有夹具竞争，普通全量测试通过且 Session 定向 race 不受影响。
 - 2026-08-13：12 路并发在单 SSH TCP 中继上出现队头阻塞；接收端 loopback health 与数据库正常，旧中继到腾讯新建 SSH 连接正常，确认是持久数据连接卡滞。forwarder 调回压测稳定的 4 路，并新增按最早 16 个 pending 窗口实际推进判断的 8 分钟隧道自愈守护；守护不依赖同连接 HTTP health，不重启 Sub2API、不删除 spool。
+- 2026-08-13：进一步确认中继内外层 SSH 缺少 `IPQoS=none`；补齐后 spool 从约 762 MB 连续降至约 455 MB，forwarder 连续批次 100/100 入库、quarantine=0，Session DB 最新入库时间恢复实时推进。
+- 2026-08-13：构建最终 ARM64 候选：app SHA256=`146a860d53bcf72ff28b6e9a7da7bc3a57939a54bf70e2c5b0af467c11172354`，sessionctl=`d3bbb7cdec32bd5a611dc0d2138120eef07104ebbca744f3c875b8b167c672c4`，sessiond=`d4c94140cd2665f456848d18a47557ccc953ebb0f74223a9f752bbfd7bfd0bcf`；远端 release 复核一致。
+- 2026-08-13：生产 DB 备份 `/opt/sub2api/backups/sub2api-before-session-v2-final-20260813T084845Z.dump` 为 351,876,280 bytes、SHA256=`91803714ab9fcfd684ac4537b6acad0ee3a3a4daa28513128969aeda4a0326db`，`pg_restore --list` 通过。
+- 2026-08-13：第一次最终 canary 因 EnvironmentFile 覆盖命令行 `SERVER_PORT` 而尝试绑定 8080，端口占用后安全退出，未替换正式 binary；改用第二个 canary EnvironmentFile 覆盖后，18080 health、管理路由、Session 页面和 `/v1/messages` 未认证门禁通过，NRestarts=0。
+- 2026-08-13：正式 app 原子切换成功，旧 SHA `4eaf42e…22d93` 备份为 `/opt/sub2api/sub2api.bak.20260813T085131Z-before-session-v2-final`；新 SHA `146a860d…2354`，内外 health 正常、NRestarts=0。发布脚本最后只读 journal 时间参数格式错误发生在全部健康验收之后，随后已用正确格式复查，无 panic/fatal/migration failure。
+- 2026-08-13：最终真实客户端门禁通过：Claude Code 2.1.220 返回 `SESSION_V2_FINAL_CLAUDE_OK`，usage 证实 `claude-opus-5→gpt-5.6-sol`；Codex CLI 0.147.0 返回 `SESSION_V2_FINAL_CODEX_OK`，内部 usage 为 GPT-5.6 family。首次 Claude 测试分别因本地 base URL 和本地沙盒 token 被正确排除，不计入验收且未改用户设置。

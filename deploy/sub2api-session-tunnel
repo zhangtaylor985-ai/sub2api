@@ -14,7 +14,7 @@ if [[ -n "${SESSION_TUNNEL_PROXY_JUMP:-}" ]]; then
     echo "SESSION_TUNNEL_PROXY_JUMP must use user@host:port" >&2
     exit 2
   fi
-  proxy_command="/usr/bin/ssh -i /var/lib/sub2api/session-delivery/private/session_tunnel_ed25519 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/lib/sub2api/session-delivery/private/ssh_known_hosts -p ${proxy_port} -W %h:%p ${proxy_target}"
+  proxy_command="/usr/bin/ssh -i /var/lib/sub2api/session-delivery/private/session_tunnel_ed25519 -o BatchMode=yes -o IdentitiesOnly=yes -o IPQoS=none -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/lib/sub2api/session-delivery/private/ssh_known_hosts -p ${proxy_port} -W %h:%p ${proxy_target}"
   proxy_jump=(-o "ProxyCommand=${proxy_command}")
 fi
 
@@ -22,6 +22,7 @@ exec /usr/bin/ssh \
   -NT \
   -o BatchMode=yes \
   -o IdentitiesOnly=yes \
+  -o IPQoS=none \
   -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=30 \
   -o ServerAliveCountMax=3 \

@@ -1,0 +1,13 @@
+[Unit]
+Description=Check Sub2API Session tunnel delivery progress every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=5s
+RandomizedDelaySec=5s
+Persistent=true
+Unit=sub2api-session-tunnel-health.service
+
+[Install]
+WantedBy=timers.target

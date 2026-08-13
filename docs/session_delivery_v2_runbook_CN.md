@@ -166,6 +166,13 @@ timer 每 30 分钟完成：冻结上一 ingest hour → 生成/严格验证交�
 
 ## 8. 故障处理
 
+受限 SSH 中继由 `sub2api-session-tunnel-health.timer` 每分钟检查一次最早 16 个 pending 文件的窗口指纹。窗口连续 8 次没有任何文件被确认后，只重启 `sub2api-session-tunnel.service`，不会重启 Sub2API 或删除 spool 文件；中断中的上传继续按幂等键重试。这里不使用同一 SSH TCP 连接上的 HTTP health，因为大记录上传可能让 health 请求产生队头阻塞并导致误判。
+
+```bash
+systemctl status sub2api-session-tunnel-health.timer --no-pager
+journalctl -t sub2api-session-tunnel-health -n 50 --no-pager
+```
+
 - `spool full`：客户端请求仍完成，但新记录无法持久化；立即修复 forwarder/隔离机并扩容，不能直接删 pending/quarantine。
 - `ingest_busy`/网络错误：forwarder 保留 pending，下一轮重试。
 - `invalid_envelope`：记录移入 quarantine，不阻塞后续人工排查；不会进入外部交付包。

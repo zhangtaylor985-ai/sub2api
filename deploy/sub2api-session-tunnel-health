@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly state_file="/run/sub2api-session-tunnel-health/failures"
+readonly pending_dir="/opt/sub2api/data/session-delivery/spool/pending"
+readonly stagnant_limit=8
+
+if ! /usr/bin/systemctl is-active --quiet sub2api-session-tunnel.service; then
+  /usr/bin/logger -t sub2api-session-tunnel-health \
+    "Restricted Session tunnel is inactive; requesting restart"
+  /usr/bin/systemctl restart sub2api-session-tunnel.service
+  /usr/bin/rm -f "${state_file}"
+  exit 0
+fi
+
+mapfile -t oldest_records < <(
+  /usr/bin/find "${pending_dir}" -maxdepth 1 -type f -name '*.json.zst' -printf '%f\n' |
+    /usr/bin/sort |
+    /usr/bin/head -n 16
+)
+if ((${#oldest_records[@]} == 0)); then
+  /usr/bin/rm -f "${state_file}"
+  exit 0
+fi
+
+fingerprint=$(
+  /usr/bin/printf '%s\0' "${oldest_records[@]}" |
+    /usr/bin/sha256sum |
+    /usr/bin/awk '{print $1}'
+)
+previous_fingerprint=""
+stagnant_count=0
+if [[ -r "${state_file}" ]]; then
+  read -r previous_fingerprint stagnant_count <"${state_file}" || true
+fi
+
+if [[ "${fingerprint}" != "${previous_fingerprint}" ]]; then
+  /usr/bin/printf '%s 0\n' "${fingerprint}" >"${state_file}"
+  exit 0
+fi
+if [[ ! "${stagnant_count}" =~ ^[0-9]+$ ]]; then
+  stagnant_count=0
+fi
+stagnant_count=$((stagnant_count + 1))
+/usr/bin/printf '%s %s\n' "${fingerprint}" "${stagnant_count}" >"${state_file}"
+
+if ((stagnant_count < stagnant_limit)); then
+  exit 0
+fi
+
+/usr/bin/logger -t sub2api-session-tunnel-health \
+  "Oldest Session spool window made no progress for ${stagnant_count} checks; restarting restricted tunnel"
+/usr/bin/systemctl restart sub2api-session-tunnel.service
+/usr/bin/printf '%s 0\n' "${fingerprint}" >"${state_file}"

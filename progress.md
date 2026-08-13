@@ -994,3 +994,6 @@
 - 2026-08-13：Google Drive OAuth/rclone 已完成官方客户端迁移和真实上传；05/06/07 UTC 三批均完成上传、完整回读 SHA/size 验证和 DB 小时分区清理，累计 1,779 条原始记录、476 条交付、24,190,274 bytes。
 - 2026-08-13：为解决 Cloudflare LAX Tunnel 和跨境直连吞吐，部署受限 SSH 中继；10 条记录 4 并发基准 8.1 秒。spool 从峰值约 1.60 GiB 持续下降，保护上限统一为 2 GiB，隔离记录持续为 0。
 - 2026-08-13：Session 专用数据库凭据已完成轮换；配置保持 `root:sub2api 0640`，sessiond 健康。后续手工作业改用 systemd `EnvironmentFile`，不再由 shell 解析 systemd env。
+- 2026-08-13：将任务分支安全 rebase 到最新 `origin/main`，同时保留管理员 API Key 搜索、经营看板与 Session V2；冲突仅涉及 Wire/路由/API 汇总和计划文档，合并后重新生成 Wire，工作树无生成差异。
+- 2026-08-13：合并后 `go test ./... -count=1`、前端 ESLint/typecheck、Session UI 5 个专项 Vitest、Vite 生产构建全部通过；Session 核心、middleware、repository、sessionctl/sessiond 与 Session 管理服务的 Race Detector 通过。全 `internal/service` race 仍暴露主线测试并行修改 Gin 全局 mode 的既有夹具竞争，普通全量测试通过且 Session 定向 race 不受影响。
+- 2026-08-13：12 路并发在单 SSH TCP 中继上出现队头阻塞；接收端 loopback health 与数据库正常，旧中继到腾讯新建 SSH 连接正常，确认是持久数据连接卡滞。forwarder 调回压测稳定的 4 路，并新增按最早 16 个 pending 窗口实际推进判断的 8 分钟隧道自愈守护；守护不依赖同连接 HTTP health，不重启 Sub2API、不删除 spool。

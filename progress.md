@@ -1027,3 +1027,16 @@
 - 2026-08-13：新增导出侧 echo repair（`echo_repair.go`）与 Codex thinking→adaptive 归一；本地全链复测：3 轮 CC 形态会话请求历史逐字节回声前轮 thinking 签名、Codex 记录请求 adaptive 形态、validator/单测全绿。
 - 2026-08-13：真实客户端回归完成——真实 Claude Code 2.1.220（临时 CLAUDE_CONFIG_DIR，-p + --continue 三轮）与真实 Codex CLI 0.147.0（codex exec + resume 两轮）打本地沙盒；导出 12 条记录 10 条带签名（83%，未签名为修复前的旧 Codex 记录）；回声修复在真实流量上逐字节命中；`sessionctl validate` 通过。本地账号已按 skill 安全规则剥离 refresh_token 且本地网关 TOKEN_REFRESH_ENABLED=false；生产账号 16 状态 active 无异常。
 - 2026-08-13：新增导出侧 usage 投影（`usage_projector.go`）：Anthropic 缓存链模拟 + Opus 5 usage 全字段补齐；真实六轮序列回放测试精确复现；本地重导 12 条记录全部呈现真实 CC 缓存形态（首轮全量 creation、逐轮 read=前轮 prefix）。
+- 2026-08-13：从当前生产可观测性基线建立独立发布分支 `codex/session-delivery-v2-rollout`，逐项合入用户在 `codex/session-delivery-v2` 的 echo/adaptive/cache 手工改动；`signature.go` 与用户的 `thinking.signature` 合成实现保持逐字不变。
+- 2026-08-13：补齐三项发布门禁缺陷：重复 assistant/tool-only 历史对齐、Codex Responses SSE terminal 空 output 重建，以及 durable 小时归档后的跨小时 thinking/cache 投影 checkpoint；历史 Drive 05–09 UTC 归档已按 SHA、大小、严格 validator 和时间顺序回灌 checkpoint，共 914 条交付记录。
+- 2026-08-13：本地完整 `go test ./... -count=1`、`go vet ./...`、Session/sessionctl race、PostgreSQL 18 生命周期集成测试、前端 lint/typecheck/Session 专项测试/build 均通过；真实 Claude Code 2.1.220 与 Codex CLI 0.147.0 的 low/high、多轮回声、缓存链、公开模型和内部模型隔离门禁通过。
+- 2026-08-13：Session 库发布前完整备份 `/opt/sub2api/backups/session-delivery-before-v2-fidelity-20260813T130834Z.dump`，大小 2,621,928,572 bytes、SHA256=`83a646f1dfa442d31d080e573130eb58ea25f120e9cd78c7a950f7fc806700d7`，`pg_restore --list` 通过；迁移 `002_session_projection_checkpoints.sql` 已应用。
+- 2026-08-13：主应用已原子发布，当前 SHA256=`39faaf5ae1fc46b66657c862e5b46950e881da9bf0f5c0dbc72ed98b93106916`，旧版备份 `/opt/sub2api/sub2api.bak.20260813T132704Z-before-session-v2-fidelity`；内外 health、管理页、未认证 API 门禁、真实 Claude/Codex 和 `NRestarts=0` 均通过。
+- 2026-08-13：10 UTC 首个正式保真归档上传并完整回读成功：572 条原始记录、97 条交付、475 条排除、4,961,096 bytes，Drive 对象 SHA256=`2e8dad684a79517037013cfe9cf886691e852aabec4bce564ad0769809814932`；验证后对应 DB 小时已清理。
+- 2026-08-13：10 UTC 旧导出路径虽成功，但 2GB 隔离机测得 `MemoryPeak=1,466,929,152`、`MemorySwapPeak=840,982,528`。新增流式 envelope projection：完整保留 decoded-size/SHA 校验，仅捕获交付字段并跳过大体积 Original audit；43MB 基准单次仅约 9.6MiB 分配，普通/竞态/全量/PostgreSQL 测试重新通过。
+- 2026-08-13：流式 AMD64 `sessionctl` 已原子替换，当前 SHA256=`c372422f0055c91a6d92e0f553633956219e72811155ff4b791a7984f245e75f`，旧版备份 `/opt/sub2api/sessionctl.bak.20260813T135026Z-before-streaming-export`；timer 与 sessiond 均 active，等待首个真实小时批次验证峰值。
+- 2026-08-13：22:02 定时器自然触发 11 UTC 压力批次，682 条原始记录中交付 229、排除 453；Drive 对象 22,228,483 bytes、SHA256=`78edb3d160a7ff26f761c11960737057de8c517abeb174f29bdb13b42f91d6a9`，完整回读后状态 `purged`，对应 DB 小时记录数为 0。
+- 2026-08-13：流式导出生产实测 `MemoryPeak=276,643,840`（263.8MiB）、`MemorySwapPeak=0`，较旧路径峰值降低约 81.1%，CPU 30.885 秒、总耗时 2 分 15 秒；sessiond/timer active、磁盘 38%、可用约 24GB。
+- 2026-08-13：从 Drive 再次独立下载 11 UTC 对象，SHA 完全一致且 `sessionctl validate` 通过；内容级聚合为 229/229 请求与响应模型 `claude-opus-5`、229/229 完整 cache usage、229/229 `input_tokens=2`、215 个 thinking 块全部签名非空。
+- 2026-08-13：累计 7 个已验证并清理小时批次：6,094 条原始记录、1,240 条交付、4,854 条排除、76,878,591 bytes；118 个跨小时 projection checkpoint 约 2.28MiB。下一次 timer 为 22:31，未发现失败批次。
+- 2026-08-13：测试 canary 已停止并确认 18080 无监听；28081/28082 本机隧道已关闭；本地临时 API Key、fixture、归档副本和远端 post-upload 临时副本已永久删除。正式 Drive 对象、完整 DB 备份、旧 app/sessionctl 回滚二进制与历史 seed 证据均保留。

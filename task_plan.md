@@ -6,9 +6,9 @@
 | --- | --- | --- |
 | 合入 `codex/session-delivery-v2` 手工改动 | complete | echo repair、adaptive/display omitted、prompt-cache usage 投影；签名合成代码保持原样 |
 | 静态审查与缺陷修复 | complete | 重复 assistant 对齐、Codex SSE terminal 空 output 重建、跨小时状态连续性 |
-| 本地单元/竞态/全量/PostgreSQL 回归 | in_progress | durable archive→purge→下一小时签名/cache 连续；真实客户端 canary 待最终候选重跑 |
-| 生产迁移与发布 | pending | 暂停 exporter、历史 Drive checkpoint 接续、主应用/sessionctl 原子替换、恢复 timer |
-| 发布后归档与真实客户端验收 | pending | Claude Code/Codex、Drive 回读、数据库 purge、服务健康与回滚点 |
+| 本地单元/竞态/全量/PostgreSQL 回归 | complete | durable archive→purge→下一小时签名/cache 连续；真实 Claude Code/Codex 最终候选通过 |
+| 生产迁移与发布 | complete | exporter 安全窗口、历史 Drive checkpoint 接续、主应用/sessionctl 原子替换、timer 恢复 |
+| 发布后归档与真实客户端验收 | complete | Claude Code/Codex、Drive 独立回读、数据库 purge、资源峰值、服务健康与回滚点均通过 |
 
 ## 当前任务目标（2026-08-13）
 
@@ -140,7 +140,7 @@
 - 数据敏感：authorization、cookie、OAuth/API key 等头部永不采集；payload 归档需支持静态加密和最小权限。
 - 语义风险：Codex→Anthropic 转换必须通过 golden/round-trip 测试；不支持字段进入隔离队列，不静默丢弃。
 - 清理风险：线上 purge 已启用，但只有 rclone immutable 上传和 Drive 全量回读 SHA-256 都成功后才允许删除同一小时分区。
-- Git 风险：所有改动仅发生在 `/Users/taylor/sdk/sub2api-session-delivery-v2-hourly` 的 `codex/session-delivery-v2-hourly` 分支。
+- Git 风险：所有改动仅发生在 `/Users/taylor/sdk/sub2api-session-delivery-v2-hourly` 的 `codex/session-delivery-v2-rollout` 分支；用户原始 `codex/session-delivery-v2` 与主工作区保持不动。
 
 ## 当前错误记录
 

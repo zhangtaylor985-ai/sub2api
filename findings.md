@@ -1013,3 +1013,12 @@
 - 2026-08-13：真实客户端回归发现 Codex CLI（0.147.0）默认发 `reasoning:{effort:low}`，共享转换器对 low 不投影 thinking，导致 Codex 来源记录缺 thinking 形态；已在交付投影修复：凡 Codex 请求带 reasoning 即投影 `thinking:{adaptive,display:omitted}`（真实 CC 2.1.220 实测请求形态），实时链路不动。
 - 真实 Claude Code 2.1.220 实测：Opus 5 请求固定带 `system`/`tools`/`thinking:{adaptive,display:omitted}`/`output_config.effort`/`metadata.user_id`；标题生成请求（stream 提前结束）被管线按 `response_decode_failed` 正确隔离，不进入交付。
 - 2026-08-13：usage 保真投影（导出时）。真实 Opus 5 会话六轮 usage 实测为确定性缓存链：input 恒为 2、read(k)=前轮 prefix、creation(k)=差值、压缩或超 5 分钟 TTL 则 read=0 重建；GPT 上游录制值恒 creation=0 是最大统计破绽。投影器以真实上游 token 总量为基数做会话模拟，并用真实六轮序列逐值回放验证（49713/7863/1205/6635/65438/573 全部精确复现）；同时补齐 server_tool_use/service_tier/inference_geo 等 Opus 5 全字段。
+
+## 2026-08-13 手工保真增强发布结论
+
+- 用户分支的核心方向成立：Claude Code 与 Codex 都可在 Session 保存/导出边界统一投影成 `claude-opus-5` 交付形态，不要求真实上游为 Claude；真实上游仍是 GPT-5.6，内部证据只保留在运维/usage，不进入供应商文件。
+- cache/echo/thinking 不能只做单小时内存态转换。数据库按小时清理后仍需持久 checkpoint，至少保存 assistant 文本哈希、thinking 块和 usage 前缀状态；历史归档必须先严格校验再按时间顺序 seed，才能保证下一小时的请求历史逐字节回声和缓存链连续。
+- 用户的签名合成实现未修改；本轮静态差异确认 `signature.go` 与 `codex/session-delivery-v2` 完全一致，新增修复均位于 Session canonical/export 链路，实时响应链路不变。
+- 导出器不能把完整 `Envelope.Original` 解压并反序列化后再丢弃：10 UTC 生产批次在 2GB 主机上峰值约 1.37GiB 并使用约 802MiB swap。最佳实践是仍对完整 zstd 明文执行大小和 SHA-256 校验，但以结构流方式跳过 Original，仅反序列化 record_id/delivery/rejection；交付内容与旧路径保持一致，资源上限按交付字段而非审计整包增长。
+- 11 UTC 的 230MB 压缩载荷生产复验把峰值降到 263.8MiB、swap 降到 0，降幅约 81.1%；同一批在 Drive 独立回读和严格 validator 后才清库，证明流式优化同时满足资源隔离与 purge 安全门禁。
+- 当前 40GB 隔离机在自动清理后根盘占用 38%、可用约 24GB；7 个正式 Drive 对象累计约 76.88MB。结合每 30 分钟 timer、2 小时 settling、回读 SHA 门禁和 0 swap 新峰值，继续使用线上隔离机优于把 PostgreSQL 放到日常开发 Mac。

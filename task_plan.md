@@ -22,8 +22,8 @@
 | 2. 隔离机状态端点与聚合查询 | complete | HMAC GET、主机/DB/归档指标与测试 |
 | 3. Sub2API 监控代理与采集策略 | complete | 配置、迁移、内存快照策略、handler、route、错误降级与测试 |
 | 4. 管理后台监控与策略页面 | complete | 页面、导航、i18n、轮询、策略操作与响应式设计 |
-| 5. 全量回归与真实数据验收 | in_progress | 自动化与本地隔离 canary 已通过；待正式 HTTPS 页面和真实客户端发布门禁 |
-| 6. 生产部署与观察 | pending | sessiond/主应用发布、健康检查、回滚点和最终报告 |
+| 5. 全量回归与真实数据验收 | complete | 全量 Go、Session race、前端门禁、真实 Claude Code/Codex 与内容级交付抽检均通过 |
+| 6. 生产部署与观察 | complete | sessiond/主应用、管理页面、Google Drive 定时归档、容量保护、健康检查和回滚点均已验收 |
 
 ## 当前任务决策
 
@@ -712,7 +712,7 @@
 | Google Drive 归档与清库 | complete | 3 个小时归档均上传、回读 SHA 一致并完成分区清理 |
 | 生产链路与容量保护 | complete | 2 GiB spool 上限、2 小时归档水位、受限 SSH 中继和 Cloudflare 备用通道已生效 |
 | 历史数据修复 | complete | 1,076 条待处理记录中识别 17 条旧缺陷，连同隔离区共修复 33 条，隔离归零 |
-| 回归与发布观察 | in_progress | 全量 Go/前端/集成/真实客户端门禁通过；等待生产缓存完全追平后最终收口 |
+| 回归与发布观察 | complete | 生产 spool 从峰值约 2.47 GB 回落并自动恢复采集；真实 Codex 最终投影与服务健康检查通过 |
 
 ### 安全边界
 

@@ -115,7 +115,7 @@ SESSION_DELIVERY_ENABLED=true
 SESSION_DELIVERY_PUBLIC_MODEL=claude-opus-5
 SESSION_DELIVERY_HMAC_SECRET=受保护随机值
 SESSION_DELIVERY_SPOOL_DIR=/opt/sub2api/data/session-delivery/spool
-SESSION_DELIVERY_SPOOL_MAX_BYTES=4294967296
+SESSION_DELIVERY_SPOOL_MAX_BYTES=2147483648
 SESSION_DELIVERY_CAPTURE_MAX_BYTES=268435456
 ```
 
@@ -130,7 +130,11 @@ SESSION_DELIVERY_CAPTURE_MAX_BYTES=268435456
 
 ### 阶段 B：启用隔离入库
 
-在隔离机启动 `sub2api-sessiond.service`，保持 `sessiond` 只监听 loopback；使用 `deploy/Caddyfile.session-delivery.example` 配置 TLS 和生产主机来源 IP 白名单。在主机启动 forwarder，`SESSION_INGEST_ENDPOINT` 必须使用 HTTPS。
+在隔离机启动 `sub2api-sessiond.service`，保持 `sessiond` 只监听 loopback；使用 `deploy/Caddyfile.session-delivery.example` 配置 TLS 和生产主机来源 IP 白名单。在主机启动 forwarder。单通道使用 `SESSION_INGEST_ENDPOINT`；多条彼此独立的受限 SSH loopback 通道使用逗号分隔的 `SESSION_INGEST_ENDPOINTS`，并让 `SESSION_FORWARD_CONCURRENCY` 不超过通道数和接收端 `SESSION_INGEST_MAX_CONCURRENT`。
+
+网络上传并发和解压并发必须分开控制。当前 2 GiB 内存隔离机可使用 `SESSION_INGEST_MAX_CONCURRENT=16` 接收慢速上传，同时设置 `SESSION_INGEST_MAX_DECODE_CONCURRENT=1`，避免多个 100 MiB 级压缩包同时完成后并发解压导致 OOM。
+
+当 spool 达到 2 GiB 上限时，主应用跳过新的 Session 捕获但继续正常处理用户请求；forwarder 确认旧文件后，捕获会自动恢复。不得为释放空间手工删除 pending 文件。
 
 核对 Claude HTTP/SSE、Codex HTTP/SSE 和 Codex WS 多轮记录数量。隔离机不可用时 pending 文件必须保留。
 

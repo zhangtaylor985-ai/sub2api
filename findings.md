@@ -989,6 +989,10 @@
 - 中间件 writer 生命周期缺陷已通过真实 Claude Code 请求发现并修复；外层 pooled writer 释放前会恢复原 writer，生产发布后 panic 为 0。
 - 并发 forwarder 不再因单路临时错误取消其他已在途成功上传；sessiond 启动会清除上个进程遗留的 `.ingest-*.json.zst`，正常 systemd 停止超时不再记作进程故障。
 - Session 管理策略默认 `all`；生产现有 118 个未删除 API Key 全部有效记录，当前无 Key override。策略读取使用不可变快照原子替换，请求热路径无数据库查询。
-- 受限 SSH 中继的多个 HTTP 上传仍共享同一 TCP 连接；12 路大文件上传会放大跨境链路队头阻塞，甚至同连接 `/health` 也会超时。可靠监控口径应是最早 pending 窗口是否推进，而不是复用数据连接做 HTTP 探活；生产并发已收敛为实测稳定的 4 路。
-- 自愈 timer 只在最早 16 个 pending 文件连续 8 次检查完全不变时重建专用隧道；新流量只会追加更晚文件，不会伪造“最早窗口推进”，而成功确认会改变窗口指纹。重启不会丢失未确认文件，接收端幂等键也能安全处理重传。
-- 本次中继真正恢复连续吞吐的关键是内外两层 SSH 均设置 `IPQoS=none`；仅降低并发不能修复默认 DSCP 下的持久连接停滞。最终保留 4 路并发作为已压测的稳定值，自愈窗口作为第二道保护。
+- 单个 SSH TCP 上的多路 HTTP 上传会发生队头阻塞；生产现改为每个 worker 使用独立受限 SSH 连接，16 条通道仍只允许转发到腾讯 `127.0.0.1:8091`。启动按 1 秒错开，避免中继 `MaxStartups` 拒绝突发握手。
+- `session_records` 的小时 advisory lock 原为每次 Insert 获取排他锁，导致 `SESSION_INGEST_MAX_CONCURRENT=16` 实际串行。现改为摄取共享锁、导出/清理排他锁；小时冻结语义不变，同时允许并行压缩包入库。
+- 16 路慢速网络上传可以并行，但压缩包解码会显著放大内存；接收端新增独立 `SESSION_INGEST_MAX_DECODE_CONCURRENT` 信号量，生产设为 `1`。上传连接不被串行，解压/JSON 解析的峰值内存受控。
+- 自愈 timer 仍按最早 16 个 pending 文件是否推进判断，但停滞阈值从 8 分钟提高到 30 分钟，避免 100 MiB 级在途上传尚未确认时被误杀。内外两层 SSH 均保留 `IPQoS=none`。
+- 主应用在 spool 达到 2 GiB 时只跳过新的 HTTP/WS Session 捕获，不影响客户端请求；已确认的文件被 forwarder 删除后会自动恢复采集。pending 文件不会因容量保护被删除。
+- 当前 Codex 会把真实用户提示和独立 `<environment_context>` runtime part 放在同一个 user message 中；交付过滤现只移除完整机器包装 part，不删除整条用户消息，也不删除自然语言中对标签的普通引用。真实 Codex 最终样本确认 Codex/OpenAI/GPT/upstream/mapping/account 和 runtime 标签均未进入交付投影。
+- 最终主应用 SHA256=`a961fe5160c5f78cb634ba4716fe4d22a082a08f94a78a76a9f4800cfc7997b5`，接收端 SHA256=`a72eee7daea80a5b9ef349ef764335f2e7681d8ce1354d69402aef18ac6416a2`；两端 NRestarts=0。生产 spool 从约 2.47 GB 回落到 2 GiB 以下后，主应用容量门禁自动恢复采集。

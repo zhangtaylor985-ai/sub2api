@@ -293,37 +293,41 @@ func (e *Exporter) buildArchive(
 		return nil
 	}
 
-	iterateErr := e.store.ForEachHour(ctx, hour, func(envelope *Envelope) error {
+	iterateErr := e.store.ForEachHourProjection(ctx, hour, func(
+		recordID string,
+		delivery *DeliveryRecord,
+		rejection *Rejection,
+	) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		stats.Records++
-		if envelope.Delivery == nil {
-			if envelope.Rejection == nil {
-				return fmt.Errorf("record %s has neither delivery nor rejection", envelope.RecordID)
+		if delivery == nil {
+			if rejection == nil {
+				return fmt.Errorf("record %s has neither delivery nor rejection", recordID)
 			}
 			stats.Rejected++
 			return nil
 		}
-		if err := activateSession(envelope.Delivery.SessionID); err != nil {
-			return fmt.Errorf("load projection state for record %s: %w", envelope.RecordID, err)
+		if err := activateSession(delivery.SessionID); err != nil {
+			return fmt.Errorf("load projection state for record %s: %w", recordID, err)
 		}
 		// Re-insert thinking-block echoes into later requests of the session
 		// before validation, so delivered conversations match real Claude
 		// Code multi-turn shape.
-		if err := echo.process(envelope.Delivery); err != nil {
-			return fmt.Errorf("echo repair record %s: %w", envelope.RecordID, err)
+		if err := echo.process(delivery); err != nil {
+			return fmt.Errorf("echo repair record %s: %w", recordID, err)
 		}
 		// Project Anthropic-style prompt-cache usage (real CC traffic always
 		// shows per-turn cache creation; GPT upstreams never report it).
-		if err := usage.process(envelope.Delivery); err != nil {
-			return fmt.Errorf("usage projection record %s: %w", envelope.RecordID, err)
+		if err := usage.process(delivery); err != nil {
+			return fmt.Errorf("usage projection record %s: %w", recordID, err)
 		}
-		if err := ValidateDelivery(envelope.Delivery, e.publicModel); err != nil {
-			return fmt.Errorf("validate delivery record %s: %w", envelope.RecordID, err)
+		if err := ValidateDelivery(delivery, e.publicModel); err != nil {
+			return fmt.Errorf("validate delivery record %s: %w", recordID, err)
 		}
 		stats.Deliverable++
-		return sessionWriter.write(envelope.Delivery)
+		return sessionWriter.write(delivery)
 	})
 	if iterateErr != nil {
 		_ = closeArchive()

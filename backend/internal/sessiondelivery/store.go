@@ -318,6 +318,64 @@ func (s *Store) ForEachHour(ctx context.Context, hour time.Time, fn func(*Envelo
 	return nil
 }
 
+// ForEachHourProjection streams only the fields needed by the delivery
+// exporter. Stored envelopes can contain very large Original request/response
+// audit payloads which are deliberately excluded from vendor archives. A
+// streaming JSON decoder skips those fields without materializing a second
+// in-memory copy, while the tee still verifies the complete uncompressed
+// envelope checksum and decoded-size limit.
+func (s *Store) ForEachHourProjection(
+	ctx context.Context,
+	hour time.Time,
+	fn func(recordID string, delivery *DeliveryRecord, rejection *Rejection) error,
+) error {
+	if fn == nil {
+		return errors.New("Session hour projection iterator callback is required")
+	}
+	start := hourUTC(hour)
+	end := start.Add(time.Hour)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT payload_zstd, payload_sha256
+		FROM session_records
+		WHERE ingested_at >= $1 AND ingested_at < $2
+		ORDER BY session_id, occurred_at, request_id`, start, end)
+	if err != nil {
+		return fmt.Errorf("query Session projection hour: %w", err)
+	}
+	defer rows.Close()
+	decoder, err := zstd.NewReader(nil, zstd.WithDecoderMaxMemory(uint64(defaultDecodedEnvelopeMaxBytes)))
+	if err != nil {
+		return fmt.Errorf("create Session projection payload decoder: %w", err)
+	}
+	defer decoder.Close()
+	for rows.Next() {
+		var compressed []byte
+		var expectedSHA string
+		if err := rows.Scan(&compressed, &expectedSHA); err != nil {
+			return fmt.Errorf("scan Session projection record: %w", err)
+		}
+		record, err := decodeStoredProjectionEnvelope(
+			decoder, compressed, expectedSHA, defaultDecodedEnvelopeMaxBytes,
+		)
+		if err != nil {
+			return err
+		}
+		if err := fn(record.RecordID, record.Delivery, record.Rejection); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate Session projection hour: %w", err)
+	}
+	return nil
+}
+
+type storedProjectionEnvelope struct {
+	RecordID  string          `json:"record_id"`
+	Delivery  *DeliveryRecord `json:"delivery"`
+	Rejection *Rejection      `json:"rejection"`
+}
+
 func (s *Store) StatsForHour(ctx context.Context, hour time.Time) (HourStats, error) {
 	start := hourUTC(hour)
 	end := start.Add(time.Hour)

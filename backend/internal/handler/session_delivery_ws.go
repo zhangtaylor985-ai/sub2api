@@ -46,7 +46,7 @@ func newOpenAIWSSessionCapture(c *gin.Context, subject middleware2.AuthSubject) 
 }
 
 func (capture *openAIWSSessionCapture) remember(turn int, payload []byte) {
-	if capture == nil || turn <= 0 || len(payload) == 0 {
+	if capture == nil || turn <= 0 || len(payload) == 0 || !capture.recorder.CanCapture() {
 		return
 	}
 	capture.mu.Lock()
@@ -74,6 +74,9 @@ func (capture *openAIWSSessionCapture) finish(
 	delete(capture.started, turn)
 	capture.mu.Unlock()
 	if len(requestBody) == 0 {
+		return
+	}
+	if !capture.recorder.CanCapture() {
 		return
 	}
 

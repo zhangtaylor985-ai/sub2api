@@ -41,6 +41,9 @@ type AnthropicOutputConfig struct {
 type AnthropicThinking struct {
 	Type         string `json:"type"`                    // "enabled" | "adaptive" | "disabled"
 	BudgetTokens int    `json:"budget_tokens,omitempty"` // max thinking tokens
+	// Display is the Opus 5-era display hint ("omitted"). Only the session
+	// delivery projection sets it; live conversion paths leave it empty.
+	Display string `json:"display,omitempty"`
 }
 
 // AnthropicMessage is a single message in the Anthropic conversation.

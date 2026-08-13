@@ -181,12 +181,13 @@ func (c *Canonicalizer) canonicalRequest(protocol Protocol, body json.RawMessage
 		converted.System = nil
 		converted.Model = c.publicModel
 		// The shared converter projects reasoning.effort onto the legacy
-		// thinking {enabled, budget_tokens} shape. Real Claude Code clients
-		// talking to Opus 5 send adaptive thinking, so the delivery
-		// projection normalizes it here (delivery records only; the live
-		// conversion path is unchanged).
-		if converted.Thinking != nil && converted.Thinking.Type == "enabled" {
-			converted.Thinking = &apicompat.AnthropicThinking{Type: "adaptive"}
+		// thinking {enabled, budget_tokens} shape and drops thinking entirely
+		// for low effort. Real Claude Code clients talking to Opus 5 always
+		// send adaptive thinking (display omitted) whenever reasoning is
+		// requested, so the delivery projection normalizes it here (delivery
+		// records only; the live conversion path is unchanged).
+		if request.Reasoning != nil {
+			converted.Thinking = &apicompat.AnthropicThinking{Type: "adaptive", Display: "omitted"}
 		}
 		return json.Marshal(converted)
 	default:

@@ -239,8 +239,9 @@ func TestCanonicalizerResponsesNormalizesThinkingProjectionToAdaptive(t *testing
 	require.Nil(t, envelope.Rejection)
 	require.NotNil(t, envelope.Delivery)
 
-	// Opus 5-era Claude Code shape: adaptive thinking, no budget_tokens.
+	// Opus 5-era Claude Code shape: adaptive thinking, display omitted, no budget_tokens.
 	require.Equal(t, "adaptive", jsonPathString(t, envelope.Delivery.Request, "thinking", "type"))
+	require.Equal(t, "omitted", jsonPathString(t, envelope.Delivery.Request, "thinking", "display"))
 	var requestMap map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(envelope.Delivery.Request, &requestMap))
 	var thinkingMap map[string]json.RawMessage
@@ -248,6 +249,39 @@ func TestCanonicalizerResponsesNormalizesThinkingProjectionToAdaptive(t *testing
 	_, hasBudget := thinkingMap["budget_tokens"]
 	require.False(t, hasBudget, "adaptive thinking must not carry budget_tokens")
 	require.Equal(t, "high", jsonPathString(t, envelope.Delivery.Request, "output_config", "effort"))
+}
+
+func TestCanonicalizerResponsesLowEffortStillProjectsAdaptiveThinking(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{APIKeyID: 9},
+		GatewayRequestID: "gateway-responses-low-effort",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"gpt-5.6-sol","reasoning":{"effort":"low","context":"all_turns"},
+			"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-sol",
+			"output":[{"type":"message","status":"completed","content":[{"type":"output_text","text":"hello"}]}],
+			"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	// low effort still yields the Opus 5 adaptive shape (real Claude Code
+	// sends thinking for every effort level)
+	require.Equal(t, "adaptive", jsonPathString(t, envelope.Delivery.Request, "thinking", "type"))
+	require.Equal(t, "omitted", jsonPathString(t, envelope.Delivery.Request, "thinking", "display"))
+	require.Equal(t, "low", jsonPathString(t, envelope.Delivery.Request, "output_config", "effort"))
+	// thinking-enabled request => display=omitted thinking block in response
+	require.Equal(t, "thinking", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 0, "type"))
+	require.NotEmpty(t, jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "signature"))
 }
 
 func TestCanonicalizerAnthropicKeepsClientThinkingShape(t *testing.T) {

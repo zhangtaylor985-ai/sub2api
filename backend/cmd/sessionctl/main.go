@@ -45,6 +45,8 @@ func run() error {
 		return runExport(ctx, os.Args[2:])
 	case "validate":
 		return runValidate(os.Args[2:])
+	case "rebuild-archives":
+		return runRebuildArchives(ctx, os.Args[2:])
 	case "seed-projection":
 		return runSeedProjection(ctx, os.Args[2:])
 	case "status":
@@ -372,6 +374,26 @@ func runValidate(args []string) error {
 	return writeOutput(validation)
 }
 
+func runRebuildArchives(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("rebuild-archives", flag.ContinueOnError)
+	inputDir := flags.String("input-dir", "", "directory containing validated historical Session tar.zst archives")
+	outputDir := flags.String("output-dir", "", "separate empty directory for rebuilt Session tar.zst archives")
+	allow := flags.Bool("allow-rebuild", false, "explicitly allow offline archive regeneration")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	result, err := sessiondelivery.RebuildArchives(ctx, sessiondelivery.RebuildArchivesConfig{
+		InputDir:    *inputDir,
+		OutputDir:   *outputDir,
+		PublicModel: sessiondelivery.DefaultPublicModel,
+		Allow:       *allow,
+	})
+	if err != nil {
+		return err
+	}
+	return writeOutput(result)
+}
+
 func runSeedProjection(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("seed-projection", flag.ContinueOnError)
 	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
@@ -482,7 +504,7 @@ func writeOutput(value any) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|export|validate|seed-projection|status|purge> [flags]")
+	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|export|validate|rebuild-archives|seed-projection|status|purge> [flags]")
 }
 
 func envOr(name, fallback string) string {

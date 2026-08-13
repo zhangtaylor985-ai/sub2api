@@ -1,5 +1,26 @@
 # Session Delivery 可观测性实施计划
 
+## 2026-08-13 历史交付文件按最新代码重生成
+
+### 目标
+
+在不影响线上实时入库、定时归档和既有 Google Drive 对象的前提下，直接读取 Google Drive 已存在的 05–11 UTC 交付归档，在本机按最新 Session delivery 投影代码重生成、严格校验并上传到独立版本目录；不再下载或恢复 Session 数据库，验证完成前不覆盖旧对象。
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| Drive 输入与备份盘点 | complete | 05–11 UTC 七个既有归档均已下载并与生产批次 SHA-256/size 一致 |
+| 可重投影性与差异评估 | complete | 从既有 delivery JSONL 重跑 request/echo/cache/thinking；不扩张到旧排除记录 |
+| 本机隔离重生成 | complete | 1,240 条、118 个 Session；内容审计全通过，最终幂等复跑逐文件 SHA 一致 |
+| Drive 并行上传与验收 | in_progress | 独立 `rebuild-*` 前缀、SHA/validator/模型/cache/signature 核验 |
+| 是否切换正式索引 | pending | 仅在全量通过后决定；不删除旧对象 |
+
+### 安全边界
+
+- 不在 2GB Session DB 服务器上执行历史全量重算；线上只做只读备份/对象盘点。
+- 本任务只重生成 Drive 中已经存在的 delivery JSONL；不从旧文件伪造 Original，也不声称恢复旧版曾排除的记录。
+- 第一轮结果上传到新 Drive 前缀，不覆盖、改名或删除现有正式对象，也不改生产批次表。
+- 本地临时归档和工具使用仓库外 0700/0600 目录；涉及删除的清理由用户确认后再精确执行。
+
 ## 2026-08-13 手工保真增强发布
 
 | 阶段 | 状态 | 输出 |

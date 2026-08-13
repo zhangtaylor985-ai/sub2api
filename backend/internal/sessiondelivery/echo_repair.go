@@ -132,8 +132,18 @@ func (r *echoRepair) repairMessages(request map[string]json.RawMessage) (bool, e
 		}
 		turn := r.prior[matched]
 		priorIndex = matched - 1
-		if contentHasBlock(content, "thinking") || len(turn.thinking) == 0 {
+		if len(turn.thinking) == 0 {
 			continue
+		}
+		hasThinking, hasSignedThinking := thinkingBlockSignatureState(content)
+		if hasSignedThinking {
+			continue // preserve a real or already completed echo byte-exact
+		}
+		if hasThinking {
+			// Older projections could echo an unsigned thinking block. Replace
+			// only that incomplete prefix with the signed block retained from
+			// the matching prior response.
+			content = withoutContentBlock(content, "thinking")
 		}
 		msg["content"] = mustJSON(append(append([]json.RawMessage{}, turn.thinking...), content...))
 		reencoded, err := json.Marshal(msg)
@@ -187,19 +197,32 @@ func (r *echoRepair) collectResponse(responseData json.RawMessage) error {
 	return nil
 }
 
-func contentHasBlock(content []json.RawMessage, blockType string) bool {
+func thinkingBlockSignatureState(content []json.RawMessage) (hasThinking, hasSignedThinking bool) {
+	for _, block := range content {
+		var parsed map[string]json.RawMessage
+		if err := json.Unmarshal(block, &parsed); err != nil || rawString(parsed["type"]) != "thinking" {
+			continue
+		}
+		hasThinking = true
+		if rawString(parsed["signature"]) != "" {
+			hasSignedThinking = true
+		}
+	}
+	return hasThinking, hasSignedThinking
+}
+
+func withoutContentBlock(content []json.RawMessage, blockType string) []json.RawMessage {
+	filtered := make([]json.RawMessage, 0, len(content))
 	for _, block := range content {
 		var head struct {
 			Type string `json:"type"`
 		}
-		if err := json.Unmarshal(block, &head); err != nil {
+		if json.Unmarshal(block, &head) == nil && head.Type == blockType {
 			continue
 		}
-		if head.Type == blockType {
-			return true
-		}
+		filtered = append(filtered, block)
 	}
-	return false
+	return filtered
 }
 
 // assistantContentKey prefers visible text because request and response

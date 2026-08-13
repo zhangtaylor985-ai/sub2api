@@ -1,5 +1,25 @@
 # Session Delivery 可观测性发现记录
 
+## 2026-08-13 Google Drive 历史交付文件重生成
+
+- 用户纠正了处理对象：目标是 Google Drive 中已有的 05–11 UTC 交付归档，不是 Session 数据库。已停止数据库备份下载，后续重生成完全使用七个旧 `tar.zst` 文件作为输入。
+- 七个输入归档总计 76,878,591 bytes、1,240 条 delivery、118 个公开 Session；本地 SHA-256 与生产 `session_export_batches` 的已验证哈希逐个一致。
+- 新增离线 `sessionctl rebuild-archives`：先全量验证所有输入，再按 UTC 小时正序重放；会话级 echo/cache 状态跨小时延续，输出目录必须与输入目录隔离且不得已有归档。
+- 历史归档不含内部 source protocol。旧 Codex 记录采用可恢复指纹（无 metadata、无 system、存在 `output_config.effort`）归一为 `thinking.type=adaptive + display=omitted`，并仅在该范围清除 Codex 启动上下文；真实用户文本保留。
+- thinking 处理严格复用用户现有 `ensureThinkingSignatures`，`signature.go` 未修改：已有非空签名保持；匹配到前轮响应时优先逐字节回填；无法匹配的历史 unsigned thinking 才走既有合成实现。
+- 从旧归档到最终候选共处理：1,048 条 request shape、379 个 Codex bootstrap 片段、95 条响应 thinking、459 条跨轮 echo、1,756 个请求历史 thinking 块；cache usage 对 914 条旧记录重新投影。
+- 最终候选共 79,911,483 bytes。七个归档均通过 `ValidateArchive`；内容审计异常均为 0：模型字段、adaptive display、Codex 旧形态、thinking 缺失、响应/请求历史空签名、cache 字段、`input_tokens != 2`、Codex bootstrap 残留。
+- 全文出现的 GPT 字样只位于用户消息、工具说明或自定义 system 文本，不在 request/response model 或内部路由字段；为避免篡改用户语义不做内容替换。
+- 最终候选再次作为输入重放后，1,240 条 `changed_records=0`，七个输出 SHA-256 与大小逐个一致。实测 88.25 秒、峰值 RSS 408,961,024 bytes、swap 0，证明本机计算方案适合本次历史重算。
+- 最终候选 SHA-256：
+  - 05 UTC `d851a6a8df04d7db8c4f15f33142339c9b12dcba44a1b57027f2350cdd27097d`
+  - 06 UTC `b37e6aeae22557773cff9a7dc6bd1cd364f0da94d7fbb4b7dd3e8a0ae16fb5ab`
+  - 07 UTC `81069a8a560351e172f918cf944e3a4d82e6c045bd597b2d55c80f59c9c40a2f`
+  - 08 UTC `898791832e96ef19940ba3819d6be0f0aadbdd30f8299099b3ef445c23e9b7be`
+  - 09 UTC `0d6eb37fce031f6a21fb0bbb559b5ba707b1f58d34c9f99fb7485dfb483b6075`
+  - 10 UTC `020eecab8433fd920f20b275b373f39ce9c0fc98741d2b84a33d9a19e26bfff3`
+  - 11 UTC `93cfd468d4b8f0e125c161dc812e109d70947937c11bce51fb64295f2ff4fcca`
+
 ## 2026-08-13 手工保真增强审查
 
 - Codex Responses SSE 的真实兼容上游会在 `response.output_item.done` 给出完整 assistant message，但 `response.completed.response.output` 可能为空；旧 Session decoder 只保存 terminal 对象，导致 Codex 交付响应丢失可见文本。修复仅在 Session decoder 汇集 done item，不修改实时响应。
@@ -1022,3 +1042,17 @@
 - 导出器不能把完整 `Envelope.Original` 解压并反序列化后再丢弃：10 UTC 生产批次在 2GB 主机上峰值约 1.37GiB 并使用约 802MiB swap。最佳实践是仍对完整 zstd 明文执行大小和 SHA-256 校验，但以结构流方式跳过 Original，仅反序列化 record_id/delivery/rejection；交付内容与旧路径保持一致，资源上限按交付字段而非审计整包增长。
 - 11 UTC 的 230MB 压缩载荷生产复验把峰值降到 263.8MiB、swap 降到 0，降幅约 81.1%；同一批在 Drive 独立回读和严格 validator 后才清库，证明流式优化同时满足资源隔离与 purge 安全门禁。
 - 当前 40GB 隔离机在自动清理后根盘占用 38%、可用约 24GB；7 个正式 Drive 对象累计约 76.88MB。结合每 30 分钟 timer、2 小时 settling、回读 SHA 门禁和 0 swap 新峰值，继续使用线上隔离机优于把 PostgreSQL 放到日常开发 Mac。
+
+## 2026-08-13 历史交付重生成初始判断
+
+- 运行新的小时增量导出适合留在线上；历史全量重算不适合 2GB DB 服务器。即使流式优化把单批峰值降到 263.8MiB，全量 restore、PostgreSQL cache、并行压缩和 Drive 回传仍会挤占实时入库资源。
+- 本地 Mac 更适合作为离线重建节点：CPU、内存和磁盘余量更大，可使用独立容器/volume，失败不会影响线上；最终只上传已经通过 SHA 和严格 validator 的结果。
+- 能否“全部”重生成取决于清理前原始 `session_records.payload_zstd` 是否仍存在于备份。旧 Drive 交付文件已经丢弃 Original audit，只能用于 checkpoint seed，不能等价重跑 canonicalizer；必须先建立备份—小时覆盖矩阵。
+- Session DB 服务器当前仅发现两份非空 custom-format dump：`session-delivery-before-status-20260813T061617Z.dump`（305,176,758 bytes，第一轮清理前）与 `session-delivery-before-v2-fidelity-20260813T130834Z.dump`（2,621,928,572 bytes，05–09 已清理后、10–11 清理前）；另一个 `...130816Z.dump` 为 0 bytes，不是有效备份。
+- 第一份快照理论上可完整覆盖 05 UTC，但在 06:16 UTC 创建，06 UTC 仍在摄取中；第二份理论上可完整覆盖 10、11 UTC。06–09 是否有其他原始副本尚需继续查主机 spool/备份/WAL 条件，不能用旧交付文件冒充完整原始重算。
+- 本机可用约 291GiB、物理内存 32GiB；OrbStack 为 10 CPU/约 15.7GiB RAM。恢复约 3GB dump 并生成临时归档的资源余量充足，明显优于 2GB 线上 DB 机。
+- 06:16 UTC 快照 SHA256=`14d05aa210ffdbe8536bacc16cd2d4f3228a44dbd24d546e3bf2a9a82325c696`。
+- Mac→腾讯 DB 直连 8MiB 只读基准耗时 23.15 秒（约 0.35MiB/s）；经 `172.247.109.38:41012` 单跳代理 68.96 秒仍未完成，路径更慢。该中继适合 Oracle→腾讯生产链路，不适合 Mac 下载。
+- 经现生产 Oracle `161.153.91.242` 单跳代理的 8MiB 基准 66.43 秒仍未完成，同样差于直连；下一步仅测试已验证的 Oracle→回滚机→腾讯完整分段路径。
+- 用户再次明确目标是“把 Google Drive 上已经存在的交付文件按最新代码重生成”，不是恢复旧版被排除的数据。因此无需下载 2.62GB 原始 DB 快照；七个 Drive 对象合计 76,878,591 bytes，现有 delivery JSONL 足以重跑导出侧 echo/cache/usage 与严格 validator。
+- Drive 正式目录经生产 rclone 实时列举确认包含 05–11 UTC 七个 `.tar.zst` 对象；Google Drive connector 当前授权视图搜索为空，采用已验证的生产 rclone 通道下载和后续独立目录上传。

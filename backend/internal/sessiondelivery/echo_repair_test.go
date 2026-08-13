@@ -90,6 +90,25 @@ func TestEchoRepairInsertsPriorThinkingIntoLaterRequests(t *testing.T) {
 	require.Equal(t, "sig-BBB", requestAssistantThinkingSignature(t, turn3))
 }
 
+func TestEchoRepairReplacesUnsignedThinkingWithPriorResponseEcho(t *testing.T) {
+	repair := &echoRepair{}
+	turn1 := echoTestRecord("session_unsigned", "first question", "", true, "answer one", "sig-prior-exact")
+	require.NoError(t, repair.process(turn1))
+
+	turn2 := echoTestRecord("session_unsigned", "second question", "answer one", true, "answer two", "sig-current")
+	turn2.Request = json.RawMessage(`{
+		"model":"claude-opus-5",
+		"thinking":{"type":"adaptive","display":"omitted"},
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"first"}]},
+			{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":""},{"type":"text","text":"answer one"}]},
+			{"role":"user","content":[{"type":"text","text":"second question"}]}
+		]
+	}`)
+	require.NoError(t, repair.process(turn2))
+	require.Equal(t, "sig-prior-exact", requestAssistantThinkingSignature(t, turn2))
+}
+
 func TestEchoRepairSkipsWhenThinkingNotEnabled(t *testing.T) {
 	repair := &echoRepair{}
 	turn1 := echoTestRecord("session_b", "q1", "", true, "answer one", "sig-AAA")

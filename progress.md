@@ -1,5 +1,21 @@
 # Session Delivery 可观测性进度记录
 
+## 2026-08-13 Google Drive 历史交付文件重生成
+
+- 已按用户纠正停止数据库恢复方向；此前误启动的数据库 dump 下载在 17,203,200 bytes 时停止，未用于重生成，线上数据库无写入。
+- 已通过生产 rclone 通道确认 Drive 05–11 UTC 七个旧对象，并下载到仓库外 0700 临时目录；七个 SHA-256 与生产已验证批次一致。
+- 已新增 `sessionctl rebuild-archives`、跨小时投影状态、输入/输出隔离门禁、完整 archive read-back validator、紧凑结果和单元测试。
+- 第一次真实内容审计发现 78 条记录的请求历史包含 unsigned thinking，并有 184 条记录残留旧 Codex 启动上下文；该候选未上传。
+- 已增强 delivery-only echo：匹配前轮响应时用其签名逐字节替换 unsigned echo；剩余 unsigned 历史 thinking 复用现有签名函数补齐。用户的 `signature.go` 保持未修改。
+- 已对旧 Codex 形态清除独立或嵌入式启动上下文，保留同一文本块前后的真实用户内容；补充纯嵌入 wrapper 回归测试。
+- 最终候选位于仓库外 `output-publish`：七个文件共 79,911,483 bytes、1,240 条、118 个 Session。
+- 七个归档逐个通过 `sessionctl validate`；流式 JSONL 内容审计中模型、thinking、签名、cache、Codex shape/bootstrap 的异常计数均为 0。
+- 最终幂等复跑通过：1,240 条 `changed_records=0`，七个 SHA-256 与 size 逐个一致；峰值 RSS 408,961,024 bytes，swap 0。
+- 验证通过：定向单测、Session race、`go test ./...`、`go vet ./...`、PostgreSQL 18 跨小时 export/purge/seed 集成测试、`git diff --check`。
+- 待办：提交并推送代码；把最终七个对象上传到新的 Google Drive 版本目录，逐个下载回读 SHA-256；不覆盖旧目录。
+- 错误记录：首次 gofmt 在 `backend/` 中误带 `backend/` 前缀，`lstat` 后立即停止且未改文件；改用模块相对路径后通过。
+- 错误记录：第一版 embedded wrapper 修改只更新内存 block、未触发 message 重编码；新增纯嵌入测试并修复，严格候选重新生成且审计归零。
+
 ## 2026-08-13 手工保真增强发布
 
 - 从当前生产基线创建独立 `codex/session-delivery-v2-rollout`，合入用户在 `codex/session-delivery-v2` 的三组手工改动；未修改签名合成实现。
@@ -1040,3 +1056,19 @@
 - 2026-08-13：从 Drive 再次独立下载 11 UTC 对象，SHA 完全一致且 `sessionctl validate` 通过；内容级聚合为 229/229 请求与响应模型 `claude-opus-5`、229/229 完整 cache usage、229/229 `input_tokens=2`、215 个 thinking 块全部签名非空。
 - 2026-08-13：累计 7 个已验证并清理小时批次：6,094 条原始记录、1,240 条交付、4,854 条排除、76,878,591 bytes；118 个跨小时 projection checkpoint 约 2.28MiB。下一次 timer 为 22:31，未发现失败批次。
 - 2026-08-13：测试 canary 已停止并确认 18080 无监听；28081/28082 本机隧道已关闭；本地临时 API Key、fixture、归档副本和远端 post-upload 临时副本已永久删除。正式 Drive 对象、完整 DB 备份、旧 app/sessionctl 回滚二进制与历史 seed 证据均保留。
+- 2026-08-13：用户要求评估并尽可能将既有交付文件按最新保真代码重生成。已决定采用“本地隔离恢复 + Drive 新前缀并行上传”，不在 2GB 线上 DB 机全量重算，也不覆盖现有对象。
+- 2026-08-13：已完整读取 `planning-with-files`、`sub2api-production-inspection` 与 `sub2api-production-regression`；catchup 因不支持 Codex 原生 session 正常跳过，改用干净 rollout worktree、Git 与现有计划文件继续。
+- 2026-08-13：线上只读备份盘点发现有效 Session dump 两份：06:16 UTC 305MB、13:08 UTC 2.62GB；历史 projection seed 目录保留 05–10 UTC 旧 Drive 对象约 53MB。下一步将快照复制到本地隔离恢复，不在 DB 服务器解压或重算。
+- 2026-08-13：本机容量预检通过：约 291GiB 可用、32GiB 物理内存，OrbStack 10 CPU/约 15.7GiB RAM；适合作为离线重建节点。
+- 2026-08-13：创建仓库外 0700 临时根目录 `/Users/taylor/.codex/task-snapshots/sub2api-session-history-rebuild.lIYjOZ`；仅用于两份 dump、隔离 PostgreSQL 数据与重建归档，验收后精确清理。
+
+### 历史重生成错误记录
+
+- 首次在 DB 机以 `postgres` 用户直接执行 `/opt/sub2api/backups/...061617Z.dump` 的 `pg_restore --list`，因 `/opt/sub2api` 父目录遍历权限被拒绝；SHA 计算已成功。后续不放宽目录权限，改为 root 只读校验或把副本下载到本地后由本地 PostgreSQL 恢复。
+- 首次 small dump rsync 以约 0.35MiB/s 传到 17MiB 时主动中止，partial 已保留，未改远端文件；原因是先评估更快路径，避免盲等约两小时大 dump。
+- 经直接回滚机作为单跳 ProxyCommand 的 8MiB 基准超过 68 秒仍未完成，主动中止；确认比直连更慢，不再采用该路径。
+- 经 Oracle 单跳 ProxyCommand 的 8MiB 基准超过 66 秒仍未完成，主动中止；未修改三台远端状态。
+- 用户澄清仅需重生成 Google Drive 既有交付文件；立即停止原始 DB dump 路线，不再下载大快照。Drive 正式目录已通过生产 rclone 列出 05–11 UTC 七个对象，共约 76.88MB。
+- 已启用 Google Drive skill；连接器授权视图无法搜索到 rclone 创建的对象，因此回退到同一生产 rclone OAuth 通道，不要求用户重新授权。
+- 首次并行 `scp` 直接读取 projection seed 目录时，`ubuntu` 用户因 0700/0600 权限得到统一 `No such file`；没有文件被下载或远端修改。保持目录最小权限不变，改用受控 `sudo dd` 只读流到本地。
+- 首次复用 Oracle→回滚机→腾讯完整分段链路时，回滚机对腾讯 SSH host key 尚未登记，严格校验下安全失败；未使用 `StrictHostKeyChecking=no`，下一步先从本机可信 known_hosts 取精确 key 建立临时只读校验文件。

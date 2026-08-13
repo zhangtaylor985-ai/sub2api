@@ -373,6 +373,11 @@ func TestHourlyExportUpgradesPreDeploymentThinkingShape(t *testing.T) {
 	require.NoError(t, json.Unmarshal(envelope.Delivery.Request, &request))
 	request["thinking"] = json.RawMessage(`{"type":"adaptive"}`)
 	request["output_config"] = json.RawMessage(`{"effort":"high"}`)
+	request["messages"] = json.RawMessage(`[
+		{"role":"user","content":[{"type":"text","text":"earlier question"}]},
+		{"role":"assistant","content":[{"type":"thinking","thinking":"legacy visible reasoning","signature":""},{"type":"text","text":"earlier answer"}]},
+		{"role":"user","content":[{"type":"text","text":"current question"}]}
+	]`)
 	envelope.Delivery.Request, _ = json.Marshal(request)
 	require.NoError(t, ValidateDelivery(envelope.Delivery, DefaultPublicModel))
 	inserted, err := store.Insert(ctx, envelope)
@@ -398,6 +403,8 @@ func TestHourlyExportUpgradesPreDeploymentThinkingShape(t *testing.T) {
 	require.Len(t, records, 1)
 	require.Equal(t, "adaptive", jsonPathString(t, records[0].Request, "thinking", "type"))
 	require.Equal(t, "omitted", jsonPathString(t, records[0].Request, "thinking", "display"))
+	require.NotEmpty(t, requestAssistantThinkingSignature(t, &records[0]))
+	require.NotContains(t, string(records[0].Request), "legacy visible reasoning")
 }
 
 type integrationDurableArchive struct {

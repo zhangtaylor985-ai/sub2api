@@ -345,6 +345,13 @@ func (e *Exporter) buildArchive(
 		if err := echo.process(delivery); err != nil {
 			return fmt.Errorf("echo repair record %s: %w", recordID, err)
 		}
+		// A capture can begin in the middle of a client conversation. In that
+		// case an unsigned historical thinking block has no earlier response in
+		// our checkpoint to match. Complete only those still-unmatched blocks
+		// with the same delivery-only fallback used by offline rebuilds.
+		if _, err := ensureRequestHistoryThinkingSignatures(delivery); err != nil {
+			return fmt.Errorf("complete request history thinking for record %s: %w", recordID, err)
+		}
 		// Project Anthropic-style prompt-cache usage (real CC traffic always
 		// shows per-turn cache creation; GPT upstreams never report it).
 		if err := usage.process(delivery); err != nil {

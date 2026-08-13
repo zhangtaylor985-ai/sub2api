@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -177,4 +178,30 @@ func TestForwarderKeepsOtherInFlightUploadsAfterTransientFailure(t *testing.T) {
 	paths, err := spool.ListPending()
 	require.NoError(t, err)
 	require.Len(t, paths, 1)
+}
+
+func TestIngestHandlerBoundsDecodeConcurrencySeparately(t *testing.T) {
+	db, _, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	store, err := NewStore(db)
+	require.NoError(t, err)
+	handler, err := NewIngestHandler(store, IngestHandlerConfig{
+		Secret:              testHMACSecret,
+		TempDir:             t.TempDir(),
+		MaxConcurrent:       4,
+		MaxDecodeConcurrent: 5,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 4, cap(handler.semaphore))
+	require.Equal(t, 4, cap(handler.decodeSemaphore), "decode concurrency must not exceed upload concurrency")
+
+	handler, err = NewIngestHandler(store, IngestHandlerConfig{
+		Secret:        testHMACSecret,
+		TempDir:       t.TempDir(),
+		MaxConcurrent: 16,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 16, cap(handler.semaphore))
+	require.Equal(t, 1, cap(handler.decodeSemaphore), "large envelope decoding defaults to one lane")
 }

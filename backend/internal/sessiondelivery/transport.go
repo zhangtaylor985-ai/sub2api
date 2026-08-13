@@ -274,14 +274,15 @@ func isLoopbackHost(host string) bool {
 }
 
 type IngestHandlerConfig struct {
-	Secret          string
-	TempDir         string
-	MaxBodyBytes    int64
-	MaxDecodedBytes int64
-	MaxConcurrent   int
-	AllowedSkew     time.Duration
-	DiskPath        string
-	RejectDiskUsage int
+	Secret              string
+	TempDir             string
+	MaxBodyBytes        int64
+	MaxDecodedBytes     int64
+	MaxConcurrent       int
+	MaxDecodeConcurrent int
+	AllowedSkew         time.Duration
+	DiskPath            string
+	RejectDiskUsage     int
 }
 
 type IngestHandler struct {
@@ -291,6 +292,7 @@ type IngestHandler struct {
 	maxBodyBytes    int64
 	maxDecodedBytes int64
 	semaphore       chan struct{}
+	decodeSemaphore chan struct{}
 	allowedSkew     time.Duration
 	diskPath        string
 	rejectDiskUsage int
@@ -312,6 +314,12 @@ func NewIngestHandler(store *Store, config IngestHandlerConfig) (*IngestHandler,
 	}
 	if config.MaxConcurrent <= 0 {
 		config.MaxConcurrent = 2
+	}
+	if config.MaxDecodeConcurrent <= 0 {
+		config.MaxDecodeConcurrent = 1
+	}
+	if config.MaxDecodeConcurrent > config.MaxConcurrent {
+		config.MaxDecodeConcurrent = config.MaxConcurrent
 	}
 	if config.AllowedSkew <= 0 {
 		config.AllowedSkew = 5 * time.Minute
@@ -335,6 +343,7 @@ func NewIngestHandler(store *Store, config IngestHandlerConfig) (*IngestHandler,
 		maxBodyBytes:    config.MaxBodyBytes,
 		maxDecodedBytes: config.MaxDecodedBytes,
 		semaphore:       make(chan struct{}, config.MaxConcurrent),
+		decodeSemaphore: make(chan struct{}, config.MaxDecodeConcurrent),
 		allowedSkew:     config.AllowedSkew,
 		diskPath:        config.DiskPath,
 		rejectDiskUsage: config.RejectDiskUsage,
@@ -436,6 +445,12 @@ func (h *IngestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		_ = tmp.Close()
 		writeIngestJSON(writer, http.StatusInternalServerError, map[string]any{"status": "error", "code": "temp_seek_failed"})
+		return
+	}
+	select {
+	case h.decodeSemaphore <- struct{}{}:
+		defer func() { <-h.decodeSemaphore }()
+	case <-request.Context().Done():
 		return
 	}
 	envelope, err := DecodeCompressedEnvelopeAtMost(tmp, h.maxDecodedBytes)

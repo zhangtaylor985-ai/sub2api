@@ -312,6 +312,18 @@ func TestProjectionReseedArchivesDryRunAndApply(t *testing.T) {
 		encodedPartial.SHA256, encodedPartial.LastExportHour,
 	)
 	require.NoError(t, err)
+	staleCheckpoint := projectionCheckpoint{Version: projectionCheckpointVersion}
+	encodedStale, err := encodeProjectionCheckpoint("session_stale", staleCheckpoint, secondHour)
+	require.NoError(t, err)
+	_, err = store.db.ExecContext(ctx, `
+		INSERT INTO session_projection_checkpoints (
+			session_id, checkpoint_version, checkpoint_zstd,
+			checkpoint_sha256, last_export_hour
+		) VALUES ($1, $2, $3, $4, $5)`,
+		encodedStale.SessionID, encodedStale.Version, encodedStale.Compressed,
+		encodedStale.SHA256, encodedStale.LastExportHour,
+	)
+	require.NoError(t, err)
 	dryRun, err := store.ReseedProjectionArchives(ctx, archiveDir, DefaultPublicModel, false)
 	require.NoError(t, err)
 	require.False(t, dryRun.Applied)
@@ -319,7 +331,7 @@ func TestProjectionReseedArchivesDryRunAndApply(t *testing.T) {
 	require.Equal(t, int64(2), dryRun.Records)
 	var checkpointCount int
 	require.NoError(t, store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_projection_checkpoints`).Scan(&checkpointCount))
-	require.Equal(t, 1, checkpointCount)
+	require.Equal(t, 2, checkpointCount)
 	checkpoint, found, err := store.LoadProjectionCheckpoint(ctx, first.Delivery.SessionID, thirdHour)
 	require.NoError(t, err)
 	require.True(t, found)
@@ -334,6 +346,11 @@ func TestProjectionReseedArchivesDryRunAndApply(t *testing.T) {
 	require.True(t, found)
 	require.Len(t, checkpoint.Echo, 2)
 	require.Equal(t, 128, checkpoint.Usage.PreviousPrefix)
+	var staleCount int
+	require.NoError(t, store.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM session_projection_checkpoints WHERE session_id = 'session_stale'`,
+	).Scan(&staleCount))
+	require.Zero(t, staleCount)
 
 	repeated, err := store.ReseedProjectionArchives(ctx, archiveDir, DefaultPublicModel, true)
 	require.NoError(t, err)
@@ -344,7 +361,7 @@ func TestProjectionReseedArchivesDryRunAndApply(t *testing.T) {
 	require.Equal(t, 1, reseedCount)
 	var backupCount int
 	require.NoError(t, store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_projection_reseed_backups`).Scan(&backupCount))
-	require.Equal(t, 1, backupCount)
+	require.Equal(t, 2, backupCount)
 }
 
 func TestStoreRepairsRequestConversionRejectionBeforeExport(t *testing.T) {

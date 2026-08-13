@@ -266,19 +266,21 @@ func (s *Store) commitProjectionReseed(
 	if err != nil {
 		return false, fmt.Errorf("record projection reseed audit: %w", err)
 	}
-	if len(sessionIDs) > 0 {
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO session_projection_reseed_backups (
-				input_digest, session_id, checkpoint_version, checkpoint_zstd,
-				checkpoint_sha256, last_export_hour, updated_at
-			)
-			SELECT $1, session_id, checkpoint_version, checkpoint_zstd,
-			       checkpoint_sha256, last_export_hour, updated_at
-			FROM session_projection_checkpoints
-			WHERE session_id = ANY($2::text[])`, result.InputDigest, pq.Array(sessionIDs))
-		if err != nil {
-			return false, fmt.Errorf("back up projection checkpoints before reseed: %w", err)
-		}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO session_projection_reseed_backups (
+			input_digest, session_id, checkpoint_version, checkpoint_zstd,
+			checkpoint_sha256, last_export_hour, updated_at
+		)
+		SELECT $1, session_id, checkpoint_version, checkpoint_zstd,
+		       checkpoint_sha256, last_export_hour, updated_at
+		FROM session_projection_checkpoints`, result.InputDigest)
+	if err != nil {
+		return false, fmt.Errorf("back up projection checkpoints before reseed: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM session_projection_checkpoints
+		WHERE NOT (session_id = ANY($1::text[]))`, pq.Array(sessionIDs)); err != nil {
+		return false, fmt.Errorf("remove stale projection checkpoints during reseed: %w", err)
 	}
 	for _, checkpoint := range encoded {
 		rows, err := tx.ExecContext(ctx, `

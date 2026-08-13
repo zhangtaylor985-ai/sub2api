@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -373,9 +374,10 @@ func (s *Spool) RepairMissingSessionIDQuarantine(ids *IDGenerator, apply bool) (
 		if openErr != nil {
 			return stats, fmt.Errorf("open quarantined Session record: %w", openErr)
 		}
+		sourceInfo, statErr := file.Stat()
 		envelope, decodeErr := DecodeCompressedEnvelope(file)
 		closeErr := file.Close()
-		if decodeErr != nil || closeErr != nil {
+		if statErr != nil || decodeErr != nil || closeErr != nil {
 			stats.Skipped++
 			continue
 		}
@@ -391,8 +393,12 @@ func (s *Spool) RepairMissingSessionIDQuarantine(ids *IDGenerator, apply bool) (
 		if !apply {
 			continue
 		}
-		if _, writeErr := s.Write(envelope); writeErr != nil {
+		repairedPath, writeErr := s.Write(envelope)
+		if writeErr != nil {
 			return stats, fmt.Errorf("rewrite quarantined Session record: %w", writeErr)
+		}
+		if ownershipErr := preserveFileOwnership(repairedPath, sourceInfo); ownershipErr != nil {
+			return stats, fmt.Errorf("preserve repaired Session record ownership: %w", ownershipErr)
 		}
 		if removeErr := os.Remove(path); removeErr != nil {
 			return stats, fmt.Errorf("remove repaired quarantine record: %w", removeErr)
@@ -403,6 +409,17 @@ func (s *Spool) RepairMissingSessionIDQuarantine(ids *IDGenerator, apply bool) (
 		stats.Repaired++
 	}
 	return stats, nil
+}
+
+func preserveFileOwnership(path string, source os.FileInfo) error {
+	if os.Geteuid() != 0 || source == nil {
+		return nil
+	}
+	stat, ok := source.Sys().(*syscall.Stat_t)
+	if !ok {
+		return nil
+	}
+	return os.Chown(path, int(stat.Uid), int(stat.Gid))
 }
 
 func repairMissingSessionIDEnvelope(ids *IDGenerator, envelope *Envelope) (bool, error) {

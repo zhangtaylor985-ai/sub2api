@@ -32,6 +32,8 @@ func run() error {
 	maxBodyBytes := flags.Int64("max-body-bytes", envInt64("SESSION_INGEST_MAX_BODY_BYTES", 256<<20), "maximum compressed envelope size")
 	maxDecodedBytes := flags.Int64("max-decoded-bytes", envInt64("SESSION_INGEST_MAX_DECODED_BYTES", 544<<20), "maximum decoded envelope size")
 	maxConcurrent := flags.Int("max-concurrent", envInt("SESSION_INGEST_MAX_CONCURRENT", 2), "maximum concurrent ingest bodies")
+	diskPath := flags.String("disk-path", envOr("SESSION_DISK_PATH", "/var/lib/sub2api/session-delivery"), "filesystem path protected by the disk guard")
+	rejectDiskUsage := flags.Int("reject-disk-usage", envInt("SESSION_DISK_REJECT_PERCENT", 75), "reject ingest when disk usage reaches this percent")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return err
 	}
@@ -60,6 +62,8 @@ func run() error {
 		MaxBodyBytes:    *maxBodyBytes,
 		MaxDecodedBytes: *maxDecodedBytes,
 		MaxConcurrent:   *maxConcurrent,
+		DiskPath:        *diskPath,
+		RejectDiskUsage: *rejectDiskUsage,
 	})
 	if err != nil {
 		return err

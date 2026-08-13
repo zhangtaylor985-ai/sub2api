@@ -143,20 +143,24 @@ func runForward(ctx context.Context, args []string) error {
 func runExport(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("export", flag.ContinueOnError)
 	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
-	dayValue := flags.String("day", "", "UTC day in YYYY-MM-DD (default: yesterday UTC)")
+	hourValue := flags.String("hour", "", "UTC hour in YYYY-MM-DDTHH or RFC3339 (default: previous closed UTC hour)")
 	archiveType := flags.String("archive-backend", envOr("SESSION_ARCHIVE_BACKEND", "local"), "archive backend: local or rclone")
 	archiveDir := flags.String("archive-dir", envOr("SESSION_ARCHIVE_DIR", "/var/lib/sub2api/session-delivery/archive"), "local staging archive directory")
 	rcloneBinary := flags.String("rclone-binary", envOr("SESSION_ARCHIVE_RCLONE_BINARY", "rclone"), "rclone executable used by the Google Drive backend")
 	rcloneRemote := flags.String("rclone-remote", envOr("SESSION_ARCHIVE_RCLONE_REMOTE", ""), "rclone Google Drive destination, for example gdrive:Sub2API/session-delivery")
 	tempDir := flags.String("temp-dir", envOr("SESSION_EXPORT_TEMP_DIR", "/var/lib/sub2api/session-delivery/export-tmp"), "export work directory")
-	allowCurrentDay := flags.Bool("allow-current-day", false, "allow current UTC day (tests only)")
-	purgeAfterVerify := flags.Bool("purge-after-verify", envBool("SESSION_AUTO_PURGE_ENABLED", false), "drop the ingest-day partition after durable archive verification")
+	allowCurrentHour := flags.Bool("allow-current-hour", false, "allow current UTC hour (tests only)")
+	purgeAfterVerify := flags.Bool("purge-after-verify", envBool("SESSION_AUTO_PURGE_ENABLED", false), "drop the ingest-hour partition after durable archive verification")
+	drain := flags.Bool("drain", false, "export oldest pending closed hours instead of one exact hour")
+	maxHours := flags.Int("max-hours", 48, "maximum closed hours to process in drain mode")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	day, err := parseDay(*dayValue)
-	if err != nil {
-		return err
+	if *drain && strings.TrimSpace(*hourValue) != "" {
+		return errors.New("-drain and -hour cannot be used together")
+	}
+	if *maxHours <= 0 || *maxHours > 744 {
+		return errors.New("-max-hours must be between 1 and 744")
 	}
 	store, err := openStoreFromEnv(ctx, *dsnEnv)
 	if err != nil {
@@ -164,29 +168,6 @@ func runExport(ctx context.Context, args []string) error {
 	}
 	defer store.Close()
 	if err := store.Migrate(ctx); err != nil {
-		return err
-	}
-	if existing, err := store.GetExportBatch(ctx, day); err == nil {
-		switch existing.Status {
-		case "purged":
-			return writeOutput(map[string]any{"day": day.Format("2006-01-02"), "batch": existing, "purged": true, "action": "already_purged"})
-		case "verified":
-			if !*purgeAfterVerify {
-				return writeOutput(map[string]any{"day": day.Format("2006-01-02"), "batch": existing, "purged": false, "action": "already_verified"})
-			}
-			backend, err := newArchiveBackend(*archiveType, *archiveDir, *rcloneBinary, *rcloneRemote)
-			if err != nil {
-				return err
-			}
-			if err := verifyBatchWithBackend(ctx, existing, backend); err != nil {
-				return err
-			}
-			if err := store.PurgeDay(ctx, day, existing.ArchiveSHA256, true); err != nil {
-				return err
-			}
-			return writeOutput(map[string]any{"day": day.Format("2006-01-02"), "batch": existing, "purged": true, "action": "resumed_verified_purge"})
-		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	backend, err := newArchiveBackend(*archiveType, *archiveDir, *rcloneBinary, *rcloneRemote)
@@ -197,25 +178,82 @@ func runExport(ctx context.Context, args []string) error {
 		return errors.New("purge-after-verify requires a durable archive backend")
 	}
 	exporter, err := sessiondelivery.NewExporter(store, backend, sessiondelivery.ExporterConfig{
-		PublicModel:     sessiondelivery.DefaultPublicModel,
-		TempDir:         *tempDir,
-		AllowCurrentDay: *allowCurrentDay,
+		PublicModel:      sessiondelivery.DefaultPublicModel,
+		TempDir:          *tempDir,
+		AllowCurrentHour: *allowCurrentHour,
 	})
 	if err != nil {
 		return err
 	}
-	result, err := exporter.ExportDay(ctx, day)
+	if !*drain {
+		hour, err := parseHour(*hourValue)
+		if err != nil {
+			return err
+		}
+		output, err := exportOne(ctx, store, exporter, backend, hour, *purgeAfterVerify)
+		if err != nil {
+			return err
+		}
+		return writeOutput(output)
+	}
+	results := make([]any, 0, *maxHours)
+	cutoff := time.Now().UTC().Truncate(time.Hour)
+	for len(results) < *maxHours {
+		hour, err := store.NextExportableHour(ctx, cutoff, *purgeAfterVerify)
+		if errors.Is(err, sql.ErrNoRows) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		output, err := exportOne(ctx, store, exporter, backend, hour, *purgeAfterVerify)
+		if err != nil {
+			return err
+		}
+		results = append(results, output)
+	}
+	return writeOutput(map[string]any{"processed": len(results), "hours": results})
+}
+
+func exportOne(
+	ctx context.Context,
+	store *sessiondelivery.Store,
+	exporter *sessiondelivery.Exporter,
+	backend sessiondelivery.ArchiveBackend,
+	hour time.Time,
+	purgeAfterVerify bool,
+) (map[string]any, error) {
+	if existing, err := store.GetExportBatch(ctx, hour); err == nil {
+		switch existing.Status {
+		case "purged":
+			return map[string]any{"hour": hour.Format(time.RFC3339), "batch": existing, "purged": true, "action": "already_purged"}, nil
+		case "verified":
+			if !purgeAfterVerify {
+				return map[string]any{"hour": hour.Format(time.RFC3339), "batch": existing, "purged": false, "action": "already_verified"}, nil
+			}
+			if err := verifyBatchWithBackend(ctx, existing, backend); err != nil {
+				return nil, err
+			}
+			if err := store.PurgeHour(ctx, hour, existing.ArchiveSHA256, true); err != nil {
+				return nil, err
+			}
+			return map[string]any{"hour": hour.Format(time.RFC3339), "batch": existing, "purged": true, "action": "resumed_verified_purge"}, nil
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	result, err := exporter.ExportHour(ctx, hour)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	purged := false
-	if *purgeAfterVerify {
-		if err := store.PurgeDay(ctx, day, result.Archive.SHA256, true); err != nil {
-			return err
+	if purgeAfterVerify {
+		if err := store.PurgeHour(ctx, hour, result.Archive.SHA256, true); err != nil {
+			return nil, err
 		}
 		purged = true
 	}
-	return writeOutput(map[string]any{"day": day.Format("2006-01-02"), "export": result, "purged": purged})
+	return map[string]any{"hour": hour.Format(time.RFC3339), "export": result, "purged": purged}, nil
 }
 
 func verifyBatchWithBackend(ctx context.Context, batch *sessiondelivery.ExportBatch, backend sessiondelivery.ArchiveBackend) error {
@@ -273,11 +311,11 @@ func runValidate(args []string) error {
 func runStatus(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
-	dayValue := flags.String("day", "", "UTC day in YYYY-MM-DD (default: yesterday UTC)")
+	hourValue := flags.String("hour", "", "UTC hour in YYYY-MM-DDTHH or RFC3339 (default: previous closed UTC hour)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	day, err := parseDay(*dayValue)
+	hour, err := parseHour(*hourValue)
 	if err != nil {
 		return err
 	}
@@ -286,12 +324,12 @@ func runStatus(ctx context.Context, args []string) error {
 		return err
 	}
 	defer store.Close()
-	stats, err := store.StatsForDay(ctx, day)
+	stats, err := store.StatsForHour(ctx, hour)
 	if err != nil {
 		return err
 	}
-	output := map[string]any{"day": day.Format("2006-01-02"), "stats": stats}
-	batch, err := store.GetExportBatch(ctx, day)
+	output := map[string]any{"hour": hour.Format(time.RFC3339), "stats": stats}
+	batch, err := store.GetExportBatch(ctx, hour)
 	if err == nil {
 		output["batch"] = batch
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -303,16 +341,16 @@ func runStatus(ctx context.Context, args []string) error {
 func runPurge(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("purge", flag.ContinueOnError)
 	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
-	dayValue := flags.String("day", "", "UTC day in YYYY-MM-DD")
+	hourValue := flags.String("hour", "", "UTC hour in YYYY-MM-DDTHH or RFC3339")
 	archiveSHA := flags.String("archive-sha256", "", "verified durable archive SHA-256")
-	allow := flags.Bool("allow-purge", false, "explicitly allow dropping the verified day partition")
+	allow := flags.Bool("allow-purge", false, "explicitly allow dropping the verified hour partition")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if strings.TrimSpace(*dayValue) == "" {
-		return errors.New("-day is required for purge")
+	if strings.TrimSpace(*hourValue) == "" {
+		return errors.New("-hour is required for purge")
 	}
-	day, err := parseDay(*dayValue)
+	hour, err := parseHour(*hourValue)
 	if err != nil {
 		return err
 	}
@@ -321,10 +359,10 @@ func runPurge(ctx context.Context, args []string) error {
 		return err
 	}
 	defer store.Close()
-	if err := store.PurgeDay(ctx, day, strings.TrimSpace(*archiveSHA), *allow); err != nil {
+	if err := store.PurgeHour(ctx, hour, strings.TrimSpace(*archiveSHA), *allow); err != nil {
 		return err
 	}
-	return writeOutput(map[string]any{"status": "purged", "day": day.Format("2006-01-02")})
+	return writeOutput(map[string]any{"status": "purged", "hour": hour.Format(time.RFC3339)})
 }
 
 func openStoreFromEnv(ctx context.Context, dsnEnv string) (*sessiondelivery.Store, error) {
@@ -335,16 +373,19 @@ func openStoreFromEnv(ctx context.Context, dsnEnv string) (*sessiondelivery.Stor
 	return sessiondelivery.OpenStore(ctx, dsn)
 }
 
-func parseDay(raw string) (time.Time, error) {
+func parseHour(raw string) (time.Time, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return time.Now().UTC().AddDate(0, 0, -1).Truncate(24 * time.Hour), nil
+		return time.Now().UTC().Truncate(time.Hour).Add(-time.Hour), nil
 	}
-	day, err := time.Parse("2006-01-02", raw)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid UTC day %q: %w", raw, err)
+	if hour, err := time.Parse("2006-01-02T15", raw); err == nil {
+		return hour.UTC(), nil
 	}
-	return day.UTC(), nil
+	hour, err := time.Parse(time.RFC3339, raw)
+	if err != nil || !hour.Equal(hour.Truncate(time.Hour)) {
+		return time.Time{}, fmt.Errorf("invalid UTC hour %q", raw)
+	}
+	return hour.UTC(), nil
 }
 
 func writeOutput(value any) error {

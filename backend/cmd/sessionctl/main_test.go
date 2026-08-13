@@ -3,10 +3,24 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/sessiondelivery"
 	"github.com/stretchr/testify/require"
 )
+
+func TestParseHour(t *testing.T) {
+	hour, err := parseHour("2026-08-13T07")
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, 8, 13, 7, 0, 0, 0, time.UTC), hour)
+
+	hour, err = parseHour("2026-08-13T15:00:00+08:00")
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, 8, 13, 7, 0, 0, 0, time.UTC), hour)
+
+	_, err = parseHour("2026-08-13T07:30:00Z")
+	require.Error(t, err)
+}
 
 func TestVerifyBatchWithBackend(t *testing.T) {
 	backend := &testArchiveBackend{name: "drive", durable: true}

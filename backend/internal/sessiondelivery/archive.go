@@ -27,7 +27,7 @@ type ArchiveBackend interface {
 }
 
 // LocalArchiveBackend is intentionally non-durable. It is suitable for local
-// validation and staging, but Store.PurgeDay must never be enabled from a
+// validation and staging, but Store.PurgeHour must never be enabled from a
 // batch archived only to this backend.
 type LocalArchiveBackend struct {
 	dir string

@@ -12,7 +12,9 @@ WorkingDirectory=/opt/sub2api
 EnvironmentFile=/etc/sub2api/session-delivery.env
 ExecStart=/opt/sub2api/sessiond \
   -listen 127.0.0.1:8091 \
-  -temp-dir /var/lib/sub2api/session-delivery/ingest-tmp
+  -temp-dir /var/lib/sub2api/session-delivery/ingest-tmp \
+  -disk-path /var/lib/sub2api/session-delivery \
+  -reject-disk-usage 75
 Restart=always
 RestartSec=5s
 LimitNOFILE=65536

@@ -1,7 +1,7 @@
 [Unit]
-Description=Sub2API Session Delivery V2 Daily Export
-After=network-online.target sub2api-sessiond.service
-Wants=network-online.target
+Description=Sub2API Session Delivery V2 Closed-Hour Export
+After=network-online.target sub2api-sessiond.service xray-session-egress.service
+Wants=network-online.target xray-session-egress.service
 
 [Service]
 Type=oneshot
@@ -10,8 +10,10 @@ Group=sub2api
 UMask=0077
 WorkingDirectory=/opt/sub2api
 EnvironmentFile=/etc/sub2api/session-delivery.env
-TimeoutStartSec=24h
+TimeoutStartSec=45m
 ExecStart=/opt/sub2api/sessionctl export \
+  -drain \
+  -max-hours 48 \
   -archive-dir /var/lib/sub2api/session-delivery/archive \
   -temp-dir /var/lib/sub2api/session-delivery/export-tmp
 NoNewPrivileges=true

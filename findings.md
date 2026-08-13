@@ -6,7 +6,7 @@
 - Claude Code 和 Codex 两类客户端的交付文件都必须采用供应商规定的 Anthropic Messages JSON/JSONL 结构，公开模型统一为 `claude-opus-5`。
 - 供应商规范必填顶层字段为 `session_id`、`timestamp`、`request`、`response`；成功请求必须包含完整 decoded `response.response_data`，不能混入 SSE 原文、日志或 HTML。
 - 推荐每个 Session 一个 `.jsonl`，每行一条请求；失败请求常规不进入交付包。
-- `thinking.signature` 只是真实生产情况下的优先目标，不是硬性验收；V2 不构造或伪造签名。
+- `thinking.signature` 合成逻辑来自用户既有提交，是不可修改的上线要求；V2 在交付校验中要求 thinking block 必须带非空 signature，本任务未修改该合成实现。
 - Codex 原始入站是 OpenAI Responses 协议，因此外部 Anthropic 文件是网关 canonical delivery projection；内部必须保留来源协议与原始 payload 的审计能力，但不得把内部模型/账号/路由写入交付包。
 
 ## 2026-08-11 现状与容量
@@ -89,7 +89,7 @@
 - 全仓 `go test ./...`、新增包竞态测试、全仓 `go vet ./...` 和三个生产二进制 build 均通过。
 - PostgreSQL 18 集成验收覆盖 HMAC ingest、重复投递、无效 envelope 隔离、导出所有权、local backend purge 拒绝、durable read-back、checksum/allow 双门禁、单日 partition drop 与晚到记录滚入次日。
 - 每日 purge 只删除大体积 `session_records` payload partition；紧凑的全局幂等 key 与 export batch 水位继续保留，防止历史 spool 重放和重复清理，不执行全库 TRUNCATE。
-- 尚未执行真实 Google Drive OAuth/rclone 上传和生产真实客户端黑盒；这是因为用户尚未提供 Drive 对象与独立 Session 主机/数据库，不影响本地实现完成，但上线阶段必须按运行手册分阶段验收。
+- 2026-08-13 已完成真实 Google Drive OAuth/rclone 上传与回读、独立 Session PostgreSQL 18、正式 Claude Code/Codex 流量入库和生产发布；两种协议的外部请求/响应模型均抽样为 `claude-opus-5`，thinking block 均带签名。
 
 ## 2026-08-11 Claude Opus 5 本地会话结构核对
 

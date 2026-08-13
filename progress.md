@@ -42,6 +42,18 @@
 - 对照 Anthropic 官方 thinking 文档确认 signature/data 是加密、不透明、要求原样回传的认证性字段；不在 GPT 投影中生成替代值。
 - 新增 `TestCanonicalizerAnthropicSSEPreservesOpaqueThinkingFieldsUnchanged`，同时覆盖 `signature_delta` 与 `redacted_thinking.data` 的精确透传；定向测试与 `git diff --check` 通过。
 
+## 2026-08-13
+
+- 将归档粒度从 UTC 日调整为 UTC 小时；timer 每 30 分钟追赶闭合小时，数据库按小时分区，磁盘 75% 时停止接收新 Session，主机 spool 上限为 4 GiB。
+- 腾讯 40 GB 主机完成 PostgreSQL 18 隔离库、`sessiond`、Cloudflare Tunnel、Xray Google 出口与 rclone 部署；根盘当前使用约 16%。
+- 使用用户提供的桌面 OAuth 凭据完成 `drive.file` 授权；Google Drive 健康对象上传、下载回读和 SHA-256 比对一致。
+- 正式发布 ARM64 Sub2API binary `b6743e22ba49...` 与 `sessionctl`；第一次切换因 spool 父目录所有权错误自动回滚，修正精确目录权限后重新发布成功。
+- Oracle 生产主机的 `sub2api` 和 `sub2api-session-forwarder` 均 active；正式记录通过 HTTPS/HMAC 到达隔离库，pending 可自动清空，quarantine 为 0。
+- 生产抽样同时覆盖 `anthropic_messages` 与 `openai_responses`：请求/响应公开模型均为 `claude-opus-5`，Codex 交付请求无 system/instructions 泄漏，两类 thinking block 均有非空 signature。
+- 清理了上线前唯一的 UTC 04:00 canary 分区（16 条测试记录）和对应本地测试归档，未触碰正式 UTC 05:00 数据。
+- Google Drive exporter timer 已启用；只有 immutable 上传和全量回读 SHA-256 成功后才 purge 同一闭合小时分区。
+- 全仓 `go test ./...`、`go vet ./...`、竞态测试、PostgreSQL 18 生命周期集成、Claude Code/Codex/streaming/WebSearch/TTY 黑盒和 `git diff --check` 全部通过。
+
 ---
 
 # 私下客户订阅管理与 Telegram 提醒进度

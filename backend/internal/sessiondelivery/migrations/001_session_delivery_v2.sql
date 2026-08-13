@@ -30,11 +30,11 @@ CREATE TABLE IF NOT EXISTS session_records (
 CREATE INDEX IF NOT EXISTS session_records_session_order_idx
     ON session_records (session_id, occurred_at, request_id);
 
-CREATE INDEX IF NOT EXISTS session_records_delivery_day_idx
+CREATE INDEX IF NOT EXISTS session_records_delivery_hour_idx
     ON session_records (ingested_at, deliverable);
 
 CREATE TABLE IF NOT EXISTS session_export_batches (
-    export_day DATE PRIMARY KEY,
+    export_hour TIMESTAMPTZ PRIMARY KEY,
     status TEXT NOT NULL CHECK (status IN ('exporting', 'archived', 'verified', 'failed', 'purged')),
     attempt_id TEXT NOT NULL DEFAULT '',
     record_count BIGINT NOT NULL DEFAULT 0,
@@ -54,4 +54,4 @@ CREATE TABLE IF NOT EXISTS session_export_batches (
 );
 
 CREATE INDEX IF NOT EXISTS session_export_batches_status_idx
-    ON session_export_batches (status, export_day);
+    ON session_export_batches (status, export_hour);

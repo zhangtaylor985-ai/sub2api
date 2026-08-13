@@ -16,13 +16,13 @@ import (
 )
 
 var (
-	ErrExportDayPurged     = errors.New("Session export day has already been purged")
-	ErrExportDayFrozen     = errors.New("Session export day is frozen for export")
+	ErrExportHourPurged    = errors.New("Session export hour has already been purged")
+	ErrExportHourFrozen    = errors.New("Session export hour is frozen for export")
 	ErrExportNotVerified   = errors.New("Session export batch is not verified by a durable archive backend")
 	ErrArchiveHashMismatch = errors.New("Session archive checksum does not match the verified batch")
 	ErrInvalidEnvelope     = errors.New("invalid Session envelope")
-	ErrExportInProgress    = errors.New("Session export day is already being processed")
-	ErrExportAlreadyDone   = errors.New("Session export day is already verified")
+	ErrExportInProgress    = errors.New("Session export hour is already being processed")
+	ErrExportAlreadyDone   = errors.New("Session export hour is already verified")
 )
 
 type Store struct {
@@ -30,14 +30,14 @@ type Store struct {
 	now func() time.Time
 }
 
-type DayStats struct {
+type HourStats struct {
 	Records     int64 `json:"records"`
 	Deliverable int64 `json:"deliverable"`
 	Rejected    int64 `json:"rejected"`
 }
 
 type ExportBatch struct {
-	Day            time.Time       `json:"day"`
+	Hour           time.Time       `json:"hour"`
 	Status         string          `json:"status"`
 	RecordCount    int64           `json:"record_count"`
 	DeliveryCount  int64           `json:"delivery_count"`
@@ -129,9 +129,9 @@ func (s *Store) Insert(ctx context.Context, envelope *Envelope) (bool, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	ingestedAt := s.now().UTC()
-	day := dayUTC(ingestedAt)
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, day.Format("2006-01-02")); err != nil {
-		return false, fmt.Errorf("lock Session insert day: %w", err)
+	hour := hourUTC(ingestedAt)
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, hour.Format(time.RFC3339)); err != nil {
+		return false, fmt.Errorf("lock Session insert hour: %w", err)
 	}
 	var duplicate bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM session_record_keys WHERE record_id = $1)`, envelope.RecordID).Scan(&duplicate); err != nil {
@@ -140,10 +140,10 @@ func (s *Store) Insert(ctx context.Context, envelope *Envelope) (bool, error) {
 	if duplicate {
 		return false, nil
 	}
-	if err := ensureDayWritableTx(ctx, tx, day); err != nil {
+	if err := ensureHourWritableTx(ctx, tx, hour); err != nil {
 		return false, err
 	}
-	if err := ensurePartitionExec(ctx, tx, day); err != nil {
+	if err := ensurePartitionExec(ctx, tx, hour); err != nil {
 		return false, err
 	}
 
@@ -188,19 +188,20 @@ func (s *Store) Insert(ctx context.Context, envelope *Envelope) (bool, error) {
 }
 
 func (s *Store) EnsurePartition(ctx context.Context, ingestedAt time.Time) error {
-	return ensurePartitionExec(ctx, s.db, dayUTC(ingestedAt))
+	return ensurePartitionExec(ctx, s.db, hourUTC(ingestedAt))
 }
 
 type sqlExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func ensurePartitionExec(ctx context.Context, exec sqlExecer, day time.Time) error {
-	next := day.AddDate(0, 0, 1)
-	name := partitionName(day)
+func ensurePartitionExec(ctx context.Context, exec sqlExecer, hour time.Time) error {
+	hour = hourUTC(hour)
+	next := hour.Add(time.Hour)
+	name := partitionName(hour)
 	query := fmt.Sprintf(
 		`CREATE TABLE IF NOT EXISTS %s PARTITION OF session_records FOR VALUES FROM ('%s') TO ('%s')`,
-		quoteIdentifier(name), day.Format("2006-01-02T15:04:05Z07:00"), next.Format("2006-01-02T15:04:05Z07:00"),
+		quoteIdentifier(name), hour.Format(time.RFC3339), next.Format(time.RFC3339),
 	)
 	if _, err := exec.ExecContext(ctx, query); err != nil {
 		return fmt.Errorf("ensure Session partition %s: %w", name, err)
@@ -208,19 +209,19 @@ func ensurePartitionExec(ctx context.Context, exec sqlExecer, day time.Time) err
 	return nil
 }
 
-func (s *Store) ForEachDay(ctx context.Context, day time.Time, fn func(*Envelope) error) error {
+func (s *Store) ForEachHour(ctx context.Context, hour time.Time, fn func(*Envelope) error) error {
 	if fn == nil {
-		return errors.New("Session day iterator callback is required")
+		return errors.New("Session hour iterator callback is required")
 	}
-	start := dayUTC(day)
-	end := start.AddDate(0, 0, 1)
+	start := hourUTC(hour)
+	end := start.Add(time.Hour)
 	rows, err := s.db.QueryContext(ctx, `
         SELECT payload_zstd, payload_sha256
         FROM session_records
 		WHERE ingested_at >= $1 AND ingested_at < $2
         ORDER BY session_id, occurred_at, request_id`, start, end)
 	if err != nil {
-		return fmt.Errorf("query Session day: %w", err)
+		return fmt.Errorf("query Session hour: %w", err)
 	}
 	defer rows.Close()
 	decoder, err := zstd.NewReader(nil)
@@ -251,28 +252,56 @@ func (s *Store) ForEachDay(ctx context.Context, day time.Time, fn func(*Envelope
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate Session day: %w", err)
+		return fmt.Errorf("iterate Session hour: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) StatsForDay(ctx context.Context, day time.Time) (DayStats, error) {
-	start := dayUTC(day)
-	end := start.AddDate(0, 0, 1)
-	var stats DayStats
+func (s *Store) StatsForHour(ctx context.Context, hour time.Time) (HourStats, error) {
+	start := hourUTC(hour)
+	end := start.Add(time.Hour)
+	var stats HourStats
 	err := s.db.QueryRowContext(ctx, `
         SELECT COUNT(*), COUNT(*) FILTER (WHERE deliverable), COUNT(*) FILTER (WHERE NOT deliverable)
         FROM session_records
 		WHERE ingested_at >= $1 AND ingested_at < $2`, start, end).
 		Scan(&stats.Records, &stats.Deliverable, &stats.Rejected)
 	if err != nil {
-		return DayStats{}, fmt.Errorf("count Session day: %w", err)
+		return HourStats{}, fmt.Errorf("count Session hour: %w", err)
 	}
 	return stats, nil
 }
 
-func (s *Store) StartExport(ctx context.Context, day time.Time, attemptID string) error {
-	day = dayUTC(day)
+func (s *Store) NextExportableHour(ctx context.Context, before time.Time, includeVerified bool) (time.Time, error) {
+	before = hourUTC(before)
+	query := `
+		SELECT MIN(candidate_hour)
+		FROM (
+			SELECT date_trunc('hour', records.ingested_at) AS candidate_hour
+			FROM session_records AS records
+			WHERE records.ingested_at < $1
+			  AND ($2 OR NOT EXISTS (
+				SELECT 1 FROM session_export_batches AS batches
+				WHERE batches.export_hour = date_trunc('hour', records.ingested_at)
+				  AND batches.status IN ('verified', 'purged')
+			  ))
+			UNION ALL
+			SELECT batches.export_hour AS candidate_hour
+			FROM session_export_batches AS batches
+			WHERE $2 AND batches.export_hour < $1 AND batches.status = 'verified'
+		) AS candidates`
+	var hour sql.NullTime
+	if err := s.db.QueryRowContext(ctx, query, before, includeVerified).Scan(&hour); err != nil {
+		return time.Time{}, fmt.Errorf("find next Session export hour: %w", err)
+	}
+	if !hour.Valid {
+		return time.Time{}, sql.ErrNoRows
+	}
+	return hourUTC(hour.Time), nil
+}
+
+func (s *Store) StartExport(ctx context.Context, hour time.Time, attemptID string) error {
+	hour = hourUTC(hour)
 	attemptID = strings.TrimSpace(attemptID)
 	if attemptID == "" {
 		return errors.New("Session export attempt ID is required")
@@ -282,18 +311,18 @@ func (s *Store) StartExport(ctx context.Context, day time.Time, attemptID string
 		return fmt.Errorf("begin Session export freeze: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, day.Format("2006-01-02")); err != nil {
-		return fmt.Errorf("lock Session export day: %w", err)
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, hour.Format(time.RFC3339)); err != nil {
+		return fmt.Errorf("lock Session export hour: %w", err)
 	}
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO session_export_batches (export_day, status, attempt_id)
+		INSERT INTO session_export_batches (export_hour, status, attempt_id)
 		VALUES ($1, 'exporting', $2)
-		ON CONFLICT (export_day) DO UPDATE SET
+		ON CONFLICT (export_hour) DO UPDATE SET
 			status = 'exporting', attempt_id = EXCLUDED.attempt_id,
 			error_message = '', started_at = NOW(), updated_at = NOW()
 		WHERE session_export_batches.status IN ('archived', 'failed')
 		   OR (session_export_batches.status = 'exporting'
-		       AND session_export_batches.updated_at < NOW() - INTERVAL '30 minutes')`, day, attemptID)
+		       AND session_export_batches.updated_at < NOW() - INTERVAL '30 minutes')`, hour, attemptID)
 	if err != nil {
 		return fmt.Errorf("start Session export batch: %w", err)
 	}
@@ -303,11 +332,11 @@ func (s *Store) StartExport(ctx context.Context, day time.Time, attemptID string
 	}
 	if rows == 0 {
 		var status string
-		if err := tx.QueryRowContext(ctx, `SELECT status FROM session_export_batches WHERE export_day = $1`, day).Scan(&status); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM session_export_batches WHERE export_hour = $1`, hour).Scan(&status); err != nil {
 			return fmt.Errorf("read Session export state: %w", err)
 		}
 		if status == "purged" {
-			return ErrExportDayPurged
+			return ErrExportHourPurged
 		}
 		if status == "verified" {
 			return ErrExportAlreadyDone
@@ -323,11 +352,11 @@ func (s *Store) StartExport(ctx context.Context, day time.Time, attemptID string
 	return nil
 }
 
-func (s *Store) HeartbeatExport(ctx context.Context, day time.Time, attemptID string) error {
+func (s *Store) HeartbeatExport(ctx context.Context, hour time.Time, attemptID string) error {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE session_export_batches
 		SET updated_at = NOW()
-		WHERE export_day = $1 AND status = 'exporting' AND attempt_id = $2`, dayUTC(day), strings.TrimSpace(attemptID))
+		WHERE export_hour = $1 AND status = 'exporting' AND attempt_id = $2`, hourUTC(hour), strings.TrimSpace(attemptID))
 	if err != nil {
 		return fmt.Errorf("heartbeat Session export: %w", err)
 	}
@@ -343,9 +372,9 @@ func (s *Store) HeartbeatExport(ctx context.Context, day time.Time, attemptID st
 
 func (s *Store) MarkExportArchived(
 	ctx context.Context,
-	day time.Time,
+	hour time.Time,
 	attemptID string,
-	stats DayStats,
+	stats HourStats,
 	backend, object, archiveSHA string,
 	archiveSize int64,
 	manifest json.RawMessage,
@@ -371,8 +400,8 @@ func (s *Store) MarkExportArchived(
             verified_at = CASE WHEN $2 = 'verified' THEN NOW() ELSE NULL END,
             error_message = '',
             updated_at = NOW()
-		WHERE export_day = $1 AND status = 'exporting' AND attempt_id = $11`,
-		dayUTC(day), status, stats.Records, stats.Deliverable, stats.Rejected,
+		WHERE export_hour = $1 AND status = 'exporting' AND attempt_id = $11`,
+		hourUTC(hour), status, stats.Records, stats.Deliverable, stats.Rejected,
 		backend, object, archiveSHA, archiveSize, nullableJSON(manifest), strings.TrimSpace(attemptID),
 	)
 	if err != nil {
@@ -388,7 +417,7 @@ func (s *Store) MarkExportArchived(
 	return nil
 }
 
-func (s *Store) MarkExportFailed(ctx context.Context, day time.Time, attemptID string, cause error) error {
+func (s *Store) MarkExportFailed(ctx context.Context, hour time.Time, attemptID string, cause error) error {
 	message := "unknown export failure"
 	if cause != nil {
 		message = sanitizeRejectionMessage(cause)
@@ -396,23 +425,23 @@ func (s *Store) MarkExportFailed(ctx context.Context, day time.Time, attemptID s
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE session_export_batches
 		SET status = 'failed', attempt_id = '', error_message = $3, updated_at = NOW()
-		WHERE export_day = $1 AND status = 'exporting' AND attempt_id = $2`,
-		dayUTC(day), strings.TrimSpace(attemptID), message)
+		WHERE export_hour = $1 AND status = 'exporting' AND attempt_id = $2`,
+		hourUTC(hour), strings.TrimSpace(attemptID), message)
 	if err != nil {
 		return fmt.Errorf("mark Session export failed: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) GetExportBatch(ctx context.Context, day time.Time) (*ExportBatch, error) {
+func (s *Store) GetExportBatch(ctx context.Context, hour time.Time) (*ExportBatch, error) {
 	var batch ExportBatch
 	var manifest []byte
 	err := s.db.QueryRowContext(ctx, `
-        SELECT export_day, status, record_count, delivery_count, rejected_count,
+		SELECT export_hour, status, record_count, delivery_count, rejected_count,
                archive_backend, archive_object, archive_sha256, archive_size, manifest,
                error_message, started_at, archived_at, verified_at, purged_at
-        FROM session_export_batches WHERE export_day = $1`, dayUTC(day)).Scan(
-		&batch.Day, &batch.Status, &batch.RecordCount, &batch.DeliveryCount, &batch.RejectedCount,
+		FROM session_export_batches WHERE export_hour = $1`, hourUTC(hour)).Scan(
+		&batch.Hour, &batch.Status, &batch.RecordCount, &batch.DeliveryCount, &batch.RejectedCount,
 		&batch.ArchiveBackend, &batch.ArchiveObject, &batch.ArchiveSHA256, &batch.ArchiveSize, &manifest,
 		&batch.ErrorMessage, &batch.StartedAt, &batch.ArchivedAt, &batch.VerifiedAt, &batch.PurgedAt,
 	)
@@ -423,25 +452,25 @@ func (s *Store) GetExportBatch(ctx context.Context, day time.Time) (*ExportBatch
 	return &batch, nil
 }
 
-func (s *Store) PurgeDay(ctx context.Context, day time.Time, expectedArchiveSHA string, allow bool) error {
+func (s *Store) PurgeHour(ctx context.Context, hour time.Time, expectedArchiveSHA string, allow bool) error {
 	if !allow {
 		return errors.New("Session purge requires an explicit allow-purge flag")
 	}
-	day = dayUTC(day)
+	hour = hourUTC(hour)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin Session purge: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, day.Format("2006-01-02")); err != nil {
-		return fmt.Errorf("lock Session purge day: %w", err)
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, hour.Format(time.RFC3339)); err != nil {
+		return fmt.Errorf("lock Session purge hour: %w", err)
 	}
 	var status, archiveSHA string
 	err = tx.QueryRowContext(ctx, `
         SELECT status, archive_sha256
         FROM session_export_batches
-        WHERE export_day = $1
-        FOR UPDATE`, day).Scan(&status, &archiveSHA)
+		WHERE export_hour = $1
+		FOR UPDATE`, hour).Scan(&status, &archiveSHA)
 	if err != nil {
 		return fmt.Errorf("load Session purge batch: %w", err)
 	}
@@ -451,14 +480,14 @@ func (s *Store) PurgeDay(ctx context.Context, day time.Time, expectedArchiveSHA 
 	if expectedArchiveSHA == "" || archiveSHA != expectedArchiveSHA {
 		return fmt.Errorf("%w: expected=%s verified=%s", ErrArchiveHashMismatch, expectedArchiveSHA, archiveSHA)
 	}
-	if _, err := tx.ExecContext(ctx, `DROP TABLE IF EXISTS `+quoteIdentifier(partitionName(day))); err != nil {
-		return fmt.Errorf("drop Session day partition: %w", err)
+	if _, err := tx.ExecContext(ctx, `DROP TABLE IF EXISTS `+quoteIdentifier(partitionName(hour))); err != nil {
+		return fmt.Errorf("drop Session hour partition: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
         UPDATE session_export_batches
         SET status = 'purged', purged_at = NOW(), updated_at = NOW()
-        WHERE export_day = $1`, day); err != nil {
-		return fmt.Errorf("mark Session day purged: %w", err)
+		WHERE export_hour = $1`, hour); err != nil {
+		return fmt.Errorf("mark Session hour purged: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit Session purge: %w", err)
@@ -466,20 +495,20 @@ func (s *Store) PurgeDay(ctx context.Context, day time.Time, expectedArchiveSHA 
 	return nil
 }
 
-func ensureDayWritableTx(ctx context.Context, tx *sql.Tx, day time.Time) error {
+func ensureHourWritableTx(ctx context.Context, tx *sql.Tx, hour time.Time) error {
 	var status string
-	err := tx.QueryRowContext(ctx, `SELECT status FROM session_export_batches WHERE export_day = $1`, day).Scan(&status)
+	err := tx.QueryRowContext(ctx, `SELECT status FROM session_export_batches WHERE export_hour = $1`, hour).Scan(&status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("check Session day state: %w", err)
+		return fmt.Errorf("check Session hour state: %w", err)
 	}
 	if status == "purged" {
-		return ErrExportDayPurged
+		return ErrExportHourPurged
 	}
 	if status == "exporting" || status == "archived" || status == "verified" {
-		return fmt.Errorf("%w: status=%s", ErrExportDayFrozen, status)
+		return fmt.Errorf("%w: status=%s", ErrExportHourFrozen, status)
 	}
 	return nil
 }
@@ -511,13 +540,13 @@ func validateEnvelopeForStorage(envelope *Envelope) error {
 	return nil
 }
 
-func dayUTC(value time.Time) time.Time {
+func hourUTC(value time.Time) time.Time {
 	utc := value.UTC()
-	return time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
+	return time.Date(utc.Year(), utc.Month(), utc.Day(), utc.Hour(), 0, 0, 0, time.UTC)
 }
 
-func partitionName(day time.Time) string {
-	return "session_records_" + dayUTC(day).Format("20060102")
+func partitionName(hour time.Time) string {
+	return "session_records_" + hourUTC(hour).Format("20060102_15")
 }
 
 func quoteIdentifier(value string) string {

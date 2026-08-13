@@ -346,7 +346,10 @@ func TestCanonicalizerResponsesProducesAnthropicDelivery(t *testing.T) {
 	require.Nil(t, envelope.Rejection)
 	require.NotNil(t, envelope.Delivery)
 	require.Equal(t, DefaultPublicModel, jsonPathString(t, envelope.Delivery.Request, "model"))
-	require.Equal(t, "You are a coding assistant.\n\nFollow repository rules.", jsonPathString(t, envelope.Delivery.Request, "system"))
+	var deliveryRequest map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(envelope.Delivery.Request, &deliveryRequest))
+	require.NotContains(t, deliveryRequest, "system", "Codex instructions must remain internal-only")
+	require.Contains(t, string(envelope.Original.Request), "You are a coding assistant.", "internal audit payload must remain complete")
 	require.Equal(t, DefaultPublicModel, jsonPathString(t, envelope.Delivery.Response.ResponseData, "model"))
 	require.True(t, strings.HasPrefix(jsonPathString(t, envelope.Delivery.Response.ResponseData, "id"), "msg_"))
 	// GPT-projected thinking is normalized to the Opus 5 display=omitted

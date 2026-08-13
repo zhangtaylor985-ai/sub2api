@@ -16,10 +16,10 @@ flowchart LR
     GW --> SP["Local durable spool"]
     SP --> FW["sessionctl forward"]
     FW --> SD["sessiond ingest API"]
-    SD --> PG["Isolated PostgreSQL daily partitions"]
+    SD --> PG["Isolated PostgreSQL hourly partitions"]
     PG --> EX["sessionctl export"]
     EX --> AR["Verified archive backend"]
-    AR -->|"read-back checksum verified"| DP["Drop delivered day partition"]
+    AR -->|"read-back checksum verified"| DP["Drop delivered hour partition"]
 ```
 
 主 API 不直接依赖远端 Session 数据库。它只在请求完成后把压缩 envelope 原子写入本机有界 spool；远端不可用时文件保留，API 请求链不等待数据库。
@@ -68,11 +68,11 @@ Claude Code 请求直接规范化原 Anthropic body；Codex HTTP/WS 请求在实
 
 Session 数据库独立于 Sub2API 主库。核心表：
 
-- `session_records`：按记录进入隔离数据库的 `ingested_at` UTC 自然日 RANGE 分区；原始 `occurred_at` 仍用于交付排序，完整 envelope 使用 zstd `BYTEA` 保存。
+- `session_records`：按记录进入隔离数据库的 `ingested_at` UTC 小时 RANGE 分区；原始 `occurred_at` 仍用于交付排序，完整 envelope 使用 zstd `BYTEA` 保存。
 - `session_record_keys`：全局 `record_id` 幂等登记；payload 分区清理后仍保留这类紧凑控制元数据，避免旧 spool 重放产生重复交付。
-- `session_export_batches`：记录日期水位、状态、数量、归档对象、SHA-256、验证与 purge 时间；同样在 payload 清理后保留。
+- `session_export_batches`：记录小时水位、状态、数量、归档对象、SHA-256、验证与 purge 时间；同样在 payload 清理后保留。
 
-每日 partition 在写入前幂等创建。按 ingest day 分区可保证转发积压恢复后的晚到记录进入新的可写批次，而不会撞上已验证或已清理的历史分区。业务 payload 不进入主 Ent schema，不允许主库清理任务触达。
+每小时 partition 在写入前幂等创建。按 ingest hour 分区可保证转发积压恢复后的晚到记录进入新的可写批次，而不会撞上已验证或已清理的历史分区。业务 payload 不进入主 Ent schema，不允许主库清理任务触达。
 
 ## 6. 导出与 purge 状态机
 
@@ -81,15 +81,15 @@ collecting -> exporting -> archived -> verified -> purged
                     \-> failed (retryable)
 ```
 
-1. 对目标 UTC 日期加 PostgreSQL advisory lock。
+1. timer 从最早未完成的闭合 UTC 小时开始追赶，单次最多处理 48 小时；空小时不生成归档。对每个目标小时加 PostgreSQL advisory lock。
 2. 按 `session_id, timestamp, request_id` 稳定排序读取。
 3. 仅成功记录写为每 Session 一个 JSONL；失败/隔离记录只在数据库和批次统计中保留，不进入外部 tar.zst。
 4. 逐条运行严格 validator，生成 manifest 与归档 SHA-256。
 5. archive backend 写入后必须回读并校验相同 SHA-256。
 6. batch 标记为 `verified`。
-7. 只有 durable backend、显式 allow-purge、状态为 verified 且 checksum 匹配时，才能在事务中 drop 对应日期 partition。
+7. 只有 durable backend、显式 allow-purge、状态为 verified 且 checksum 匹配时，才能在事务中 drop 对应小时 partition。
 
-本地目录 backend 用于开发验收，标记为 non-durable，因此永远不能触发 purge。Google Drive 通过 rclone backend 接入：对象使用“日期 + 内容 SHA-256 前缀”命名和 `--immutable` 上传，上传后以 `rclone cat` 全量回读并计算 SHA-256；只有校验一致才把批次标记为 `verified`。内容寻址可避免“上传成功、数据库提交前退出”的重试与旧对象冲突。建议使用专用 Shared Drive、最小权限服务账号和独立 rclone 配置；如需客户端侧加密，可把目标配置为 rclone `crypt` remote。
+本地目录 backend 用于开发验收，标记为 non-durable，因此永远不能触发 purge。Google Drive 通过 rclone backend 接入：对象使用“UTC 小时 + 内容 SHA-256 前缀”命名和 `--immutable` 上传，上传后以 `rclone cat` 全量回读并计算 SHA-256；只有校验一致才把批次标记为 `verified`。内容寻址可避免“上传成功、数据库提交前退出”的重试与旧对象冲突。建议使用专用 Google Drive 目录、`drive.file` 最小权限和独立 rclone 配置；如需客户端侧加密，可把目标配置为 rclone `crypt` remote。
 
 Google Drive 是异机归档目标，不是在线 Session 数据库，也不是不可删除的 WORM 存储。后续启用 purge 前仍需确认 Drive 权限、回收站/保留策略和至少一次恢复演练。
 
@@ -113,10 +113,11 @@ Google Drive 是异机归档目标，不是在线 Session 数据库，也不是�
 - `SESSION_ARCHIVE_DIR`（本地验收）
 - `SESSION_ARCHIVE_RCLONE_REMOTE`（Google Drive/Shared Drive 或 rclone crypt remote）
 - `RCLONE_CONFIG`（受保护的 rclone 配置路径）。
+- `SESSION_DISK_REJECT_PERCENT=75`（磁盘保护阈值，触发后由生产 spool 缓冲）。
 
 ## 8. 上线门禁
 
 - 第一阶段只写本地 spool，确认 API 延迟与完整性。
 - 第二阶段启用 forward/sessiond，只写独立数据库，不导出和删除；验证 HTTP、SSE 与 Codex WS 多轮数量。
-- 第三阶段运行每日导出与回读验证，仍禁用 purge。
-- 至少连续三个完整日批次通过数量、checksum、抽样还原和磁盘水位验收后，单独批准 `allow-purge`。
+- 第三阶段每 30 分钟导出上一闭合小时并回读验证，仍禁用 purge。
+- 至少连续三个小时批次通过数量、checksum、抽样还原和磁盘水位验收后，单独批准 `allow-purge`。

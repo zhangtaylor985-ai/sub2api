@@ -5,6 +5,7 @@ package sessiondelivery
 import (
 	"archive/tar"
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"net/http/httptest"
@@ -28,13 +29,13 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 	require.NoError(t, store.Migrate(ctx))
 	require.NoError(t, store.Migrate(ctx), "Session migrations must be idempotent")
 
-	day := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)
-	store.now = func() time.Time { return day.Add(12 * time.Hour) }
+	hour := time.Date(2026, 8, 9, 8, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return hour.Add(30 * time.Minute) }
 	canonicalizer := newTestCanonicalizer(t)
 	envelopes := []*Envelope{
-		buildIntegrationAnthropicEnvelope(t, canonicalizer, day.Add(time.Hour), "request-1", 200),
-		buildIntegrationResponsesEnvelope(t, canonicalizer, day.Add(2*time.Hour), "request-2"),
-		buildIntegrationAnthropicEnvelope(t, canonicalizer, day.Add(3*time.Hour), "request-3", 500),
+		buildIntegrationAnthropicEnvelope(t, canonicalizer, hour.Add(5*time.Minute), "request-1", 200),
+		buildIntegrationResponsesEnvelope(t, canonicalizer, hour.Add(10*time.Minute), "request-2"),
+		buildIntegrationAnthropicEnvelope(t, canonicalizer, hour.Add(15*time.Minute), "request-3", 500),
 	}
 	spool, err := NewSpool(filepath.Join(t.TempDir(), "gateway-spool"), 8<<20)
 	require.NoError(t, err)
@@ -78,13 +79,16 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, inserted, "duplicate spool delivery must be idempotent")
 
-	stats, err := store.StatsForDay(ctx, day)
+	stats, err := store.StatsForHour(ctx, hour)
 	require.NoError(t, err)
-	require.Equal(t, DayStats{Records: 3, Deliverable: 2, Rejected: 1}, stats)
-	require.NoError(t, store.StartExport(ctx, day, "attempt-owner"))
-	require.ErrorIs(t, store.StartExport(ctx, day, "attempt-concurrent"), ErrExportInProgress)
-	require.NoError(t, store.HeartbeatExport(ctx, day, "attempt-owner"))
-	require.NoError(t, store.MarkExportFailed(ctx, day, "attempt-owner", errors.New("test retry")))
+	require.Equal(t, HourStats{Records: 3, Deliverable: 2, Rejected: 1}, stats)
+	nextHour, err := store.NextExportableHour(ctx, hour.Add(time.Hour), false)
+	require.NoError(t, err)
+	require.Equal(t, hour, nextHour)
+	require.NoError(t, store.StartExport(ctx, hour, "attempt-owner"))
+	require.ErrorIs(t, store.StartExport(ctx, hour, "attempt-concurrent"), ErrExportInProgress)
+	require.NoError(t, store.HeartbeatExport(ctx, hour, "attempt-owner"))
+	require.NoError(t, store.MarkExportFailed(ctx, hour, "attempt-owner", errors.New("test retry")))
 
 	localBackend, err := NewLocalArchiveBackend(filepath.Join(t.TempDir(), "local-archive"))
 	require.NoError(t, err)
@@ -93,7 +97,7 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 		TempDir:     filepath.Join(t.TempDir(), "local-export-tmp"),
 	})
 	require.NoError(t, err)
-	localResult, err := localExporter.ExportDay(ctx, day)
+	localResult, err := localExporter.ExportHour(ctx, hour)
 	require.NoError(t, err)
 	require.False(t, localResult.Durable)
 	require.Contains(t, filepath.Base(localResult.Archive.Name), localResult.Archive.SHA256[:16])
@@ -101,10 +105,10 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 	require.Equal(t, int64(2), localResult.Manifest.DeliveryCount)
 	require.Equal(t, int64(1), localResult.Manifest.ExcludedCount)
 	requireArchiveHasOnlyBlackBoxDelivery(t, localResult.Archive.Name)
-	batch, err := store.GetExportBatch(ctx, day)
+	batch, err := store.GetExportBatch(ctx, hour)
 	require.NoError(t, err)
 	require.Equal(t, "archived", batch.Status)
-	err = store.PurgeDay(ctx, day, localResult.Archive.SHA256, true)
+	err = store.PurgeHour(ctx, hour, localResult.Archive.SHA256, true)
 	require.ErrorIs(t, err, ErrExportNotVerified)
 
 	durableLocal, err := NewLocalArchiveBackend(filepath.Join(t.TempDir(), "durable-drive-fixture"))
@@ -115,38 +119,43 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 		TempDir:     filepath.Join(t.TempDir(), "durable-export-tmp"),
 	})
 	require.NoError(t, err)
-	durableResult, err := durableExporter.ExportDay(ctx, day)
+	durableResult, err := durableExporter.ExportHour(ctx, hour)
 	require.NoError(t, err)
 	require.True(t, durableResult.Durable)
-	batch, err = store.GetExportBatch(ctx, day)
+	batch, err = store.GetExportBatch(ctx, hour)
 	require.NoError(t, err)
 	require.Equal(t, "verified", batch.Status)
 	require.NotNil(t, batch.VerifiedAt)
-
-	err = store.PurgeDay(ctx, day, strings.Repeat("0", 64), true)
-	require.ErrorIs(t, err, ErrArchiveHashMismatch)
-	err = store.PurgeDay(ctx, day, durableResult.Archive.SHA256, false)
-	require.ErrorContains(t, err, "explicit allow-purge")
-	require.NoError(t, store.PurgeDay(ctx, day, durableResult.Archive.SHA256, true))
-
-	stats, err = store.StatsForDay(ctx, day)
+	_, err = store.NextExportableHour(ctx, hour.Add(time.Hour), false)
+	require.ErrorIs(t, err, sql.ErrNoRows)
+	nextHour, err = store.NextExportableHour(ctx, hour.Add(time.Hour), true)
 	require.NoError(t, err)
-	require.Equal(t, DayStats{}, stats)
-	batch, err = store.GetExportBatch(ctx, day)
+	require.Equal(t, hour, nextHour)
+
+	err = store.PurgeHour(ctx, hour, strings.Repeat("0", 64), true)
+	require.ErrorIs(t, err, ErrArchiveHashMismatch)
+	err = store.PurgeHour(ctx, hour, durableResult.Archive.SHA256, false)
+	require.ErrorContains(t, err, "explicit allow-purge")
+	require.NoError(t, store.PurgeHour(ctx, hour, durableResult.Archive.SHA256, true))
+
+	stats, err = store.StatsForHour(ctx, hour)
+	require.NoError(t, err)
+	require.Equal(t, HourStats{}, stats)
+	batch, err = store.GetExportBatch(ctx, hour)
 	require.NoError(t, err)
 	require.Equal(t, "purged", batch.Status)
 
-	store.now = func() time.Time { return day.AddDate(0, 0, 1).Add(time.Hour) }
+	store.now = func() time.Time { return hour.Add(time.Hour).Add(5 * time.Minute) }
 	inserted, err = store.Insert(ctx, envelopes[0])
 	require.NoError(t, err)
 	require.False(t, inserted, "purged duplicate remains idempotent")
-	lateEnvelope := buildIntegrationAnthropicEnvelope(t, canonicalizer, day.Add(4*time.Hour), "request-late", 200)
+	lateEnvelope := buildIntegrationAnthropicEnvelope(t, canonicalizer, hour.Add(time.Hour), "request-late", 200)
 	inserted, err = store.Insert(ctx, lateEnvelope)
 	require.NoError(t, err)
-	require.True(t, inserted, "late arrivals must roll into the current ingest-day partition")
-	lateStats, err := store.StatsForDay(ctx, day.AddDate(0, 0, 1))
+	require.True(t, inserted, "late arrivals must roll into the current ingest-hour partition")
+	lateStats, err := store.StatsForHour(ctx, hour.Add(time.Hour))
 	require.NoError(t, err)
-	require.Equal(t, DayStats{Records: 1, Deliverable: 1}, lateStats)
+	require.Equal(t, HourStats{Records: 1, Deliverable: 1}, lateStats)
 }
 
 type integrationDurableArchive struct {

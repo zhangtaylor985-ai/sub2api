@@ -2,23 +2,23 @@
 
 ## 当前目标
 
-在 Sub2API 中实现隔离、可靠、可审计的线上会话采集与交付链：Claude Code 和 Codex 客户端均继续由 GPT-5.6 实际推理，但交付记录统一投影为 Anthropic Messages JSON/JSONL，公开模型固定为 `claude-opus-5`；每日验证、归档成功后安全清理独立 Session 数据库的已交付分区。
+在 Sub2API 中实现隔离、可靠、可审计的线上会话采集与交付链：Claude Code 和 Codex 客户端均继续由 GPT-5.6 实际推理，但交付记录统一投影为 Anthropic Messages JSON/JSONL，公开模型固定为 `claude-opus-5`；每小时验证、归档成功后安全清理独立 Session 数据库的已交付分区。
 
 ## 当前范围
 
 - 新增协议无关的 Session 采集事件与稳定 Session/Request ID。
 - Claude `/v1/messages` 记录完整 decoded response；OpenAI `/v1/responses` 实时生成 Anthropic canonical delivery projection。
 - 原始内部记录与交付投影分离，GPT/Codex 内部模型和路由信息不得进入交付文件。
-- 独立 PostgreSQL Session store，按天分区、幂等写入、压缩大字段。
+- 独立 PostgreSQL Session store，按 UTC 小时分区、幂等写入、压缩大字段。
 - 本地耐久 spool 和异步投递，Session 存储故障不得拖垮主请求链路。
 - 提供 CLI 导出、严格验证、manifest/checksum、归档和安全 purge。
-- 提供 systemd service/timer 模板；Google Drive 使用 rclone 可插拔归档后端，凭据和目标目录后续注入。
+- 提供 systemd service/timer 模板；Google Drive 使用 rclone 可插拔归档后端，并经独立 Xray 出口访问。
 - 完成单元、集成、golden、故障注入和本地黑盒验证。
 
 ## 非目标
 
-- 不伪造 Anthropic `thinking.signature` 或真实 Claude 来源证明。
-- 不在本轮连接生产、创建线上数据库、配置 Google Drive 或启用自动删除。
+- 用户已有的 `thinking.signature` 合成实现是不可修改的上线基线；本任务只验证它随正式二进制工作，不改该实现。
+- 不把生产 Session 写入 Sub2API 主库，也不让 Session/Drive 故障反向影响客户端请求。
 - 不修改当前主工作区中未提交的业务后台改动。
 - 不使用管理后台 UI 承载核心导出/清理流程。
 
@@ -33,7 +33,7 @@
 | 5. 实现导出、校验、归档和安全清理 CLI | complete | JSONL/tar.zst、manifest、local/rclone archive、purge gate |
 | 6. systemd 模板、运维脚本与可观测性 | complete | service/timer、spool/status、运行手册 |
 | 7. 全量测试与本地黑盒验收 | complete | Go 全量/竞态/vet、PostgreSQL 18 生命周期、故障恢复、golden fixtures |
-| 8. 交付与等待线上资源 | waiting | 本地代码/文档完成；Google Drive 与独立数据库参数待提供后分阶段上线 |
+| 8. 独立数据库、Drive 与生产发布 | complete | 腾讯隔离库、Cloudflare/HMAC、Xray Drive 出口、正式二进制、小时 timer 与 purge gate 已启用 |
 
 ## 已拍板决策
 
@@ -41,7 +41,7 @@
 - 核心批处理采用 CLI + systemd timer，后台 UI 以后只做状态查看/手动重试。
 - 交付格式从实时 canonical boundary 生成，不在导出时临时伪造协议。
 - 成功记录进入供应商交付包；失败/隔离记录仅保留在隔离数据库与批次统计中，原始 audit 不进入外部归档。
-- purge 仅作用于独立 Session 库按 `ingested_at` 划分的已归档日期分区；核心 Sub2API 数据库永不在该清理范围。
+- purge 仅作用于独立 Session 库按 `ingested_at` 划分的已验证小时分区；核心 Sub2API 数据库永不在该清理范围。
 - 归档目标回读校验成功之前禁止 purge；Google Drive 未配置时只允许导出和验证，默认禁止自动清理。
 - 至少一次投递 + request_id 唯一约束实现最终幂等；本地 spool 按字节限制，不采用只按条数限制的易丢队列。
 
@@ -60,8 +60,8 @@
 - 热路径风险：采集不得阻塞或改变客户端响应；功能必须支持全局关闭并在存储故障时降级到有界 spool。
 - 数据敏感：authorization、cookie、OAuth/API key 等头部永不采集；payload 归档需支持静态加密和最小权限。
 - 语义风险：Codex→Anthropic 转换必须通过 golden/round-trip 测试；不支持字段进入隔离队列，不静默丢弃。
-- 清理风险：本轮不启用线上 purge；后续上线先观察只写/只导出，再单独批准启用分区删除。
-- Git 风险：所有改动仅发生在 `/Users/taylor/sdk/sub2api-session-delivery-v2` 的 `codex/session-delivery-v2` 分支。
+- 清理风险：线上 purge 已启用，但只有 rclone immutable 上传和 Drive 全量回读 SHA-256 都成功后才允许删除同一小时分区。
+- Git 风险：所有改动仅发生在 `/Users/taylor/sdk/sub2api-session-delivery-v2-hourly` 的 `codex/session-delivery-v2-hourly` 分支。
 
 ## 当前错误记录
 

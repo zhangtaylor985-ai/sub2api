@@ -38,6 +38,7 @@ type ExportManifest struct {
 	SchemaVersion int            `json:"schema_version"`
 	PublicModel   string         `json:"public_model"`
 	ExportDay     string         `json:"export_day"`
+	ExportHour    string         `json:"export_hour"`
 	RangeStart    string         `json:"range_start"`
 	RangeEnd      string         `json:"range_end"`
 	RecordCount   int64          `json:"record_count"`
@@ -48,22 +49,22 @@ type ExportManifest struct {
 }
 
 type ExporterConfig struct {
-	PublicModel     string
-	TempDir         string
-	AllowCurrentDay bool
+	PublicModel      string
+	TempDir          string
+	AllowCurrentHour bool
 }
 
 type Exporter struct {
-	store           *Store
-	backend         ArchiveBackend
-	publicModel     string
-	tempDir         string
-	allowCurrentDay bool
+	store            *Store
+	backend          ArchiveBackend
+	publicModel      string
+	tempDir          string
+	allowCurrentHour bool
 }
 
 type ExportResult struct {
-	Day      time.Time      `json:"day"`
-	Stats    DayStats       `json:"stats"`
+	Hour     time.Time      `json:"hour"`
+	Stats    HourStats      `json:"stats"`
 	Manifest ExportManifest `json:"manifest"`
 	Archive  ArchiveObject  `json:"archive"`
 	Durable  bool           `json:"durable"`
@@ -93,31 +94,31 @@ func NewExporter(store *Store, backend ArchiveBackend, config ExporterConfig) (*
 		return nil, fmt.Errorf("create Session export temp directory: %w", err)
 	}
 	return &Exporter{
-		store:           store,
-		backend:         backend,
-		publicModel:     publicModel,
-		tempDir:         tempDir,
-		allowCurrentDay: config.AllowCurrentDay,
+		store:            store,
+		backend:          backend,
+		publicModel:      publicModel,
+		tempDir:          tempDir,
+		allowCurrentHour: config.AllowCurrentHour,
 	}, nil
 }
 
-func (e *Exporter) ExportDay(ctx context.Context, day time.Time) (_ *ExportResult, returnErr error) {
-	day = dayUTC(day)
-	if !e.allowCurrentDay && !day.Before(dayUTC(time.Now())) {
-		return nil, errors.New("refusing to export the current or a future UTC day")
+func (e *Exporter) ExportHour(ctx context.Context, hour time.Time) (_ *ExportResult, returnErr error) {
+	hour = hourUTC(hour)
+	if !e.allowCurrentHour && !hour.Before(hourUTC(time.Now())) {
+		return nil, errors.New("refusing to export the current or a future UTC hour")
 	}
-	if existing, err := e.store.GetExportBatch(ctx, day); err == nil {
+	if existing, err := e.store.GetExportBatch(ctx, hour); err == nil {
 		if existing.Status == "verified" {
-			return nil, errors.New("Session day already has a verified durable archive")
+			return nil, errors.New("Session hour already has a verified durable archive")
 		}
 		if existing.Status == "purged" {
-			return nil, ErrExportDayPurged
+			return nil, ErrExportHourPurged
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 	attemptID := uuid.NewString()
-	if err := e.store.StartExport(ctx, day, attemptID); err != nil {
+	if err := e.store.StartExport(ctx, hour, attemptID); err != nil {
 		return nil, err
 	}
 	exportCtx, cancelExport := context.WithCancel(ctx)
@@ -135,7 +136,7 @@ func (e *Exporter) ExportDay(ctx context.Context, day time.Time) (_ *ExportResul
 				if exportCtx.Err() != nil {
 					return
 				}
-				if err := e.store.HeartbeatExport(exportCtx, day, attemptID); err != nil {
+				if err := e.store.HeartbeatExport(exportCtx, hour, attemptID); err != nil {
 					if exportCtx.Err() != nil {
 						return
 					}
@@ -158,19 +159,19 @@ func (e *Exporter) ExportDay(ctx context.Context, day time.Time) (_ *ExportResul
 		if returnErr != nil {
 			failureCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			_ = e.store.MarkExportFailed(failureCtx, day, attemptID, returnErr)
+			_ = e.store.MarkExportFailed(failureCtx, hour, attemptID, returnErr)
 		}
 	}()
 
-	workDir, err := os.MkdirTemp(e.tempDir, ".export-"+day.Format("20060102")+"-*")
+	workDir, err := os.MkdirTemp(e.tempDir, ".export-"+hour.Format("20060102-15")+"-*")
 	if err != nil {
 		return nil, fmt.Errorf("create Session export work directory: %w", err)
 	}
 	defer os.RemoveAll(workDir)
-	stagedArchiveName := "session-delivery-" + day.Format("20060102") + ".tar.zst"
+	stagedArchiveName := "session-delivery-" + hour.Format("20060102-15") + ".tar.zst"
 	archivePath := filepath.Join(workDir, stagedArchiveName)
 
-	manifest, stats, err := e.buildArchive(exportCtx, day, workDir, archivePath)
+	manifest, stats, err := e.buildArchive(exportCtx, hour, workDir, archivePath)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +188,7 @@ func (e *Exporter) ExportDay(ctx context.Context, day time.Time) (_ *ExportResul
 	if err != nil {
 		return nil, fmt.Errorf("hash staged Session archive: %w", err)
 	}
-	archiveName := fmt.Sprintf("session-delivery-%s-%s.tar.zst", day.Format("20060102"), stagedSHA[:16])
+	archiveName := fmt.Sprintf("session-delivery-%s-%s.tar.zst", hour.Format("20060102-15"), stagedSHA[:16])
 
 	object, err := e.backend.Put(exportCtx, archiveName, archivePath)
 	if err != nil {
@@ -207,27 +208,27 @@ func (e *Exporter) ExportDay(ctx context.Context, day time.Time) (_ *ExportResul
 		return nil, fmt.Errorf("Session export heartbeat failed: %w", err)
 	}
 	if err := e.store.MarkExportArchived(
-		ctx, day, attemptID, stats, e.backend.Name(), object.Name, object.SHA256, object.Size, manifestJSON, e.backend.Durable(),
+		ctx, hour, attemptID, stats, e.backend.Name(), object.Name, object.SHA256, object.Size, manifestJSON, e.backend.Durable(),
 	); err != nil {
 		return nil, err
 	}
-	return &ExportResult{Day: day, Stats: stats, Manifest: manifest, Archive: object, Durable: e.backend.Durable()}, nil
+	return &ExportResult{Hour: hour, Stats: stats, Manifest: manifest, Archive: object, Durable: e.backend.Durable()}, nil
 }
 
 func (e *Exporter) buildArchive(
 	ctx context.Context,
-	day time.Time,
+	hour time.Time,
 	workDir string,
 	archivePath string,
-) (ExportManifest, DayStats, error) {
+) (ExportManifest, HourStats, error) {
 	archiveFile, err := os.OpenFile(archivePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return ExportManifest{}, DayStats{}, fmt.Errorf("create staged Session archive: %w", err)
+		return ExportManifest{}, HourStats{}, fmt.Errorf("create staged Session archive: %w", err)
 	}
 	encoder, err := zstd.NewWriter(archiveFile, zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
 	if err != nil {
 		_ = archiveFile.Close()
-		return ExportManifest{}, DayStats{}, fmt.Errorf("create archive zstd writer: %w", err)
+		return ExportManifest{}, HourStats{}, fmt.Errorf("create archive zstd writer: %w", err)
 	}
 	tarWriter := tar.NewWriter(encoder)
 	closeArchive := func() error {
@@ -243,20 +244,22 @@ func (e *Exporter) buildArchive(
 		return archiveFile.Close()
 	}
 
-	dayEnd := day.AddDate(0, 0, 1)
+	hour = hourUTC(hour)
+	hourEnd := hour.Add(time.Hour)
 	manifest := ExportManifest{
 		FormatVersion: deliveryFormatVersion,
 		SchemaVersion: SchemaVersion,
 		PublicModel:   e.publicModel,
-		ExportDay:     day.Format("2006-01-02"),
-		RangeStart:    day.Format(time.RFC3339),
-		RangeEnd:      dayEnd.Format(time.RFC3339),
+		ExportDay:     hour.Format("2006-01-02"),
+		ExportHour:    hour.Format(time.RFC3339),
+		RangeStart:    hour.Format(time.RFC3339),
+		RangeEnd:      hourEnd.Format(time.RFC3339),
 		Specification: "vendor-delivery-spec-claude-20260811",
 	}
-	var stats DayStats
-	sessionWriter := newSessionEntryWriter(workDir, tarWriter, dayEnd)
+	var stats HourStats
+	sessionWriter := newSessionEntryWriter(workDir, tarWriter, hourEnd)
 
-	iterateErr := e.store.ForEachDay(ctx, day, func(envelope *Envelope) error {
+	iterateErr := e.store.ForEachHour(ctx, hour, func(envelope *Envelope) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -276,12 +279,12 @@ func (e *Exporter) buildArchive(
 	})
 	if iterateErr != nil {
 		_ = closeArchive()
-		return ExportManifest{}, DayStats{}, iterateErr
+		return ExportManifest{}, HourStats{}, iterateErr
 	}
 	entries, err := sessionWriter.close()
 	if err != nil {
 		_ = closeArchive()
-		return ExportManifest{}, DayStats{}, err
+		return ExportManifest{}, HourStats{}, err
 	}
 	manifest.Files = append(manifest.Files, entries...)
 	manifest.RecordCount = stats.Deliverable
@@ -291,14 +294,14 @@ func (e *Exporter) buildArchive(
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		_ = closeArchive()
-		return ExportManifest{}, DayStats{}, err
+		return ExportManifest{}, HourStats{}, err
 	}
-	if err := writeTarBytes(tarWriter, "manifest.json", manifestJSON, dayEnd); err != nil {
+	if err := writeTarBytes(tarWriter, "manifest.json", manifestJSON, hourEnd); err != nil {
 		_ = closeArchive()
-		return ExportManifest{}, DayStats{}, err
+		return ExportManifest{}, HourStats{}, err
 	}
 	if err := closeArchive(); err != nil {
-		return ExportManifest{}, DayStats{}, fmt.Errorf("finalize Session archive: %w", err)
+		return ExportManifest{}, HourStats{}, fmt.Errorf("finalize Session archive: %w", err)
 	}
 	return manifest, stats, nil
 }
@@ -532,8 +535,8 @@ func ValidateArchive(path, publicModel string) (*ArchiveValidation, error) {
 	if manifest.PublicModel != publicModel {
 		return nil, fmt.Errorf("Session archive public model mismatch: %s", manifest.PublicModel)
 	}
-	manifestDay, err := time.Parse("2006-01-02", manifest.ExportDay)
-	if err != nil || manifest.RangeStart != manifestDay.UTC().Format(time.RFC3339) || manifest.RangeEnd != manifestDay.UTC().AddDate(0, 0, 1).Format(time.RFC3339) {
+	manifestHour, err := time.Parse(time.RFC3339, manifest.ExportHour)
+	if err != nil || manifest.ExportDay != manifestHour.UTC().Format("2006-01-02") || manifest.RangeStart != manifestHour.UTC().Format(time.RFC3339) || manifest.RangeEnd != manifestHour.UTC().Add(time.Hour).Format(time.RFC3339) {
 		return nil, errors.New("Session archive manifest UTC range is invalid")
 	}
 	if manifest.Specification != "vendor-delivery-spec-claude-20260811" {

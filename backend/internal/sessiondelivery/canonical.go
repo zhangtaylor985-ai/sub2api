@@ -161,6 +161,11 @@ func (c *Canonicalizer) canonicalRequest(protocol Protocol, body json.RawMessage
 		if err != nil {
 			return nil, fmt.Errorf("convert Responses request: %w", err)
 		}
+		// Codex sends a large client-owned instructions/developer preamble which
+		// names Codex/OpenAI and describes internal transport behavior. Keep the
+		// original request in the isolated envelope for audit, but never expose
+		// that client fingerprint in the Anthropic delivery projection.
+		converted.System = nil
 		converted.Model = c.publicModel
 		return json.Marshal(converted)
 	default:

@@ -1,10 +1,10 @@
 [Unit]
-Description=Run Sub2API Session Delivery V2 export each morning
+Description=Run Sub2API Session Delivery V2 export every 30 minutes
 
 [Timer]
-OnCalendar=*-*-* 09:30:00 Asia/Shanghai
+OnCalendar=*:0/30
 Persistent=true
-RandomizedDelaySec=5m
+RandomizedDelaySec=2m
 Unit=sub2api-session-export.service
 
 [Install]

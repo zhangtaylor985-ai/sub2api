@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -163,7 +164,9 @@ func (f *Forwarder) forwardOne(ctx context.Context, path string) (string, error)
 		}
 		return "quarantined", nil
 	case http.StatusConflict:
-		return "", fmt.Errorf("Session ingest day is temporarily frozen: code=%s", result.Code)
+		return "", fmt.Errorf("Session ingest hour is temporarily frozen: code=%s", result.Code)
+	case http.StatusInsufficientStorage, http.StatusServiceUnavailable:
+		return "", fmt.Errorf("Session ingest is temporarily unavailable: code=%s", result.Code)
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return "", errors.New("Session ingest authentication failed")
 	default:
@@ -209,6 +212,8 @@ type IngestHandlerConfig struct {
 	MaxDecodedBytes int64
 	MaxConcurrent   int
 	AllowedSkew     time.Duration
+	DiskPath        string
+	RejectDiskUsage int
 }
 
 type IngestHandler struct {
@@ -219,6 +224,8 @@ type IngestHandler struct {
 	maxDecodedBytes int64
 	semaphore       chan struct{}
 	allowedSkew     time.Duration
+	diskPath        string
+	rejectDiskUsage int
 }
 
 func NewIngestHandler(store *Store, config IngestHandlerConfig) (*IngestHandler, error) {
@@ -243,6 +250,12 @@ func NewIngestHandler(store *Store, config IngestHandlerConfig) (*IngestHandler,
 	if strings.TrimSpace(config.TempDir) == "" {
 		config.TempDir = filepath.Join(os.TempDir(), "sub2api-session-ingest")
 	}
+	if strings.TrimSpace(config.DiskPath) == "" {
+		config.DiskPath = config.TempDir
+	}
+	if config.RejectDiskUsage <= 0 || config.RejectDiskUsage > 100 {
+		config.RejectDiskUsage = 75
+	}
 	if err := os.MkdirAll(config.TempDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create Session ingest temp directory: %w", err)
 	}
@@ -254,6 +267,8 @@ func NewIngestHandler(store *Store, config IngestHandlerConfig) (*IngestHandler,
 		maxDecodedBytes: config.MaxDecodedBytes,
 		semaphore:       make(chan struct{}, config.MaxConcurrent),
 		allowedSkew:     config.AllowedSkew,
+		diskPath:        config.DiskPath,
+		rejectDiskUsage: config.RejectDiskUsage,
 	}, nil
 }
 
@@ -274,6 +289,13 @@ func (h *IngestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 	if mediaType := strings.TrimSpace(strings.Split(request.Header.Get("Content-Type"), ";")[0]); mediaType != ingestMediaType {
 		writeIngestJSON(writer, http.StatusUnsupportedMediaType, map[string]any{"status": "error", "code": "unsupported_media_type"})
+		return
+	}
+	if usedPercent, err := DiskUsagePercent(h.diskPath); err != nil {
+		writeIngestJSON(writer, http.StatusServiceUnavailable, map[string]any{"status": "error", "code": "disk_check_failed"})
+		return
+	} else if usedPercent >= h.rejectDiskUsage {
+		writeIngestJSON(writer, http.StatusInsufficientStorage, map[string]any{"status": "error", "code": "disk_guard"})
 		return
 	}
 	select {
@@ -343,10 +365,10 @@ func (h *IngestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		switch {
 		case errors.Is(err, ErrInvalidEnvelope):
 			writeIngestJSON(writer, http.StatusUnprocessableEntity, map[string]any{"status": "error", "code": "invalid_envelope"})
-		case errors.Is(err, ErrExportDayPurged):
-			writeIngestJSON(writer, http.StatusGone, map[string]any{"status": "error", "code": "day_purged"})
-		case errors.Is(err, ErrExportDayFrozen):
-			writeIngestJSON(writer, http.StatusConflict, map[string]any{"status": "error", "code": "day_frozen"})
+		case errors.Is(err, ErrExportHourPurged):
+			writeIngestJSON(writer, http.StatusGone, map[string]any{"status": "error", "code": "hour_purged"})
+		case errors.Is(err, ErrExportHourFrozen):
+			writeIngestJSON(writer, http.StatusConflict, map[string]any{"status": "error", "code": "hour_frozen"})
 		default:
 			writeIngestJSON(writer, http.StatusInternalServerError, map[string]any{"status": "error", "code": "store_failed"})
 		}
@@ -357,6 +379,18 @@ func (h *IngestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	writeIngestJSON(writer, http.StatusOK, map[string]any{"status": "duplicate", "record_id": envelope.RecordID})
+}
+
+func DiskUsagePercent(path string) (int, error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(strings.TrimSpace(path), &stat); err != nil {
+		return 0, fmt.Errorf("stat Session disk usage: %w", err)
+	}
+	if stat.Blocks == 0 {
+		return 0, errors.New("Session disk reports zero blocks")
+	}
+	usedBlocks := stat.Blocks - stat.Bavail
+	return int((usedBlocks*100 + stat.Blocks - 1) / stat.Blocks), nil
 }
 
 func signIngest(secret []byte, timestamp, contentSHA string) string {

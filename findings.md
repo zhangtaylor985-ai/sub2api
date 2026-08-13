@@ -975,3 +975,17 @@
 - 新增 `internal/pkg/thinkingsig` 生成器；Canonicalizer 在写交付记录时补齐：真实签名原样保留、GPT 投影 thinking 块清空文本并挂合成签名、请求开启 thinking 但无 thinking 块时补 content[0]；validator 将非空 signature/data 设为硬校验。
 - 客户端实时响应链路未做任何改动（用户决策：避免 Claude Code 客户端上下文估算被签名串膨胀、避免 key 路由回真 Claude 时假签名 400）。
 - 本地 E2E：session 库 + sessiond + forwarder + 网关 capture 全链跑通，真实 GPT-5.6-sol 上游 3 轮 Claude Code 形态会话 + 1 条 Codex 协议请求，导出 4/4 记录 100% 带结构合法签名，`sessionctl validate` 与独立逐字段解析均通过。
+
+## 2026-08-13 Session Delivery V2 生产结论
+
+- 生产数据面最终选用腾讯 40GB 主机的 loopback PostgreSQL 18；当前主机约 18% 磁盘占用、约 1.1 GiB 可用内存，满足 Session 隔离库和小时归档。
+- 主 Sub2API 的根盘实际约 30GB。spool 上限从不一致的 4 GiB/1 GiB 收敛为两端一致 2 GiB；用户请求不依赖同步入库，远端异常时只影响 Session 采集，不阻塞 API 响应。
+- Cloudflare Tunnel 从腾讯机固定落到 LAX，HTTP/2/QUIC 大文件链路均出现高延迟或 524；Oracle 到腾讯直连又有较高丢包。通过保留机 `172.247.109.38:41012` 分段中继后，10 条最老记录 4 并发仅 8.1 秒完成，链路恢复稳定下降。
+- 中继 Key 在两台远端均使用 `restrict + port-forwarding + permitopen`：中继端只允许打开腾讯 `22/tcp`，目标端只允许打开 `127.0.0.1:8091`，均绑定 `command=/bin/false`，不能获得 shell。
+- 自动归档加入 2 小时 settling watermark，避免关闭小时仍有在途上传时提前冻结；timer 每 30 分钟扫描，只有 Google Drive 完整回读 SHA/size 一致才允许 drop 小时分区。
+- 已验证 05/06/07 UTC 三批归档：原始记录 1,779，交付 476，排除 1,303，Drive 对象 3 个、总大小 24,190,274 bytes；三个 DB 分区均在验证后清除。
+- 交付投影对 Claude Code 与 Codex 都统一输出 Anthropic Messages JSONL，公开模型固定 `claude-opus-5`；Codex system/internal model/upstream/routing 字段不进入交付文件。
+- 旧的 invalid-JSON 早返回缺少 `session_id`：生产待处理区扫描 1,076 条，识别 17 条；加上隔离区共修复 33 条。修复命令现同时覆盖 pending/quarantine，并在 root 运行时保留原文件 owner。
+- 中间件 writer 生命周期缺陷已通过真实 Claude Code 请求发现并修复；外层 pooled writer 释放前会恢复原 writer，生产发布后 panic 为 0。
+- 并发 forwarder 不再因单路临时错误取消其他已在途成功上传；sessiond 启动会清除上个进程遗留的 `.ingest-*.json.zst`，正常 systemd 停止超时不再记作进程故障。
+- Session 管理策略默认 `all`；生产现有 118 个未删除 API Key 全部有效记录，当前无 Key override。策略读取使用不可变快照原子替换，请求热路径无数据库查询。

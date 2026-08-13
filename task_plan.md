@@ -691,3 +691,32 @@
 | 2026-08-09 | 第二次 transient canary 未继承正式服务的完整启动上下文，进入 setup wizard 并尝试绑定正式 8080 | setup 未写配置且因端口占用立即退出，trap 已停止 unit；先只读核对正式 unit 的非敏感启动上下文，再决定第三种 canary 方式或直接走可立即回滚的原子替换 |
 
 ---
+
+## 2026-08-13 Session Delivery V2 生产上线与可观测性
+
+### 目标
+
+- 在主 Sub2API 请求链路异步保存 Claude Code 与 Codex Session，隔离写入独立 PostgreSQL。
+- 交付层固定投影为 `claude-opus-5`，不在交付文件中暴露 GPT/Codex/OpenAI 内部模型与路由字段。
+- 管理后台提供 DB 主机、网关缓存、数据库记录、Google Drive 归档及上传体积的实时状态。
+- 提供全局 `all / selected / disabled` 与 API Key `inherit / include / exclude` 采集策略，并支持“一键只记录此 Key”。
+- 已验证归档必须经 Google Drive 完整回读校验后，才能清除对应数据库小时分区。
+
+### 阶段
+
+| 阶段 | 状态 | 验收结果 |
+| --- | --- | --- |
+| 规格下载与 V2 设计 | complete | 本地规格、设计、运行手册和可观测性文档齐全 |
+| 后端采集、投影、隔离存储 | complete | Claude `/v1/messages` 与 OpenAI `/v1/responses` 均进入统一 V2 信封 |
+| 管理策略与 UI | complete | 生产 `/admin/session-delivery` 可查看状态并原子修改策略 |
+| Google Drive 归档与清库 | complete | 3 个小时归档均上传、回读 SHA 一致并完成分区清理 |
+| 生产链路与容量保护 | complete | 2 GiB spool 上限、2 小时归档水位、受限 SSH 中继和 Cloudflare 备用通道已生效 |
+| 历史数据修复 | complete | 1,076 条待处理记录中识别 17 条旧缺陷，连同隔离区共修复 33 条，隔离归零 |
+| 回归与发布观察 | in_progress | 全量 Go/前端/集成/真实客户端门禁通过；等待生产缓存完全追平后最终收口 |
+
+### 安全边界
+
+- 不修改用户指定必须保留的 `thinking.signature` 合成逻辑。
+- 实际请求模型仅保留在内部 usage/运维证据；交付文件只出现公开模型 `claude-opus-5`。
+- Session 数据库只监听 loopback；公网入口保留 HMAC 验证，主传输使用只能转发指定端口、不能登录 shell 的专用 SSH Key。
+- Google OAuth/rclone、数据库、HMAC、API Key 与 SSH 私钥均不进入 Git、文档或日志。

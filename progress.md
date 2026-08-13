@@ -986,3 +986,11 @@
 ---
 
 - 2026-08-12：thinking.signature 合成接入 sessiondelivery 保存链路（`signature.go` + canonical hook + validator 硬校验 + `internal/pkg/thinkingsig` 包）；主线工作区对 apicompat/openai_gateway_messages 的临时改动已全部撤销并验证无 diff。本地沙盒（pg 5433/redis 6380 + 网关 8080 + sessiond 8091 + forwarder loop）真实流量 E2E 通过：4/4 交付记录带 Opus 5 同构签名，导出归档校验通过。沙盒细节与账号来源见主线 progress.md 同日条目。
+- 2026-08-13：完成 Session Delivery V2 管理后台、签名状态代理、Linux 主机状态、全局/API Key 采集策略及前后端回归；生产入口为 `/admin/session-delivery`，15 秒自动刷新。
+- 2026-08-13：生产主应用部署 Session 采集 binary，腾讯隔离机部署 PostgreSQL/sessiond/sessionctl/rclone；主库迁移 173 已应用，默认 capture mode 为 `all`。
+- 2026-08-13：真实 Claude Code 非交互与 PTY 连续两轮、真实 Codex CLI、Claude/Codex 投影、usage 内部模型证据均通过；交付侧公开模型始终为 `claude-opus-5`，内部实际模型字段未进入归档。
+- 2026-08-13：首次正式发布由真实 Claude 请求发现 writer 回收顺序 panic，立即回滚，提交 `36fc60176` 修复并通过 race/全量/真实客户端测试后重新发布；后续 panic=0、`NRestarts=0`。
+- 2026-08-13：修复历史 invalid-JSON Session 缺少 `session_id`，生产共恢复 33 条，quarantine 清零；随后补充 pending 扫描与修复文件 owner 保留。
+- 2026-08-13：Google Drive OAuth/rclone 已完成官方客户端迁移和真实上传；05/06/07 UTC 三批均完成上传、完整回读 SHA/size 验证和 DB 小时分区清理，累计 1,779 条原始记录、476 条交付、24,190,274 bytes。
+- 2026-08-13：为解决 Cloudflare LAX Tunnel 和跨境直连吞吐，部署受限 SSH 中继；10 条记录 4 并发基准 8.1 秒。spool 从峰值约 1.60 GiB 持续下降，保护上限统一为 2 GiB，隔离记录持续为 0。
+- 2026-08-13：Session 专用数据库凭据已完成轮换；配置保持 `root:sub2api 0640`，sessiond 健康。后续手工作业改用 systemd `EnvironmentFile`，不再由 shell 解析 systemd env。

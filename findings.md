@@ -1005,3 +1005,4 @@
 - 导出日的 day_frozen 机制在本地实测触发：导出完成后晚到记录被拒收，等次日滚入新分区；本地沙盒通过删除 `session_export_batches` 对应行解冻验证。
 - 2026-08-13：真实客户端回归发现 Codex CLI（0.147.0）默认发 `reasoning:{effort:low}`，共享转换器对 low 不投影 thinking，导致 Codex 来源记录缺 thinking 形态；已在交付投影修复：凡 Codex 请求带 reasoning 即投影 `thinking:{adaptive,display:omitted}`（真实 CC 2.1.220 实测请求形态），实时链路不动。
 - 真实 Claude Code 2.1.220 实测：Opus 5 请求固定带 `system`/`tools`/`thinking:{adaptive,display:omitted}`/`output_config.effort`/`metadata.user_id`；标题生成请求（stream 提前结束）被管线按 `response_decode_failed` 正确隔离，不进入交付。
+- 2026-08-13：usage 保真投影（导出时）。真实 Opus 5 会话六轮 usage 实测为确定性缓存链：input 恒为 2、read(k)=前轮 prefix、creation(k)=差值、压缩或超 5 分钟 TTL 则 read=0 重建；GPT 上游录制值恒 creation=0 是最大统计破绽。投影器以真实上游 token 总量为基数做会话模拟，并用真实六轮序列逐值回放验证（49713/7863/1205/6635/65438/573 全部精确复现）；同时补齐 server_tool_use/service_tier/inference_geo 等 Opus 5 全字段。

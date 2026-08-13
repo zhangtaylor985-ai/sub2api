@@ -259,6 +259,7 @@ func (e *Exporter) buildArchive(
 	var stats HourStats
 	sessionWriter := newSessionEntryWriter(workDir, tarWriter, hourEnd)
 	echo := &echoRepair{}
+	usage := &usageProjector{}
 
 	iterateErr := e.store.ForEachHour(ctx, hour, func(envelope *Envelope) error {
 		if err := ctx.Err(); err != nil {
@@ -277,6 +278,11 @@ func (e *Exporter) buildArchive(
 		// Code multi-turn shape.
 		if err := echo.process(envelope.Delivery); err != nil {
 			return fmt.Errorf("echo repair record %s: %w", envelope.RecordID, err)
+		}
+		// Project Anthropic-style prompt-cache usage (real CC traffic always
+		// shows per-turn cache creation; GPT upstreams never report it).
+		if err := usage.process(envelope.Delivery); err != nil {
+			return fmt.Errorf("usage projection record %s: %w", envelope.RecordID, err)
 		}
 		if err := ValidateDelivery(envelope.Delivery, e.publicModel); err != nil {
 			return fmt.Errorf("validate delivery record %s: %w", envelope.RecordID, err)

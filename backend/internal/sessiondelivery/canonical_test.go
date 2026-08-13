@@ -706,6 +706,51 @@ func TestNormalizeCodexSessionCustomToolWrapsFreeformInput(t *testing.T) {
 	require.JSONEq(t, `{"input":"printf ok"}`, response.Output[0].Arguments)
 }
 
+func TestCanonicalizerResponsesNormalizesFlatAdditionalTools(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{APIKeyID: 42},
+		GatewayRequestID: "gateway-codex-flat-tools",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"gpt-5.6-sol","reasoning":{"effort":"high"},
+			"input":[
+				{"type":"additional_tools","role":"developer","tools":[
+					{"type":"custom","name":"exec","description":"run","format":{"type":"grammar"}},
+					{"type":"function","name":"wait","description":"wait","parameters":{"type":"object","properties":{}}}
+				]},
+				{"type":"message","role":"user","content":[{"type":"input_text","text":"start"}]},
+				{"type":"custom_tool_call","call_id":"call_exec","name":"exec","input":"printf ok"},
+				{"type":"custom_tool_call_output","call_id":"call_exec","output":"ok"}
+			]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"resp_flat_tools","object":"response","model":"gpt-5.6-sol","status":"completed",
+			"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}],
+			"usage":{"input_tokens":20,"output_tokens":4,"total_tokens":24}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	require.NotContains(t, string(envelope.Delivery.Request), "additional_tools")
+	var request struct {
+		Tools []struct {
+			Name        string          `json:"name"`
+			InputSchema json.RawMessage `json:"input_schema"`
+		} `json:"tools"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Delivery.Request, &request))
+	require.Len(t, request.Tools, 2)
+	require.Equal(t, "exec", request.Tools[0].Name)
+	require.Equal(t, "wait", request.Tools[1].Name)
+	require.JSONEq(t, `{"type":"object","properties":{"input":{"type":"string"}},"required":["input"],"additionalProperties":false}`, string(request.Tools[0].InputSchema))
+}
+
 func TestCanonicalizerResponsesStripsCodexBootstrapContextFromDeliveryOnly(t *testing.T) {
 	canonicalizer := newTestCanonicalizer(t)
 	request := []byte(`{

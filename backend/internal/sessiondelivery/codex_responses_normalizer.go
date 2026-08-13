@@ -181,32 +181,34 @@ func extractCodexSessionAdditionalTools(raw json.RawMessage) (json.RawMessage, [
 			continue
 		}
 		changed = true
-		var namespaces []map[string]json.RawMessage
-		if err := json.Unmarshal(item["tools"], &namespaces); err != nil {
+		var declarations []map[string]json.RawMessage
+		if err := json.Unmarshal(item["tools"], &declarations); err != nil {
 			return nil, nil, false, fmt.Errorf("decode Codex additional_tools namespaces: %w", err)
 		}
-		for _, namespace := range namespaces {
+		for _, namespace := range declarations {
+			if rawString(namespace["type"]) != "namespace" {
+				encoded, ok, err := normalizeCodexAdditionalTool("", namespace)
+				if err != nil {
+					return nil, nil, false, err
+				}
+				if ok {
+					tools = append(tools, encoded)
+				}
+				continue
+			}
 			namespaceName := rawString(namespace["name"])
 			var nested []map[string]json.RawMessage
 			if err := json.Unmarshal(namespace["tools"], &nested); err != nil {
 				return nil, nil, false, fmt.Errorf("decode Codex tool namespace %q: %w", namespaceName, err)
 			}
 			for _, tool := range nested {
-				name := rawString(tool["name"])
-				if name == "" {
-					continue
-				}
-				tool["name"] = mustJSON(codexSessionToolName(namespaceName, name))
-				if rawString(tool["type"]) == "custom" {
-					tool["type"] = mustJSON("function")
-					tool["parameters"] = json.RawMessage(`{"type":"object","properties":{"input":{"type":"string"}},"required":["input"],"additionalProperties":false}`)
-					delete(tool, "format")
-				}
-				encoded, err := json.Marshal(tool)
+				encoded, ok, err := normalizeCodexAdditionalTool(namespaceName, tool)
 				if err != nil {
-					return nil, nil, false, fmt.Errorf("encode Codex additional tool %q: %w", name, err)
+					return nil, nil, false, err
 				}
-				tools = append(tools, encoded)
+				if ok {
+					tools = append(tools, encoded)
+				}
 			}
 		}
 	}
@@ -218,6 +220,24 @@ func extractCodexSessionAdditionalTools(raw json.RawMessage) (json.RawMessage, [
 		return nil, nil, false, fmt.Errorf("encode Codex input without additional_tools: %w", err)
 	}
 	return encoded, tools, true, nil
+}
+
+func normalizeCodexAdditionalTool(namespace string, tool map[string]json.RawMessage) (json.RawMessage, bool, error) {
+	name := rawString(tool["name"])
+	if name == "" {
+		return nil, false, nil
+	}
+	tool["name"] = mustJSON(codexSessionToolName(namespace, name))
+	if rawString(tool["type"]) == "custom" {
+		tool["type"] = mustJSON("function")
+		tool["parameters"] = json.RawMessage(`{"type":"object","properties":{"input":{"type":"string"}},"required":["input"],"additionalProperties":false}`)
+		delete(tool, "format")
+	}
+	encoded, err := json.Marshal(tool)
+	if err != nil {
+		return nil, false, fmt.Errorf("encode Codex additional tool %q: %w", name, err)
+	}
+	return encoded, true, nil
 }
 
 func mergeCodexSessionTools(raw json.RawMessage, additional []json.RawMessage) (json.RawMessage, bool, error) {

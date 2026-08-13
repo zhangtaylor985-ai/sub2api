@@ -107,6 +107,11 @@ func (e *Exporter) ExportHour(ctx context.Context, hour time.Time) (_ *ExportRes
 	if !e.allowCurrentHour && !hour.Before(hourUTC(time.Now())) {
 		return nil, errors.New("refusing to export the current or a future UTC hour")
 	}
+	unlockProjection, err := e.store.LockProjectionExport(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockProjection()
 	if existing, err := e.store.GetExportBatch(ctx, hour); err == nil {
 		if existing.Status == "verified" {
 			return nil, errors.New("Session hour already has a verified durable archive")
@@ -171,7 +176,7 @@ func (e *Exporter) ExportHour(ctx context.Context, hour time.Time) (_ *ExportRes
 	stagedArchiveName := "session-delivery-" + hour.Format("20060102-15") + ".tar.zst"
 	archivePath := filepath.Join(workDir, stagedArchiveName)
 
-	manifest, stats, err := e.buildArchive(exportCtx, hour, workDir, archivePath)
+	manifest, stats, checkpoints, err := e.buildArchive(exportCtx, hour, workDir, archivePath)
 	if err != nil {
 		return nil, err
 	}
@@ -209,6 +214,7 @@ func (e *Exporter) ExportHour(ctx context.Context, hour time.Time) (_ *ExportRes
 	}
 	if err := e.store.MarkExportArchived(
 		ctx, hour, attemptID, stats, e.backend.Name(), object.Name, object.SHA256, object.Size, manifestJSON, e.backend.Durable(),
+		checkpoints,
 	); err != nil {
 		return nil, err
 	}
@@ -220,15 +226,15 @@ func (e *Exporter) buildArchive(
 	hour time.Time,
 	workDir string,
 	archivePath string,
-) (ExportManifest, HourStats, error) {
+) (ExportManifest, HourStats, map[string]projectionCheckpoint, error) {
 	archiveFile, err := os.OpenFile(archivePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return ExportManifest{}, HourStats{}, fmt.Errorf("create staged Session archive: %w", err)
+		return ExportManifest{}, HourStats{}, nil, fmt.Errorf("create staged Session archive: %w", err)
 	}
 	encoder, err := zstd.NewWriter(archiveFile, zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
 	if err != nil {
 		_ = archiveFile.Close()
-		return ExportManifest{}, HourStats{}, fmt.Errorf("create archive zstd writer: %w", err)
+		return ExportManifest{}, HourStats{}, nil, fmt.Errorf("create archive zstd writer: %w", err)
 	}
 	tarWriter := tar.NewWriter(encoder)
 	closeArchive := func() error {
@@ -260,6 +266,32 @@ func (e *Exporter) buildArchive(
 	sessionWriter := newSessionEntryWriter(workDir, tarWriter, hourEnd)
 	echo := &echoRepair{}
 	usage := &usageProjector{}
+	checkpoints := make(map[string]projectionCheckpoint)
+	activeSessionID := ""
+	checkpointActiveSession := func() {
+		if activeSessionID != "" {
+			checkpoints[activeSessionID] = checkpointFromProjectors(echo, usage)
+		}
+	}
+	activateSession := func(sessionID string) error {
+		if sessionID == activeSessionID {
+			return nil
+		}
+		checkpointActiveSession()
+		checkpoint, found, err := e.store.LoadProjectionCheckpoint(ctx, sessionID, hour)
+		if err != nil {
+			return err
+		}
+		activeSessionID = sessionID
+		if !found {
+			checkpoint = projectionCheckpoint{Version: projectionCheckpointVersion}
+		}
+		echo.restore(sessionID, checkpoint.Echo)
+		if err := usage.restore(sessionID, checkpoint.Usage); err != nil {
+			return err
+		}
+		return nil
+	}
 
 	iterateErr := e.store.ForEachHour(ctx, hour, func(envelope *Envelope) error {
 		if err := ctx.Err(); err != nil {
@@ -272,6 +304,9 @@ func (e *Exporter) buildArchive(
 			}
 			stats.Rejected++
 			return nil
+		}
+		if err := activateSession(envelope.Delivery.SessionID); err != nil {
+			return fmt.Errorf("load projection state for record %s: %w", envelope.RecordID, err)
 		}
 		// Re-insert thinking-block echoes into later requests of the session
 		// before validation, so delivered conversations match real Claude
@@ -292,12 +327,13 @@ func (e *Exporter) buildArchive(
 	})
 	if iterateErr != nil {
 		_ = closeArchive()
-		return ExportManifest{}, HourStats{}, iterateErr
+		return ExportManifest{}, HourStats{}, nil, iterateErr
 	}
+	checkpointActiveSession()
 	entries, err := sessionWriter.close()
 	if err != nil {
 		_ = closeArchive()
-		return ExportManifest{}, HourStats{}, err
+		return ExportManifest{}, HourStats{}, nil, err
 	}
 	manifest.Files = append(manifest.Files, entries...)
 	manifest.RecordCount = stats.Deliverable
@@ -307,16 +343,16 @@ func (e *Exporter) buildArchive(
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		_ = closeArchive()
-		return ExportManifest{}, HourStats{}, err
+		return ExportManifest{}, HourStats{}, nil, err
 	}
 	if err := writeTarBytes(tarWriter, "manifest.json", manifestJSON, hourEnd); err != nil {
 		_ = closeArchive()
-		return ExportManifest{}, HourStats{}, err
+		return ExportManifest{}, HourStats{}, nil, err
 	}
 	if err := closeArchive(); err != nil {
-		return ExportManifest{}, HourStats{}, fmt.Errorf("finalize Session archive: %w", err)
+		return ExportManifest{}, HourStats{}, nil, fmt.Errorf("finalize Session archive: %w", err)
 	}
-	return manifest, stats, nil
+	return manifest, stats, checkpoints, nil
 }
 
 type sessionEntryWriter struct {

@@ -1,5 +1,12 @@
 # Session Delivery 可观测性发现记录
 
+## 2026-08-13 手工保真增强审查
+
+- Codex Responses SSE 的真实兼容上游会在 `response.output_item.done` 给出完整 assistant message，但 `response.completed.response.output` 可能为空；旧 Session decoder 只保存 terminal 对象，导致 Codex 交付响应丢失可见文本。修复仅在 Session decoder 汇集 done item，不修改实时响应。
+- 当前生产按 ingest UTC 小时导出并 purge。原手工投影器只保留单次导出内存状态，跨小时会丢失前轮 thinking 回声和 cache prefix；必须在 durable Drive 回读验证后原子保存会话 continuation checkpoint，并串行化小时导出。
+- 线上 05–09 UTC 已完成 Drive 上传和 purge，因此新表不能直接从空状态起步。恢复方案必须读取原 immutable 对象，经过 archive validator、数据库 batch SHA/size 双重比对后按小时正序 seed；不能重新构造或覆盖历史归档。
+- checkpoint 的 assistant 内容键改为 SHA-256，不保存原始 assistant 文本；签名回声所需 thinking block 与 usage 游标保留在隔离数据库。用户指定的 `thinking.signature` 合成实现未改动。
+
 ## 2026-08-13 初始产品与技术口径
 
 - 用户要求在现有线上 Sub2API 管理 UI 中实时查看隔离 DB 服务器与 Session 交付流水线，授权完成设计、实现、测试和发布。

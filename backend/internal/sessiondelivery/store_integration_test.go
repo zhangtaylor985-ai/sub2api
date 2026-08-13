@@ -4,14 +4,17 @@ package sessiondelivery
 
 import (
 	"archive/tar"
+	"bufio"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -179,6 +182,80 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 	require.Equal(t, HourStats{Records: 1, Deliverable: 1}, lateStats)
 }
 
+func TestHourlyExportPreservesProjectionStateAfterPurge(t *testing.T) {
+	ctx := context.Background()
+	store := startSessionDeliveryPostgres(t, ctx)
+	require.NoError(t, store.Migrate(ctx))
+
+	firstHour := time.Date(2026, 8, 9, 8, 0, 0, 0, time.UTC)
+	secondHour := firstHour.Add(time.Hour)
+	first := buildCrossHourEnvelope(t, firstHour.Add(58*time.Minute), 1, 100)
+	second := buildCrossHourEnvelope(t, secondHour.Add(time.Minute), 2, 130)
+
+	store.now = func() time.Time { return firstHour.Add(10 * time.Minute) }
+	inserted, err := store.Insert(ctx, first)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	archiveBackend, err := NewLocalArchiveBackend(filepath.Join(t.TempDir(), "durable-archive"))
+	require.NoError(t, err)
+	exporter, err := NewExporter(store, &integrationDurableArchive{LocalArchiveBackend: archiveBackend}, ExporterConfig{
+		PublicModel: DefaultPublicModel,
+		TempDir:     filepath.Join(t.TempDir(), "export-tmp"),
+	})
+	require.NoError(t, err)
+
+	firstResult, err := exporter.ExportHour(ctx, firstHour)
+	require.NoError(t, err)
+	require.True(t, firstResult.Durable)
+	require.NoError(t, store.PurgeHour(ctx, firstHour, firstResult.Archive.SHA256, true))
+
+	// Simulate an upgrade from an exporter that predates durable projection
+	// checkpoints, then rebuild from the already verified archive.
+	_, err = store.db.ExecContext(ctx, `DELETE FROM session_projection_checkpoints`)
+	require.NoError(t, err)
+	_, err = store.SeedProjectionArchive(ctx, firstResult.Archive.Name, DefaultPublicModel, false)
+	require.ErrorContains(t, err, "allow-seed")
+	seed, err := store.SeedProjectionArchive(ctx, firstResult.Archive.Name, DefaultPublicModel, true)
+	require.NoError(t, err)
+	require.False(t, seed.AlreadySeeded)
+	require.Equal(t, firstHour, seed.Hour)
+	require.Equal(t, int64(1), seed.Sessions)
+	require.Equal(t, int64(1), seed.Records)
+	repeatedSeed, err := store.SeedProjectionArchive(ctx, firstResult.Archive.Name, DefaultPublicModel, true)
+	require.NoError(t, err)
+	require.True(t, repeatedSeed.AlreadySeeded)
+
+	checkpoint, found, err := store.LoadProjectionCheckpoint(ctx, first.Delivery.SessionID, secondHour)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Len(t, checkpoint.Echo, 1)
+	require.Equal(t, 98, checkpoint.Usage.PreviousPrefix)
+
+	store.now = func() time.Time { return secondHour.Add(10 * time.Minute) }
+	inserted, err = store.Insert(ctx, second)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	secondResult, err := exporter.ExportHour(ctx, secondHour)
+	require.NoError(t, err)
+	require.True(t, secondResult.Durable)
+	require.NoError(t, store.PurgeHour(ctx, secondHour, secondResult.Archive.SHA256, true))
+
+	validation, err := ValidateArchive(secondResult.Archive.Name, DefaultPublicModel)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), validation.Manifest.DeliveryCount)
+
+	records := readDeliveryRecordsFromArchive(t, secondResult.Archive.Name)
+	require.Len(t, records, 1)
+	require.Equal(t, "sig-cross-hour-one", requestAssistantThinkingSignature(t, &records[0]))
+	input, creation, read, output := usageNumbers(t, &records[0])
+	require.Equal(t, 2, input)
+	require.Equal(t, 30, creation)
+	require.Equal(t, 98, read)
+	require.Equal(t, 10, output)
+}
+
 type integrationDurableArchive struct {
 	*LocalArchiveBackend
 }
@@ -241,6 +318,98 @@ func buildIntegrationResponsesEnvelope(t *testing.T, canonicalizer *Canonicalize
 	})
 	require.NoError(t, err)
 	return envelope
+}
+
+func buildCrossHourEnvelope(t *testing.T, started time.Time, turn, totalInput int) *Envelope {
+	t.Helper()
+	request := `{
+		"model":"claude-opus-5",
+		"max_tokens":1024,
+		"thinking":{"type":"adaptive","display":"omitted"},
+		"output_config":{"effort":"low"},
+		"messages":[{"role":"user","content":[{"type":"text","text":"first question"}]}]
+	}`
+	answer := "answer one"
+	signature := "sig-cross-hour-one"
+	if turn == 2 {
+		request = `{
+			"model":"claude-opus-5",
+			"max_tokens":1024,
+			"thinking":{"type":"adaptive","display":"omitted"},
+			"output_config":{"effort":"low"},
+			"messages":[
+				{"role":"user","content":[{"type":"text","text":"first question"}]},
+				{"role":"assistant","content":[{"type":"text","text":"answer one"}]},
+				{"role":"user","content":[{"type":"text","text":"second question"}]}
+			]
+		}`
+		answer = "answer two"
+		signature = "sig-cross-hour-two"
+	}
+	response := json.RawMessage(
+		`{"id":"msg_cross_hour_` + strconv.Itoa(turn) + `","type":"message","role":"assistant","model":"claude-opus-5",` +
+			`"content":[{"type":"thinking","thinking":"","signature":` + mustJSONString(signature) + `},{"type":"text","text":` + mustJSONString(answer) + `}],` +
+			`"stop_reason":"end_turn","usage":{"input_tokens":` + strconv.Itoa(totalInput) + `,"output_tokens":10}}`,
+	)
+	recordID := "rec_cross_hour_" + strconv.Itoa(turn)
+	requestID := "req_cross_hour_" + strconv.Itoa(turn)
+	delivery := &DeliveryRecord{
+		SessionID: "session_cross_hour",
+		RequestID: requestID,
+		Timestamp: started,
+		Metadata:  DeliveryMetadata{HTTPStatus: 200, LatencyMS: 100},
+		Request:   json.RawMessage(request),
+		Response:  DeliveryResponse{StatusCode: 200, ResponseData: response},
+	}
+	require.NoError(t, ValidateDelivery(delivery, DefaultPublicModel))
+	return &Envelope{
+		SchemaVersion:    SchemaVersion,
+		RecordID:         recordID,
+		SessionID:        delivery.SessionID,
+		RequestID:        requestID,
+		OccurredAt:       started,
+		CapturedAt:       started.Add(100 * time.Millisecond),
+		GatewayRequestID: "gateway-cross-hour-" + strconv.Itoa(turn),
+		Source: SourceInfo{
+			Protocol: ProtocolAnthropicMessages,
+			Endpoint: "/v1/messages",
+			Scope:    Scope{UserID: 10, APIKeyID: 20, GroupID: 30},
+		},
+		HTTPStatus: 200,
+		DurationMS: 100,
+		Delivery:   delivery,
+	}
+}
+
+func readDeliveryRecordsFromArchive(t *testing.T, archivePath string) []DeliveryRecord {
+	t.Helper()
+	file, err := os.Open(archivePath)
+	require.NoError(t, err)
+	defer file.Close()
+	decoder, err := zstd.NewReader(file)
+	require.NoError(t, err)
+	defer decoder.Close()
+	reader := tar.NewReader(decoder)
+	var records []DeliveryRecord
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		if !strings.HasPrefix(header.Name, "delivery/") {
+			continue
+		}
+		scanner := bufio.NewScanner(reader)
+		scanner.Buffer(make([]byte, 64<<10), int(defaultDecodedEnvelopeMaxBytes))
+		for scanner.Scan() {
+			var record DeliveryRecord
+			require.NoError(t, json.Unmarshal(scanner.Bytes(), &record))
+			records = append(records, record)
+		}
+		require.NoError(t, scanner.Err())
+	}
+	return records
 }
 
 func requireArchiveHasOnlyBlackBoxDelivery(t *testing.T, archivePath string) {

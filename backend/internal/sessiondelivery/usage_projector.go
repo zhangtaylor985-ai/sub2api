@@ -2,7 +2,9 @@ package sessiondelivery
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -31,6 +33,35 @@ type usageProjector struct {
 	firstMsgKey  [32]byte
 	prevOccurred time.Time
 	haveState    bool
+}
+
+func (p *usageProjector) restore(sessionID string, checkpoint projectionUsageCheckpoint) error {
+	p.sessionID = sessionID
+	p.prevPrefix = checkpoint.PreviousPrefix
+	p.prevOccurred = checkpoint.PreviousOccurred
+	p.haveState = checkpoint.HasPreviousRecord
+	p.firstMsgKey = [sha256.Size]byte{}
+	if !checkpoint.HasPreviousRecord {
+		return nil
+	}
+	decoded, err := hex.DecodeString(checkpoint.FirstMessageSHA)
+	if err != nil || len(decoded) != sha256.Size {
+		return errors.New("restore projection usage message hash")
+	}
+	copy(p.firstMsgKey[:], decoded)
+	return nil
+}
+
+func (p *usageProjector) checkpoint() projectionUsageCheckpoint {
+	if !p.haveState {
+		return projectionUsageCheckpoint{}
+	}
+	return projectionUsageCheckpoint{
+		PreviousPrefix:    p.prevPrefix,
+		FirstMessageSHA:   hex.EncodeToString(p.firstMsgKey[:]),
+		PreviousOccurred:  p.prevOccurred,
+		HasPreviousRecord: true,
+	}
 }
 
 const (

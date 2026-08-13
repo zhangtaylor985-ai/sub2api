@@ -8,12 +8,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
 	_ "github.com/lib/pq"
 )
+
+const sessionProjectionExportAdvisoryLock int64 = 7304272051667003
 
 var (
 	ErrExportHourPurged    = errors.New("Session export hour has already been purged")
@@ -120,6 +124,32 @@ func (s *Store) Ping(ctx context.Context) error {
 		return errors.New("nil Session database")
 	}
 	return s.db.PingContext(ctx)
+}
+
+// LockProjectionExport serializes exports across hours and processes. The
+// projection checkpoint for hour N must be committed before hour N+1 reads it.
+func (s *Store) LockProjectionExport(ctx context.Context) (func(), error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("nil Session database")
+	}
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reserve Session projection export connection: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, sessionProjectionExportAdvisoryLock); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("lock Session projection export: %w", err)
+	}
+	var once sync.Once
+	unlock := func() {
+		once.Do(func() {
+			unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, _ = conn.ExecContext(unlockCtx, `SELECT pg_advisory_unlock($1)`, sessionProjectionExportAdvisoryLock)
+			_ = conn.Close()
+		})
+	}
+	return unlock, nil
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
@@ -526,12 +556,33 @@ func (s *Store) MarkExportArchived(
 	archiveSize int64,
 	manifest json.RawMessage,
 	durable bool,
+	checkpoints map[string]projectionCheckpoint,
 ) error {
 	status := "archived"
 	if durable {
 		status = "verified"
 	}
-	result, err := s.db.ExecContext(ctx, `
+	encodedCheckpoints := make([]encodedProjectionCheckpoint, 0, len(checkpoints))
+	if durable {
+		sessionIDs := make([]string, 0, len(checkpoints))
+		for sessionID := range checkpoints {
+			sessionIDs = append(sessionIDs, sessionID)
+		}
+		sort.Strings(sessionIDs)
+		for _, sessionID := range sessionIDs {
+			encoded, err := encodeProjectionCheckpoint(sessionID, checkpoints[sessionID], hour)
+			if err != nil {
+				return fmt.Errorf("prepare projection checkpoint %s: %w", sessionID, err)
+			}
+			encodedCheckpoints = append(encodedCheckpoints, encoded)
+		}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin Session export completion: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
         UPDATE session_export_batches SET
             status = $2,
 			attempt_id = '',
@@ -561,7 +612,81 @@ func (s *Store) MarkExportArchived(
 	if rows != 1 {
 		return errors.New("Session export batch is not in exporting state")
 	}
+	if err := upsertProjectionCheckpointsTx(ctx, tx, encodedCheckpoints); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit Session export completion: %w", err)
+	}
 	return nil
+}
+
+func upsertProjectionCheckpointsTx(ctx context.Context, tx *sql.Tx, checkpoints []encodedProjectionCheckpoint) error {
+	for _, checkpoint := range checkpoints {
+		result, err := tx.ExecContext(ctx, `
+			INSERT INTO session_projection_checkpoints (
+				session_id, checkpoint_version, checkpoint_zstd,
+				checkpoint_sha256, last_export_hour, updated_at
+			) VALUES ($1, $2, $3, $4, $5, NOW())
+			ON CONFLICT (session_id) DO UPDATE SET
+				checkpoint_version = EXCLUDED.checkpoint_version,
+				checkpoint_zstd = EXCLUDED.checkpoint_zstd,
+				checkpoint_sha256 = EXCLUDED.checkpoint_sha256,
+				last_export_hour = EXCLUDED.last_export_hour,
+				updated_at = NOW()
+			WHERE session_projection_checkpoints.last_export_hour < EXCLUDED.last_export_hour`,
+			checkpoint.SessionID, checkpoint.Version, checkpoint.Compressed,
+			checkpoint.SHA256, checkpoint.LastExportHour,
+		)
+		if err != nil {
+			return fmt.Errorf("store projection checkpoint %s: %w", checkpoint.SessionID, err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("inspect projection checkpoint %s: %w", checkpoint.SessionID, err)
+		}
+		if rows != 1 {
+			return fmt.Errorf("projection checkpoint %s is not older than export hour", checkpoint.SessionID)
+		}
+	}
+	return nil
+}
+
+func (s *Store) LoadProjectionCheckpoint(
+	ctx context.Context,
+	sessionID string,
+	exportHour time.Time,
+) (projectionCheckpoint, bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return projectionCheckpoint{}, false, errors.New("projection checkpoint session ID is required")
+	}
+	var version int
+	var compressed []byte
+	var expectedSHA string
+	var lastExportHour time.Time
+	err := s.db.QueryRowContext(ctx, `
+		SELECT checkpoint_version, checkpoint_zstd, checkpoint_sha256, last_export_hour
+		FROM session_projection_checkpoints
+		WHERE session_id = $1`, sessionID).Scan(&version, &compressed, &expectedSHA, &lastExportHour)
+	if errors.Is(err, sql.ErrNoRows) {
+		return projectionCheckpoint{}, false, nil
+	}
+	if err != nil {
+		return projectionCheckpoint{}, false, fmt.Errorf("load projection checkpoint %s: %w", sessionID, err)
+	}
+	exportHour = hourUTC(exportHour)
+	if !lastExportHour.UTC().Before(exportHour) {
+		return projectionCheckpoint{}, false, fmt.Errorf(
+			"projection checkpoint %s at %s is not before export hour %s",
+			sessionID, lastExportHour.UTC().Format(time.RFC3339), exportHour.Format(time.RFC3339),
+		)
+	}
+	checkpoint, err := decodeProjectionCheckpoint(compressed, expectedSHA, version)
+	if err != nil {
+		return projectionCheckpoint{}, false, fmt.Errorf("decode projection checkpoint %s: %w", sessionID, err)
+	}
+	return checkpoint, true, nil
 }
 
 func (s *Store) MarkExportFailed(ctx context.Context, hour time.Time, attemptID string, cause error) error {

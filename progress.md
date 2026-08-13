@@ -1,5 +1,13 @@
 # Session Delivery 可观测性进度记录
 
+## 2026-08-13 手工保真增强发布
+
+- 从当前生产基线创建独立 `codex/session-delivery-v2-rollout`，合入用户在 `codex/session-delivery-v2` 的三组手工改动；未修改签名合成实现。
+- 单元审查修复重复 assistant 文本/纯工具回合的 echo 对齐；真实 Codex canary 进一步发现 Responses SSE terminal `output=[]`，已从 `response.output_item.done` 重建 Session 保存响应并新增回归。
+- 新增 zstd+SHA-256 projection checkpoint、全局导出 advisory lock、durable verified 同事务提交，以及受 `-allow-seed` 保护的历史归档状态恢复。
+- PostgreSQL 18 集成回归已覆盖：第一小时 durable archive、验证、purge、历史 archive seed、第二小时继续回填前轮 `thinking.signature`，并得到 `input=2/read=98/creation=30`；重复 seed 幂等通过。
+- 生产 exporter timer 已在 13:00 UTC 下一次归档前暂停；Session 摄取继续运行，数据库记录保留，未删除或改写数据。待最终全量回归、候选 canary 和历史 05–09 UTC seed 完成后恢复。
+
 ## 2026-08-13
 
 - 用户授权自行完成产品设计、实现与生产发布；已说明会修改前后端、隔离机服务和生产二进制，并可能产生一次短暂 systemd 重启。

@@ -45,6 +45,8 @@ func run() error {
 		return runExport(ctx, os.Args[2:])
 	case "validate":
 		return runValidate(os.Args[2:])
+	case "seed-projection":
+		return runSeedProjection(ctx, os.Args[2:])
 	case "status":
 		return runStatus(ctx, os.Args[2:])
 	case "purge":
@@ -370,6 +372,29 @@ func runValidate(args []string) error {
 	return writeOutput(validation)
 }
 
+func runSeedProjection(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("seed-projection", flag.ContinueOnError)
+	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
+	archivePath := flags.String("archive", "", "path to a previously verified Session tar.zst archive")
+	allow := flags.Bool("allow-seed", false, "explicitly allow rebuilding projection continuation state")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	store, err := openStoreFromEnv(ctx, *dsnEnv)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		return err
+	}
+	result, err := store.SeedProjectionArchive(ctx, *archivePath, sessiondelivery.DefaultPublicModel, *allow)
+	if err != nil {
+		return err
+	}
+	return writeOutput(result)
+}
+
 func runStatus(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
@@ -457,7 +482,7 @@ func writeOutput(value any) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|export|validate|status|purge> [flags]")
+	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|export|validate|seed-projection|status|purge> [flags]")
 }
 
 func envOr(name, fallback string) string {

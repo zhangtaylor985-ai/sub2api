@@ -1,5 +1,15 @@
 # Session Delivery 可观测性实施计划
 
+## 2026-08-13 手工保真增强发布
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 合入 `codex/session-delivery-v2` 手工改动 | complete | echo repair、adaptive/display omitted、prompt-cache usage 投影；签名合成代码保持原样 |
+| 静态审查与缺陷修复 | complete | 重复 assistant 对齐、Codex SSE terminal 空 output 重建、跨小时状态连续性 |
+| 本地单元/竞态/全量/PostgreSQL 回归 | in_progress | durable archive→purge→下一小时签名/cache 连续；真实客户端 canary 待最终候选重跑 |
+| 生产迁移与发布 | pending | 暂停 exporter、历史 Drive checkpoint 接续、主应用/sessionctl 原子替换、恢复 timer |
+| 发布后归档与真实客户端验收 | pending | Claude Code/Codex、Drive 回读、数据库 purge、服务健康与回滚点 |
+
 ## 当前任务目标（2026-08-13）
 
 在现有 Sub2API 管理后台上线“Session 交付监控与策略”页面，以 15 秒轮询提供一套不暴露数据库、OAuth 与 HMAC 凭据的实时可观测性，并支持动态控制全局或指定 API Key 的 Session 采集。监控或策略服务失败不得影响 AI 网关。

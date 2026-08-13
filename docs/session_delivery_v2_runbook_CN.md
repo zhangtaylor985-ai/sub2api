@@ -33,6 +33,7 @@ Google Drive 比在现生产机再挂一块数据盘更适合做异机归档，�
 - `sessionctl export`：导出指定 ingest UTC hour，验证 JSONL/tar.zst，并上传/回读 archive backend。
 - `sessionctl status`：查看某小时数据库数量与批次状态。
 - `sessionctl validate`：离线验证本地 tar.zst。
+- `sessionctl seed-projection`：升级或灾难恢复时，从已验证归档按小时重建回声/cache 连续状态；必须显式 `-allow-seed`。
 - `sessionctl purge`：人工应急 purge；必须同时提供小时、verified SHA-256 和显式 allow。
 
 systemd 模板：
@@ -74,7 +75,11 @@ SESSION_DATABASE_DSN='从受保护环境注入' /opt/sub2api/sessionctl migrate
 - `session_record_keys`
 - `session_records`（按 `ingested_at` UTC 小时分区）
 - `session_export_batches`
+- `session_projection_checkpoints`（小时归档之间的回声/cache 连续状态）
+- `session_projection_seeded_archives`（历史归档回放幂等水位）
 - `session_schema_migrations`
+
+projection checkpoint 只在 durable backend 上传并完整回读验证成功时，和 batch 的 `verified` 状态在同一数据库事务中提交；local/non-durable 导出不会推进该状态。checkpoint 不保存原始请求文本、账号或路由信息：assistant 可见内容只保留 SHA-256 匹配键，另保存后续请求必须逐字节回声的 thinking 块和 cache 游标。
 
 ## 6. Google Drive/rclone
 
@@ -169,6 +174,21 @@ SESSION_AUTO_PURGE_ENABLED=true
 timer 每 30 分钟完成：冻结上一 ingest hour → 生成/严格验证交付包 → Google Drive immutable 上传 → 全量回读 checksum → 标记 verified → drop 该小时 payload partition。若进程在 verified 与 purge 之间退出，下次会先重新回读同一 Drive 对象，再恢复 purge。全局幂等 key 与批次水位是紧凑控制元数据，会继续保留；不会对整个数据库执行 TRUNCATE。
 
 ## 8. 故障处理
+
+### 8.1 升级或恢复 projection checkpoint
+
+如果历史小时已经归档并 purge，但当时的 exporter 还没有 checkpoint 表，应先暂停 export timer，把 Drive 对象下载到隔离机受保护的临时目录，并按 UTC 小时从旧到新执行：
+
+```bash
+/opt/sub2api/sessionctl validate \
+  -archive /受保护目录/session-delivery-20260813-05-<sha>.tar.zst
+
+/opt/sub2api/sessionctl seed-projection \
+  -archive /受保护目录/session-delivery-20260813-05-<sha>.tar.zst \
+  -allow-seed
+```
+
+该命令会再次严格验证 archive、计算完整文件 SHA-256/size，并要求它与 `session_export_batches` 中同一小时的 `verified/purged` 对象完全一致；不匹配、逆序或未显式授权都会拒绝写入。每个归档的 seed 与 checkpoint 在同一事务提交，重复执行相同归档返回 `already_seeded=true`。所有历史小时成功后才能恢复 timer；命令不会改写 Drive 文件或已交付 JSONL。
 
 受限 SSH 中继由 `sub2api-session-tunnel-health.timer` 每分钟检查一次最早 16 个 pending 文件的窗口指纹。窗口连续 8 次没有任何文件被确认后，只重启 `sub2api-session-tunnel.service`，不会重启 Sub2API 或删除 spool 文件；中断中的上传继续按幂等键重试。这里不使用同一 SSH TCP 连接上的 HTTP health，因为大记录上传可能让 health 请求产生队头阻塞并导致误判。
 

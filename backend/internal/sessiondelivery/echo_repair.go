@@ -33,6 +33,28 @@ type echoAssistantTurn struct {
 	thinking []json.RawMessage
 }
 
+func (r *echoRepair) restore(sessionID string, checkpoint []projectionEchoTurn) {
+	r.sessionID = sessionID
+	r.prior = make([]echoAssistantTurn, 0, len(checkpoint))
+	for _, turn := range checkpoint {
+		r.prior = append(r.prior, echoAssistantTurn{
+			key:      turn.Key,
+			thinking: append([]json.RawMessage(nil), turn.Thinking...),
+		})
+	}
+}
+
+func (r *echoRepair) checkpoint() []projectionEchoTurn {
+	checkpoint := make([]projectionEchoTurn, 0, len(r.prior))
+	for _, turn := range r.prior {
+		checkpoint = append(checkpoint, projectionEchoTurn{
+			Key:      turn.key,
+			Thinking: append([]json.RawMessage(nil), turn.thinking...),
+		})
+	}
+	return checkpoint
+}
+
 func (r *echoRepair) process(record *DeliveryRecord) error {
 	if record == nil {
 		return nil
@@ -206,7 +228,8 @@ func assistantContentKey(content []json.RawMessage) string {
 		}
 	}
 	if textKey != "" {
-		return "text:" + textKey
+		digest := sha256.Sum256([]byte(textKey))
+		return "text:" + hex.EncodeToString(digest[:])
 	}
 	if len(fallback) == 0 {
 		return ""

@@ -77,6 +77,8 @@ Session 数据库独立于 Sub2API 主库。核心表：
 - `session_records`：按记录进入隔离数据库的 `ingested_at` UTC 小时 RANGE 分区；原始 `occurred_at` 仍用于交付排序，完整 envelope 使用 zstd `BYTEA` 保存。
 - `session_record_keys`：全局 `record_id` 幂等登记；payload 分区清理后仍保留这类紧凑控制元数据，避免旧 spool 重放产生重复交付。
 - `session_export_batches`：记录小时水位、状态、数量、归档对象、SHA-256、验证与 purge 时间；同样在 payload 清理后保留。
+- `session_projection_checkpoints`：保存每个 Session 最近一个 durable verified 小时的回声/cache 连续游标。assistant 内容只保存 SHA-256 匹配键；thinking 块因下一轮必须逐字节回声而保留；不保存原始请求文本、账号、API Key 或路由信息。
+- `session_projection_seeded_archives`：记录从历史已验证归档恢复 checkpoint 的小时和 archive SHA-256，使升级/灾难恢复回放可原子重试且只能按时间正序推进。
 
 每小时 partition 在写入前幂等创建。按 ingest hour 分区可保证转发积压恢复后的晚到记录进入新的可写批次，而不会撞上已验证或已清理的历史分区。业务 payload 不进入主 Ent schema，不允许主库清理任务触达。
 
@@ -92,8 +94,10 @@ collecting -> exporting -> archived -> verified -> purged
 3. 仅成功记录写为每 Session 一个 JSONL；失败/隔离记录只在数据库和批次统计中保留，不进入外部 tar.zst。
 4. 逐条运行严格 validator，生成 manifest 与归档 SHA-256。
 5. archive backend 写入后必须回读并校验相同 SHA-256。
-6. batch 标记为 `verified`。
+6. batch 标记为 `verified`，并在同一事务写入该小时各 Session 的 projection checkpoint；跨小时导出由全局 PostgreSQL advisory lock 串行，确保小时 N 的状态先于小时 N+1 可见。non-durable 导出不推进 checkpoint。
 7. 只有 durable backend、显式 allow-purge、状态为 verified 且 checksum 匹配时，才能在事务中 drop 对应小时 partition。
+
+升级前已经 purge 的小时通过原 Google Drive 对象恢复 checkpoint：本地文件必须通过完整 archive validator，且 SHA-256/size 必须与数据库中同一 `verified/purged` batch 一致；恢复按小时正序执行，只写内部 continuation state，不改写既有交付文件。
 
 本地目录 backend 用于开发验收，标记为 non-durable，因此永远不能触发 purge。Google Drive 通过 rclone backend 接入：对象使用“UTC 小时 + 内容 SHA-256 前缀”命名和 `--immutable` 上传，上传后以 `rclone cat` 全量回读并计算 SHA-256；只有校验一致才把批次标记为 `verified`。内容寻址可避免“上传成功、数据库提交前退出”的重试与旧对象冲突。建议使用专用 Google Drive 目录、`drive.file` 最小权限和独立 rclone 配置；如需客户端侧加密，可把目标配置为 rclone `crypt` remote。
 

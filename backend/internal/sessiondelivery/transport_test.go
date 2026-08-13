@@ -90,3 +90,50 @@ func TestForwarderHonorsConcurrencyAndAcknowledgesBatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, paths)
 }
+
+func TestForwarderKeepsOtherInFlightUploadsAfterTransientFailure(t *testing.T) {
+	spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 8<<20)
+	require.NoError(t, err)
+	for index := range 2 {
+		_, err := spool.Write(&Envelope{
+			SchemaVersion: SchemaVersion,
+			RecordID:      fmt.Sprintf("rec_partial_%d", index),
+			CapturedAt:    time.Date(2026, 8, 13, 7, 20, index, 0, time.UTC),
+		})
+		require.NoError(t, err)
+	}
+
+	secondStarted := make(chan struct{})
+	firstFailed := make(chan struct{})
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if calls.Add(1) == 1 {
+			<-secondStarted
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = writer.Write([]byte(`{"status":"error","code":"ingest_busy"}`))
+			close(firstFailed)
+			return
+		}
+		close(secondStarted)
+		<-firstFailed
+		time.Sleep(100 * time.Millisecond)
+		_, _ = io.Copy(io.Discard, request.Body)
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = writer.Write([]byte(`{"status":"inserted"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	forwarder, err := NewForwarder(spool, ForwarderConfig{
+		Endpoint:    server.URL,
+		Secret:      testHMACSecret,
+		BatchLimit:  2,
+		Concurrency: 2,
+	})
+	require.NoError(t, err)
+	stats, err := forwarder.ForwardOnce(context.Background())
+	require.ErrorContains(t, err, "temporarily unavailable")
+	require.Equal(t, ForwardStats{Attempted: 2, Inserted: 1, Pending: 1}, stats)
+	paths, err := spool.ListPending()
+	require.NoError(t, err)
+	require.Len(t, paths, 1)
+}

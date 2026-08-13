@@ -106,8 +106,6 @@ func (f *Forwarder) ForwardOnce(ctx context.Context) (ForwardStats, error) {
 		status string
 		err    error
 	}
-	workerCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	jobs := make(chan string, len(paths))
 	results := make(chan forwardResult, len(paths))
 	for _, path := range paths {
@@ -124,13 +122,15 @@ func (f *Forwarder) ForwardOnce(ctx context.Context) (ForwardStats, error) {
 		go func() {
 			defer workers.Done()
 			for path := range jobs {
-				if workerCtx.Err() != nil {
+				if ctx.Err() != nil {
 					return
 				}
-				status, err := f.forwardOne(workerCtx, path)
+				status, err := f.forwardOne(ctx, path)
 				results <- forwardResult{status: status, err: err}
 				if err != nil {
-					cancel()
+					// Stop only this worker. Other in-flight uploads may still
+					// complete successfully and must not be canceled because one
+					// lane encountered a transient upstream failure.
 					return
 				}
 			}

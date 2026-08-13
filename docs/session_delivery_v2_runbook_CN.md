@@ -2,7 +2,7 @@
 
 ## 1. 当前交付状态
 
-V2 的代码、独立 migration、采集/转发进程、小时级导出、Google Drive rclone 后端和安全 purge 门禁均可在本地构建。默认配置全部关闭；当前没有连接生产 Session 数据库，也没有配置 Google Drive 或启用自动删除。
+V2 的代码、独立 migration、采集/转发进程、小时级导出、Google Drive rclone 后端和安全 purge 门禁均可在本地构建，默认配置全部关闭。截至 2026-08-13，生产已启用异步采集、腾讯隔离 PostgreSQL、Google Drive rclone 归档和安全自动 purge：timer 每 30 分钟运行，settling watermark 为 2 小时；只有远端对象全量回读 SHA-256 与 size 一致后，才删除对应 ingest-hour payload 分区。
 
 供应商规范快照见 [`vendor-delivery-spec-claude-20260811_CN.md`](vendor-delivery-spec-claude-20260811_CN.md)。输出是 Anthropic Messages 格式兼容投影，固定公开模型 `claude-opus-5`；真实上游仍是 GPT-5.6。规范化层按既有实现为缺失的 thinking 块生成格式同构的 `thinking.signature`，仅作用于交付记录，不修改客户端实时响应，也不构成 Claude 来源证明。
 

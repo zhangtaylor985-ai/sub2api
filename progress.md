@@ -12,9 +12,14 @@
 - 七个归档逐个通过 `sessionctl validate`；流式 JSONL 内容审计中模型、thinking、签名、cache、Codex shape/bootstrap 的异常计数均为 0。
 - 最终幂等复跑通过：1,240 条 `changed_records=0`，七个 SHA-256 与 size 逐个一致；峰值 RSS 408,961,024 bytes，swap 0。
 - 验证通过：定向单测、Session race、`go test ./...`、`go vet ./...`、PostgreSQL 18 跨小时 export/purge/seed 集成测试、`git diff --check`。
-- 待办：提交并推送代码；把最终七个对象上传到新的 Google Drive 版本目录，逐个下载回读 SHA-256；不覆盖旧目录。
+- 已提交并推送 `ba7d2b0c8 feat(session-delivery): rebuild historical archives offline` 到 `origin/codex/session-delivery-v2-rollout`。
+- 已上传到 Drive 新目录 `Sub2API/session-delivery-rebuild-20260813-ba7d2b0c8`，folder ID 为 `18E1OS9WZAHLbUBOXbwc0QIa8KRbFmCg1`；`--immutable` 上传 7/7 成功。
+- Drive 独立下载回读完成：七个 SHA-256 全部与本机候选一致，生产 validator 7/7 通过；旧目录对象数仍为 8，新目录对象数为 7。
+- 上传后隔离机根盘 38%，`sessiond`、export timer、Xray egress 均 active；未重启或改写任何生产服务/数据库/批次索引。
 - 错误记录：首次 gofmt 在 `backend/` 中误带 `backend/` 前缀，`lstat` 后立即停止且未改文件；改用模块相对路径后通过。
 - 错误记录：第一版 embedded wrapper 修改只更新内存 block、未触发 message 重编码；新增纯嵌入测试并修复，严格候选重新生成且审计归零。
+- 错误记录：一次远端 Drive folder ID 查询因本地 zsh 嵌套引号触发 `no matches found`，未执行远端写操作；改用 quoted stdin script 后只读查询成功。
+- 错误记录：两次远端汇总命令的 glob 在 `sudo` 前由无权限用户展开失败；逐文件 validator 本身成功，随后在 `sub2api` shell 中确认 7 个文件和 79,911,483 bytes。
 
 ## 2026-08-13 手工保真增强发布
 

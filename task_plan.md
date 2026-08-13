@@ -11,8 +11,8 @@
 | Drive 输入与备份盘点 | complete | 05–11 UTC 七个既有归档均已下载并与生产批次 SHA-256/size 一致 |
 | 可重投影性与差异评估 | complete | 从既有 delivery JSONL 重跑 request/echo/cache/thinking；不扩张到旧排除记录 |
 | 本机隔离重生成 | complete | 1,240 条、118 个 Session；内容审计全通过，最终幂等复跑逐文件 SHA 一致 |
-| Drive 并行上传与验收 | in_progress | 独立 `rebuild-*` 前缀、SHA/validator/模型/cache/signature 核验 |
-| 是否切换正式索引 | pending | 仅在全量通过后决定；不删除旧对象 |
+| Drive 并行上传与验收 | complete | 新目录 7/7 上传、独立回读 SHA-256 与 archive validator 全通过 |
+| 是否切换正式索引 | complete | 不改生产批次索引、不覆盖旧对象；以新版本目录独立交付 |
 
 ### 安全边界
 

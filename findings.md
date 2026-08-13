@@ -11,6 +11,8 @@
 - 最终候选共 79,911,483 bytes。七个归档均通过 `ValidateArchive`；内容审计异常均为 0：模型字段、adaptive display、Codex 旧形态、thinking 缺失、响应/请求历史空签名、cache 字段、`input_tokens != 2`、Codex bootstrap 残留。
 - 全文出现的 GPT 字样只位于用户消息、工具说明或自定义 system 文本，不在 request/response model 或内部路由字段；为避免篡改用户语义不做内容替换。
 - 最终候选再次作为输入重放后，1,240 条 `changed_records=0`，七个输出 SHA-256 与大小逐个一致。实测 88.25 秒、峰值 RSS 408,961,024 bytes、swap 0，证明本机计算方案适合本次历史重算。
+- 已上传到 Google Drive 新目录 `Sub2API/session-delivery-rebuild-20260813-ba7d2b0c8`（folder ID `18E1OS9WZAHLbUBOXbwc0QIa8KRbFmCg1`）。上传使用 `--immutable`，旧目录对象数上传前后均为 8，新目录为 7。
+- 从 Drive 下载到独立 read-back 目录后，七个文件共 79,911,483 bytes，SHA-256 与本机候选逐个一致，生产 `sessionctl validate` 7/7 通过；`sessiond`、export timer、Xray egress 均保持 active，根盘占用 38%。
 - 最终候选 SHA-256：
   - 05 UTC `d851a6a8df04d7db8c4f15f33142339c9b12dcba44a1b57027f2350cdd27097d`
   - 06 UTC `b37e6aeae22557773cff9a7dc6bd1cd364f0da94d7fbb4b7dd3e8a0ae16fb5ab`

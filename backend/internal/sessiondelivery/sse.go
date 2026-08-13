@@ -58,19 +58,31 @@ func responseBodyFailed(protocol Protocol, body json.RawMessage) bool {
 
 func decodeResponsesSSE(raw []byte, maxEventBytes int) (decodedResponse, error) {
 	var terminal json.RawMessage
+	outputItems := make(map[int]json.RawMessage)
 	failed := false
 	err := forEachSSEData(raw, maxEventBytes, func(data []byte) error {
 		if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 			return nil
 		}
 		var event struct {
-			Type     string          `json:"type"`
-			Response json.RawMessage `json:"response"`
+			Type        string          `json:"type"`
+			Response    json.RawMessage `json:"response"`
+			OutputIndex *int            `json:"output_index"`
+			Item        json.RawMessage `json:"item"`
 		}
 		if err := json.Unmarshal(data, &event); err != nil {
 			return fmt.Errorf("decode Responses SSE event: %w", err)
 		}
 		switch event.Type {
+		case "response.output_item.added", "response.output_item.done":
+			if event.OutputIndex == nil || *event.OutputIndex < 0 || len(event.Item) == 0 || !json.Valid(event.Item) {
+				return errors.New("Responses output item event is incomplete")
+			}
+			// The done event overwrites the skeletal added event. Some compatible
+			// upstreams omit response.output from the terminal response even though
+			// they emitted complete output_item events; retain those items so the
+			// session-only decoder can reconstruct the response faithfully.
+			outputItems[*event.OutputIndex] = append(json.RawMessage(nil), event.Item...)
 		case "response.completed", "response.done", "response.incomplete":
 			if len(event.Response) == 0 || string(event.Response) == "null" {
 				return nil
@@ -91,7 +103,49 @@ func decodeResponsesSSE(raw []byte, maxEventBytes int) (decodedResponse, error) 
 	if len(terminal) == 0 {
 		return decodedResponse{Failed: failed}, errMissingTerminalResponse
 	}
-	return decodedResponse{Body: terminal, Complete: true, Failed: failed}, nil
+	reconstructed, err := completeResponsesTerminalOutput(terminal, outputItems)
+	if err != nil {
+		return decodedResponse{}, err
+	}
+	return decodedResponse{Body: reconstructed, Complete: true, Failed: failed}, nil
+}
+
+func completeResponsesTerminalOutput(terminal json.RawMessage, outputItems map[int]json.RawMessage) (json.RawMessage, error) {
+	if len(outputItems) == 0 {
+		return terminal, nil
+	}
+	var response map[string]json.RawMessage
+	if err := json.Unmarshal(terminal, &response); err != nil {
+		return nil, fmt.Errorf("decode terminal Responses object: %w", err)
+	}
+	var existing []json.RawMessage
+	if raw := response["output"]; len(raw) > 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &existing); err != nil {
+			return nil, fmt.Errorf("decode terminal Responses output: %w", err)
+		}
+	}
+	if len(existing) > 0 {
+		return terminal, nil
+	}
+	indices := make([]int, 0, len(outputItems))
+	for index := range outputItems {
+		indices = append(indices, index)
+	}
+	sort.Ints(indices)
+	output := make([]json.RawMessage, 0, len(indices))
+	for _, index := range indices {
+		output = append(output, outputItems[index])
+	}
+	encodedOutput, err := json.Marshal(output)
+	if err != nil {
+		return nil, fmt.Errorf("encode reconstructed Responses output: %w", err)
+	}
+	response["output"] = encodedOutput
+	reconstructed, err := json.Marshal(response)
+	if err != nil {
+		return nil, fmt.Errorf("encode reconstructed terminal Responses object: %w", err)
+	}
+	return reconstructed, nil
 }
 
 type anthropicStreamBuilder struct {

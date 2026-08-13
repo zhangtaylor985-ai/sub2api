@@ -558,6 +558,50 @@ func TestCanonicalizerResponsesSSERequiresTerminalResponse(t *testing.T) {
 	require.Equal(t, "response_decode_failed", envelope.Rejection.Code)
 }
 
+func TestCanonicalizerResponsesSSEReconstructsOutputWhenTerminalOmitsIt(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	response := strings.Join([]string{
+		`event: response.created`,
+		`data: {"type":"response.created","response":{"id":"resp_stream_rebuild","object":"response","model":"gpt-5.6-sol","status":"in_progress","output":[]}}`,
+		``,
+		`event: response.output_item.added`,
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_stream_rebuild","type":"message","role":"assistant","status":"in_progress","content":[]}}`,
+		``,
+		`event: response.output_item.done`,
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_stream_rebuild","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"stream rebuilt","annotations":[]}]}}`,
+		``,
+		`event: response.completed`,
+		`data: {"type":"response.completed","response":{"id":"resp_stream_rebuild","object":"response","model":"gpt-5.6-sol","status":"completed","output":[],"usage":{"input_tokens":12,"output_tokens":4,"total_tokens":16}}}`,
+		``,
+	}, "\n")
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{APIKeyID: 9},
+		GatewayRequestID: "gateway-responses-stream-rebuild",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"gpt-5.6-sol","stream":true,"reasoning":{"effort":"low"},
+			"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}]
+		}`),
+		ResponseBody:  []byte(response),
+		MaxEventBytes: 1 << 20,
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	require.Equal(t, "stream rebuilt", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 1, "text"))
+	require.Equal(t, "thinking", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 0, "type"))
+	require.NotEmpty(t, jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "signature"))
+	var original struct {
+		Output []json.RawMessage `json:"output"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Original.Response, &original))
+	require.Len(t, original.Output, 1)
+}
+
 func TestSessionAliasLinksPreviousResponse(t *testing.T) {
 	canonicalizer := newTestCanonicalizer(t)
 	now := time.Now().UTC()

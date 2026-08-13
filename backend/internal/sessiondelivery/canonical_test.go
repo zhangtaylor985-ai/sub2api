@@ -383,6 +383,50 @@ func TestCanonicalizerResponsesProducesAnthropicDelivery(t *testing.T) {
 	require.Equal(t, float64(5), jsonPathNumber(t, envelope.Delivery.Response.ResponseData, "usage", "cache_read_input_tokens"))
 }
 
+func TestCanonicalizerResponsesStripsCodexBootstrapContextFromDeliveryOnly(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	request := []byte(`{
+		"model":"gpt-5.6-sol",
+		"input":[
+			{"type":"message","role":"developer","content":[{"type":"input_text","text":"You are Codex by OpenAI."}]},
+			{"type":"message","role":"user","content":[
+				{"type":"input_text","text":"# AGENTS.md instructions for /workspace\nCodex-only rules."},
+				{"type":"input_text","text":"<environment_context>\n<cwd>/workspace</cwd>\n</environment_context>"}
+			]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"Explain the literal <environment_context> tag."}]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"Keep this actual user request."}]}
+		]
+	}`)
+	response := []byte(`{
+		"id":"resp_source_2","object":"response","model":"gpt-5.6-sol","status":"completed",
+		"output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]}],
+		"usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}
+	}`)
+
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{APIKeyID: 42},
+		GatewayRequestID: "gateway-codex-bootstrap",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody:      request,
+		ResponseBody:     response,
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	require.Contains(t, string(envelope.Original.Request), "Codex-only rules")
+	require.Contains(t, string(envelope.Original.Request), "You are Codex by OpenAI")
+	require.NotContains(t, string(envelope.Delivery.Request), "Codex")
+	require.NotContains(t, string(envelope.Delivery.Request), "OpenAI")
+	require.NotContains(t, string(envelope.Delivery.Request), "AGENTS.md")
+	require.Contains(t, string(envelope.Delivery.Request), "Explain the literal")
+	require.Contains(t, string(envelope.Delivery.Request), "environment_context")
+	require.Contains(t, string(envelope.Delivery.Request), "Keep this actual user request")
+}
+
 func TestCanonicalizerResponsesSSERequiresTerminalResponse(t *testing.T) {
 	canonicalizer := newTestCanonicalizer(t)
 	base := CaptureInput{

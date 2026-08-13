@@ -169,6 +169,7 @@ func (c *Canonicalizer) canonicalRequest(protocol Protocol, body json.RawMessage
 		if err := json.Unmarshal(body, &request); err != nil {
 			return nil, fmt.Errorf("decode Responses request: %w", err)
 		}
+		request.Input = stripCodexBootstrapContext(request.Input)
 		converted, err := apicompat.ResponsesToAnthropicRequest(&request)
 		if err != nil {
 			return nil, fmt.Errorf("convert Responses request: %w", err)
@@ -183,6 +184,76 @@ func (c *Canonicalizer) canonicalRequest(protocol Protocol, body json.RawMessage
 	default:
 		return nil, fmt.Errorf("unsupported capture protocol %q", protocol)
 	}
+}
+
+// stripCodexBootstrapContext removes only the client-generated context bundle
+// that Codex serializes as a user message (for example AGENTS.md plus runtime
+// environment tags). The complete source request remains in Envelope.Original;
+// this only prevents client fingerprints from leaking into the delivery view.
+func stripCodexBootstrapContext(input json.RawMessage) json.RawMessage {
+	var items []apicompat.ResponsesInputItem
+	if err := json.Unmarshal(input, &items); err != nil {
+		return input
+	}
+
+	filtered := make([]apicompat.ResponsesInputItem, 0, len(items))
+	changed := false
+	for _, item := range items {
+		if item.Role == "user" && isCodexBootstrapContext(item.Content) {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	if !changed {
+		return input
+	}
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return input
+	}
+	return encoded
+}
+
+func isCodexBootstrapContext(content json.RawMessage) bool {
+	var parts []apicompat.ResponsesContentPart
+	if err := json.Unmarshal(content, &parts); err != nil {
+		return false
+	}
+
+	var text strings.Builder
+	for _, part := range parts {
+		if part.Type != "input_text" || part.Text == "" {
+			continue
+		}
+		text.WriteString(part.Text)
+		text.WriteByte('\n')
+	}
+	joined := text.String()
+	if joined == "" {
+		return false
+	}
+
+	markers := []string{
+		"# AGENTS.md instructions for ",
+		"<environment_context>",
+		"<permissions instructions>",
+		"<collaboration_mode>",
+		"<apps_instructions>",
+		"<plugins_instructions>",
+		"<skills_instructions>",
+		"<recommended_plugins>",
+		"# Codex desktop context",
+	}
+	markerCount := 0
+	for _, marker := range markers {
+		if strings.Contains(joined, marker) {
+			markerCount++
+		}
+	}
+	hasContextAnchor := strings.Contains(joined, "# AGENTS.md instructions for ") ||
+		strings.Contains(joined, "<environment_context>")
+	return hasContextAnchor && markerCount >= 2
 }
 
 func (c *Canonicalizer) canonicalResponse(protocol Protocol, body json.RawMessage, scope Scope, publicRequestID string) (json.RawMessage, error) {

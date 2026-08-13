@@ -141,6 +141,28 @@ func TestCanonicalizerAnthropicNoThinkingBlockWhenNotRequested(t *testing.T) {
 	require.Equal(t, "text", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 0, "type"))
 }
 
+func TestCanonicalizerInvalidRequestStillProducesStorableRejection(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	started := time.Date(2026, 8, 13, 6, 45, 0, 0, time.UTC)
+
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolAnthropicMessages,
+		Endpoint:         "/v1/messages",
+		Scope:            Scope{UserID: 7, APIKeyID: 11, GroupID: 13},
+		GatewayRequestID: "invalid-json-request",
+		StartedAt:        started,
+		CompletedAt:      started.Add(25 * time.Millisecond),
+		HTTPStatus:       400,
+		RequestBody:      []byte("not-json"),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, envelope.Rejection)
+	require.Equal(t, "invalid_request_json", envelope.Rejection.Code)
+	require.True(t, strings.HasPrefix(envelope.SessionID, "session_"))
+	require.NoError(t, validateEnvelopeForStorage(envelope))
+}
+
 func TestCanonicalizerResponsesSynthesizesThinkingForEmptySummaryReasoning(t *testing.T) {
 	canonicalizer := newTestCanonicalizer(t)
 	envelope, err := canonicalizer.Build(CaptureInput{
@@ -585,4 +607,53 @@ func TestSpoolRoundTripIdempotencyAndQuota(t *testing.T) {
 	require.NoError(t, err)
 	_, err = tiny.Write(envelope)
 	require.True(t, errors.Is(err, ErrSpoolFull))
+}
+
+func TestRepairMissingSessionIDQuarantine(t *testing.T) {
+	spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 16<<20)
+	require.NoError(t, err)
+	ids, err := NewIDGenerator(testHMACSecret, nil)
+	require.NoError(t, err)
+
+	envelope := &Envelope{
+		SchemaVersion: SchemaVersion,
+		RecordID:      "rec_repair",
+		RequestID:     "req_repair",
+		OccurredAt:    time.Date(2026, 8, 13, 6, 50, 0, 0, time.UTC),
+		CapturedAt:    time.Date(2026, 8, 13, 6, 50, 1, 0, time.UTC),
+		Source: SourceInfo{
+			Protocol: ProtocolAnthropicMessages,
+			Scope:    Scope{UserID: 1, APIKeyID: 2, GroupID: 3},
+		},
+		Original:  OriginalPayload{Request: mustJSONText([]byte("not-json"))},
+		Rejection: &Rejection{Code: "invalid_request_json", Message: "captured request is not valid JSON"},
+	}
+	pendingPath, err := spool.Write(envelope)
+	require.NoError(t, err)
+	_, err = spool.Quarantine(pendingPath, "invalid_envelope")
+	require.NoError(t, err)
+
+	dryRun, err := spool.RepairMissingSessionIDQuarantine(ids, false)
+	require.NoError(t, err)
+	require.Equal(t, QuarantineRepairStats{Scanned: 1, Candidates: 1, Applied: false}, dryRun)
+	stats, err := spool.Stats()
+	require.NoError(t, err)
+	require.Equal(t, 0, stats.PendingRecords)
+	require.Equal(t, 1, stats.QuarantinedRecords)
+
+	applied, err := spool.RepairMissingSessionIDQuarantine(ids, true)
+	require.NoError(t, err)
+	require.Equal(t, QuarantineRepairStats{Scanned: 1, Candidates: 1, Repaired: 1, Applied: true}, applied)
+	stats, err = spool.Stats()
+	require.NoError(t, err)
+	require.Equal(t, 1, stats.PendingRecords)
+	require.Equal(t, 0, stats.QuarantinedRecords)
+
+	paths, err := spool.ListPending()
+	require.NoError(t, err)
+	require.Len(t, paths, 1)
+	repaired, err := spool.ReadEnvelope(paths[0])
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(repaired.SessionID, "session_"))
+	require.NoError(t, validateEnvelopeForStorage(repaired))
 }

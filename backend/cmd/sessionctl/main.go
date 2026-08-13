@@ -39,6 +39,8 @@ func run() error {
 		return runForward(ctx, os.Args[2:])
 	case "spool-status":
 		return runSpoolStatus(os.Args[2:])
+	case "repair-quarantine":
+		return runRepairQuarantine(os.Args[2:])
 	case "export":
 		return runExport(ctx, os.Args[2:])
 	case "validate":
@@ -50,6 +52,34 @@ func run() error {
 	default:
 		return usageError()
 	}
+}
+
+func runRepairQuarantine(args []string) error {
+	flags := flag.NewFlagSet("repair-quarantine", flag.ContinueOnError)
+	spoolDir := flags.String("spool-dir", envOr("SESSION_DELIVERY_SPOOL_DIR", "/opt/sub2api/data/session-delivery/spool"), "gateway spool directory")
+	spoolMax := flags.Int64("spool-max-bytes", envInt64("SESSION_DELIVERY_SPOOL_MAX_BYTES", defaultSpoolMaxBytes), "spool byte limit")
+	secretEnv := flags.String("secret-env", "SESSION_DELIVERY_HMAC_SECRET", "environment variable containing the Session delivery HMAC secret")
+	apply := flags.Bool("apply", false, "rewrite eligible records and return them to the pending queue")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	secret, err := requiredEnv(*secretEnv)
+	if err != nil {
+		return err
+	}
+	spool, err := sessiondelivery.NewSpool(*spoolDir, *spoolMax)
+	if err != nil {
+		return err
+	}
+	ids, err := sessiondelivery.NewIDGenerator(secret, nil)
+	if err != nil {
+		return err
+	}
+	stats, err := spool.RepairMissingSessionIDQuarantine(ids, *apply)
+	if err != nil {
+		return err
+	}
+	return writeOutput(stats)
 }
 
 func runSpoolStatus(args []string) error {
@@ -395,7 +425,7 @@ func writeOutput(value any) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sessionctl <migrate|forward|spool-status|export|validate|status|purge> [flags]")
+	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|export|validate|status|purge> [flags]")
 }
 
 func envOr(name, fallback string) string {

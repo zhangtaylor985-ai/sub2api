@@ -64,6 +64,18 @@ func (c *Canonicalizer) Build(input CaptureInput) (*Envelope, error) {
 
 	requestBody := json.RawMessage(bytesClone(input.RequestBody))
 	if !json.Valid(requestBody) {
+		sessionID, err := c.ids.ResolveSession(
+			input.Protocol,
+			input.Scope,
+			input.SessionHeader,
+			requestBody,
+			nil,
+			publicRequestID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("resolve rejected request session ID: %w", err)
+		}
+		envelope.SessionID = sessionID
 		envelope.Original.Request = mustJSONText(input.RequestBody)
 		envelope.Rejection = &Rejection{Code: "invalid_request_json", Message: "captured request is not valid JSON"}
 		return envelope, nil

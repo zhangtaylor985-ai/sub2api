@@ -52,6 +52,14 @@ type SpoolDetailedStats struct {
 	OldestPendingAt    *time.Time `json:"oldest_pending_at,omitempty"`
 }
 
+type QuarantineRepairStats struct {
+	Scanned    int  `json:"scanned"`
+	Candidates int  `json:"candidates"`
+	Repaired   int  `json:"repaired"`
+	Skipped    int  `json:"skipped"`
+	Applied    bool `json:"applied"`
+}
+
 func NewSpool(dir string, maxBytes int64) (*Spool, error) {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
@@ -277,6 +285,80 @@ func (s *Spool) Quarantine(path, reason string) (string, error) {
 		return "", err
 	}
 	return destination, nil
+}
+
+// RepairMissingSessionIDQuarantine repairs records created by the legacy
+// invalid-JSON early-return bug. It never touches other quarantine reasons or
+// records that fail the complete storage validator.
+func (s *Spool) RepairMissingSessionIDQuarantine(ids *IDGenerator, apply bool) (stats QuarantineRepairStats, err error) {
+	if ids == nil {
+		return stats, errors.New("session delivery ID generator is required")
+	}
+	stats.Applied = apply
+	entries, err := os.ReadDir(s.quarantineDir)
+	if err != nil {
+		return stats, fmt.Errorf("list quarantine directory: %w", err)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	if apply {
+		defer func() {
+			if recountErr := s.recount(); err == nil && recountErr != nil {
+				err = recountErr
+			}
+		}()
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "invalid_envelope-") || !strings.HasSuffix(entry.Name(), ".json.zst") {
+			continue
+		}
+		stats.Scanned++
+		path := filepath.Join(s.quarantineDir, entry.Name())
+		file, openErr := os.Open(path)
+		if openErr != nil {
+			return stats, fmt.Errorf("open quarantined Session record: %w", openErr)
+		}
+		envelope, decodeErr := DecodeCompressedEnvelope(file)
+		closeErr := file.Close()
+		if decodeErr != nil || closeErr != nil {
+			stats.Skipped++
+			continue
+		}
+		if envelope.SessionID != "" || envelope.Rejection == nil || envelope.Rejection.Code != "invalid_request_json" {
+			stats.Skipped++
+			continue
+		}
+		sessionID, resolveErr := ids.ResolveSession(
+			envelope.Source.Protocol,
+			envelope.Source.Scope,
+			"",
+			nil,
+			nil,
+			envelope.RequestID,
+		)
+		if resolveErr != nil {
+			return stats, fmt.Errorf("resolve quarantined Session ID: %w", resolveErr)
+		}
+		envelope.SessionID = sessionID
+		if validateErr := validateEnvelopeForStorage(envelope); validateErr != nil {
+			stats.Skipped++
+			continue
+		}
+		stats.Candidates++
+		if !apply {
+			continue
+		}
+		if _, writeErr := s.Write(envelope); writeErr != nil {
+			return stats, fmt.Errorf("rewrite quarantined Session record: %w", writeErr)
+		}
+		if removeErr := os.Remove(path); removeErr != nil {
+			return stats, fmt.Errorf("remove repaired quarantine record: %w", removeErr)
+		}
+		if syncErr := syncDirectory(s.quarantineDir); syncErr != nil {
+			return stats, fmt.Errorf("sync quarantine directory: %w", syncErr)
+		}
+		stats.Repaired++
+	}
+	return stats, nil
 }
 
 func (s *Spool) OpenCompressed(path string) (*os.File, error) {

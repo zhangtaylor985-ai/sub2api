@@ -258,6 +258,7 @@ func (e *Exporter) buildArchive(
 	}
 	var stats HourStats
 	sessionWriter := newSessionEntryWriter(workDir, tarWriter, hourEnd)
+	echo := &echoRepair{}
 
 	iterateErr := e.store.ForEachHour(ctx, hour, func(envelope *Envelope) error {
 		if err := ctx.Err(); err != nil {
@@ -270,6 +271,12 @@ func (e *Exporter) buildArchive(
 			}
 			stats.Rejected++
 			return nil
+		}
+		// Re-insert thinking-block echoes into later requests of the session
+		// before validation, so delivered conversations match real Claude
+		// Code multi-turn shape.
+		if err := echo.process(envelope.Delivery); err != nil {
+			return fmt.Errorf("echo repair record %s: %w", envelope.RecordID, err)
 		}
 		if err := ValidateDelivery(envelope.Delivery, e.publicModel); err != nil {
 			return fmt.Errorf("validate delivery record %s: %w", envelope.RecordID, err)

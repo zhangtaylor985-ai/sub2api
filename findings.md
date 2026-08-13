@@ -996,3 +996,10 @@
 - 主应用在 spool 达到 2 GiB 时只跳过新的 HTTP/WS Session 捕获，不影响客户端请求；已确认的文件被 forwarder 删除后会自动恢复采集。pending 文件不会因容量保护被删除。
 - 当前 Codex 会把真实用户提示和独立 `<environment_context>` runtime part 放在同一个 user message 中；交付过滤现只移除完整机器包装 part，不删除整条用户消息，也不删除自然语言中对标签的普通引用。真实 Codex 最终样本确认 Codex/OpenAI/GPT/upstream/mapping/account 和 runtime 标签均未进入交付投影。
 - 最终主应用 SHA256=`a961fe5160c5f78cb634ba4716fe4d22a082a08f94a78a76a9f4800cfc7997b5`，接收端 SHA256=`a72eee7daea80a5b9ef349ef764335f2e7681d8ce1354d69402aef18ac6416a2`；两端 NRestarts=0。生产 spool 从约 2.47 GB 回落到 2 GiB 以下后，主应用容量门禁自动恢复采集。
+
+## 2026-08-13 交付保真增强：回声修复与 Codex thinking 归一
+
+- 用户裁定：交付数据与真实 Claude Code × Opus 5 完全一致是第一优先级，规范 §5「不改原始 request」让位于该目标；所有改动仍只在保存/导出链路，实时响应不动。
+- 导出器新增 echo repair：按会话有序流式处理，把前轮响应的 thinking 块按 assistant 文本精确匹配补进后续请求历史；本地 E2E 实测 turn2/turn3 请求逐字节携带前轮签名。
+- Canonicalizer 把 Codex 来源请求的 thinking 投影从 `{enabled,budget_tokens}` 归一为 `{adaptive}`（Opus 5 时代 CC 真实写法）；Anthropic 来源请求的客户端原始 thinking 配置不动。
+- 导出日的 day_frozen 机制在本地实测触发：导出完成后晚到记录被拒收，等次日滚入新分区；本地沙盒通过删除 `session_export_batches` 对应行解冻验证。

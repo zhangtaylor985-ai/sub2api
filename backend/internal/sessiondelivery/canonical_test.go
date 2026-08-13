@@ -215,6 +215,71 @@ func TestValidateDeliveryRejectsUnsignedThinkingBlock(t *testing.T) {
 	require.ErrorContains(t, ValidateDelivery(record, DefaultPublicModel), "signature")
 }
 
+func TestCanonicalizerResponsesNormalizesThinkingProjectionToAdaptive(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolOpenAIResponses,
+		Endpoint:         "/v1/responses",
+		Scope:            Scope{APIKeyID: 9},
+		GatewayRequestID: "gateway-responses-adaptive",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		RequestBody: []byte(`{
+			"model":"gpt-5.6-sol","reasoning":{"effort":"high"},
+			"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"resp_x","object":"response","status":"completed","model":"gpt-5.6-sol",
+			"output":[{"type":"message","status":"completed","content":[{"type":"output_text","text":"hello"}]}],
+			"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+
+	// Opus 5-era Claude Code shape: adaptive thinking, no budget_tokens.
+	require.Equal(t, "adaptive", jsonPathString(t, envelope.Delivery.Request, "thinking", "type"))
+	var requestMap map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(envelope.Delivery.Request, &requestMap))
+	var thinkingMap map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(requestMap["thinking"], &thinkingMap))
+	_, hasBudget := thinkingMap["budget_tokens"]
+	require.False(t, hasBudget, "adaptive thinking must not carry budget_tokens")
+	require.Equal(t, "high", jsonPathString(t, envelope.Delivery.Request, "output_config", "effort"))
+}
+
+func TestCanonicalizerAnthropicKeepsClientThinkingShape(t *testing.T) {
+	canonicalizer := newTestCanonicalizer(t)
+	envelope, err := canonicalizer.Build(CaptureInput{
+		Protocol:         ProtocolAnthropicMessages,
+		Endpoint:         "/v1/messages",
+		Scope:            Scope{APIKeyID: 7},
+		GatewayRequestID: "gateway-keep-thinking-shape",
+		StartedAt:        time.Now().UTC(),
+		CompletedAt:      time.Now().UTC().Add(time.Second),
+		HTTPStatus:       200,
+		// a real client's explicit enabled+budget choice stays untouched
+		RequestBody: []byte(`{
+			"model":"claude-opus-5","max_tokens":1024,
+			"thinking":{"type":"enabled","budget_tokens":8000},
+			"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"msg_src","type":"message","role":"assistant","model":"gpt-5.6-sol",
+			"content":[{"type":"text","text":"hello"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":10,"output_tokens":5}
+		}`),
+	})
+	require.NoError(t, err)
+	require.Nil(t, envelope.Rejection)
+	require.NotNil(t, envelope.Delivery)
+	require.Equal(t, "enabled", jsonPathString(t, envelope.Delivery.Request, "thinking", "type"))
+	require.Equal(t, float64(8000), jsonPathNumber(t, envelope.Delivery.Request, "thinking", "budget_tokens"))
+}
+
 func TestCanonicalizerAnthropicSSEBuildsDecodedResponse(t *testing.T) {
 	canonicalizer := newTestCanonicalizer(t)
 	response := strings.Join([]string{

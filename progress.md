@@ -1016,3 +1016,4 @@
 - 2026-08-13：watchdog 的 `sort | head` 在大 pending 列表产生无害 Broken pipe 日志；改为完整消费输入的 `sort | sed -n '1,16p'`，线上脚本 SHA256=`0ac7a8f97eb49aa1a4d3cf58264cb4542485d6343673926931a475f41ab78372`，备份 `/opt/sub2api/session-tunnel-health.bak.20260813T102831Z-before-sed-fingerprint`，手动与 timer 执行均 success 且未重启隧道。
 - 2026-08-13：Google Drive 自动导出 timer 在 18:31:39 CST 自然触发，oneshot `Result=success`、`ExecMainStatus=0`，下一次为 19:01；本轮 cutoff=`08:00 UTC`，此前可处理小时均已 purged，因此正确空跑。验收等待脚本最初用快速 oneshot 不保留的 `ActiveEnterTimestamp` 判断而误报未触发，随后以 timer LAST、ExecMainStart/Exit、journal 和 Result 复核。
 - 2026-08-13：最终只读核对生产自动清理参数：`SESSION_ARCHIVE_BACKEND=rclone`、`SESSION_AUTO_PURGE_ENABLED=true`、`SESSION_EXPORT_SETTLE_DELAY=2h`；systemd exporter 使用 `-drain -max-hours 48`。因此每 30 分钟会追赶所有满足水位的闭合小时，并且仍受 Google Drive 全量回读校验门禁保护。
+- 2026-08-13：新增导出侧 echo repair（`echo_repair.go`）与 Codex thinking→adaptive 归一；本地全链复测：3 轮 CC 形态会话请求历史逐字节回声前轮 thinking 签名、Codex 记录请求 adaptive 形态、validator/单测全绿。

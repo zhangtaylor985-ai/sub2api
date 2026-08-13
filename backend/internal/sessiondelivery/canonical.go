@@ -180,6 +180,14 @@ func (c *Canonicalizer) canonicalRequest(protocol Protocol, body json.RawMessage
 		// that client fingerprint in the Anthropic delivery projection.
 		converted.System = nil
 		converted.Model = c.publicModel
+		// The shared converter projects reasoning.effort onto the legacy
+		// thinking {enabled, budget_tokens} shape. Real Claude Code clients
+		// talking to Opus 5 send adaptive thinking, so the delivery
+		// projection normalizes it here (delivery records only; the live
+		// conversion path is unchanged).
+		if converted.Thinking != nil && converted.Thinking.Type == "enabled" {
+			converted.Thinking = &apicompat.AnthropicThinking{Type: "adaptive"}
+		}
 		return json.Marshal(converted)
 	default:
 		return nil, fmt.Errorf("unsupported capture protocol %q", protocol)

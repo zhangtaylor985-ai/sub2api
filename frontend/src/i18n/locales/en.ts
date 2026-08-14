@@ -1538,9 +1538,20 @@ export default {
       },
       metrics: {
         dbDisk: 'DB host disk',
-        inDatabase: 'Sessions in database',
+        pendingTokens: 'Pending database tokens',
+        archivedTokens: 'Total archived tokens',
         driveFiles: 'Verified Drive files',
-        uploaded: 'Total uploaded'
+      },
+      tokens: {
+        sessions: '{count} deliverable Sessions',
+        inputShort: 'Input',
+        outputShort: 'Output',
+        awaitingBackfill: 'Backfill pending',
+        unavailable: 'Token metrics unavailable',
+        coverageComplete: '{count} counted',
+        coveragePending: '{count} awaiting backfill',
+        coveragePartial: '{count} more awaiting backfill',
+        exact: '{count} tokens'
       },
       pipeline: {
         title: 'Live delivery pipeline',
@@ -1548,11 +1559,11 @@ export default {
         spool: 'Gateway spool',
         spoolDetail: '{count} pending · {size}',
         database: 'Isolated Session database',
-        databaseDetail: '{count} records · DB {size}',
+        databaseDetail: '{count} records · {tokens} tokens · DB {size}',
         package: 'UTC hourly archive',
         packageDetail: 'Package, upload, and read back after hour close',
         archive: 'Google Drive archive',
-        archiveDetail: '{files} files · {size}',
+        archiveDetail: '{files} files · {tokens} tokens · {size}',
         flowing: 'Flowing',
         attention: 'Quarantine present',
         online: 'Online',
@@ -1580,7 +1591,11 @@ export default {
         currentHour: 'Current UTC hour',
         lastFiveMinutes: 'Added in last 5 minutes',
         rejected: 'Non-deliverable / rejected',
-        archivedDeliveries: 'Archived deliveries'
+        archivedDeliveries: 'Archived deliveries',
+        pendingInputTokens: 'Pending input tokens',
+        pendingOutputTokens: 'Pending output tokens',
+        archivedInputTokens: 'Archived input tokens',
+        archivedOutputTokens: 'Archived output tokens'
       },
       spool: {
         title: 'Production gateway spool',
@@ -1594,6 +1609,7 @@ export default {
         status: 'Status',
         records: 'DB records',
         delivery: 'Deliveries',
+        tokens: 'Delivery tokens',
         size: 'Archive size',
         verifiedAt: 'Verified at',
         waitingTitle: 'Waiting for the first UTC hour to close',

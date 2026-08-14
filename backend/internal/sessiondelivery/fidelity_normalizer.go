@@ -174,10 +174,18 @@ func normalizeResponseFidelity(
 	var toolIDsNormalized int64
 	var thinkingRemoved int64
 	normalized := make([]json.RawMessage, 0, len(content))
+	leadingThinking := make([]json.RawMessage, 0, len(content))
+	trailingContent := make([]json.RawMessage, 0, len(content))
+	seenNonThinking := false
 	for _, rawBlock := range content {
 		var block map[string]json.RawMessage
 		if err := json.Unmarshal(rawBlock, &block); err != nil {
-			normalized = append(normalized, rawBlock)
+			if thinkingEnabled {
+				seenNonThinking = true
+				trailingContent = append(trailingContent, rawBlock)
+			} else {
+				normalized = append(normalized, rawBlock)
+			}
 			continue
 		}
 		blockType := rawString(block["type"])
@@ -206,7 +214,23 @@ func normalizeResponseFidelity(
 				rawBlock = reencoded
 			}
 		}
+		if thinkingEnabled {
+			if blockType == "thinking" || blockType == "redacted_thinking" {
+				if seenNonThinking {
+					changed = true
+				}
+				leadingThinking = append(leadingThinking, rawBlock)
+			} else {
+				seenNonThinking = true
+				trailingContent = append(trailingContent, rawBlock)
+			}
+			continue
+		}
 		normalized = append(normalized, rawBlock)
+	}
+	if thinkingEnabled {
+		normalized = append(normalized, leadingThinking...)
+		normalized = append(normalized, trailingContent...)
 	}
 	if changed {
 		response["content"] = mustJSON(normalized)

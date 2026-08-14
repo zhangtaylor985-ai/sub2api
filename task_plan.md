@@ -1,5 +1,29 @@
 # Session Delivery 可观测性实施计划
 
+## 2026-08-14 Session Token 可观测性增强
+
+### 目标
+
+在现有 Session 交付控制台增加可核对、低开销的 Token 指标，覆盖数据库待归档记录与已经上传 Google Drive 的交付批次；指标必须来自最终交付 usage，而不是按文件大小估算，也不能让 15 秒轮询反复解压 Session payload。
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| Token 数据源与现有 schema/UI 审计 | complete | schema/manifest/status 均无 Token；最终 usage 四字段可核算，生产另有 22 UTC 严格门禁故障待修 |
+| 指标模型与迁移设计 | complete | 记录层总输入/输出+coverage，批次层最终四字段+coverage，新增 manifest 自校验与 dry-run-first 回填 |
+| sessiond/status API 实现 | complete | 入库提取、批次持久化、无 payload 状态聚合、最近批次 Token 与 API 测试已完成 |
+| 管理后台实现 | complete | 待归档/已归档 Token 升为主指标，K/M/B、自适应精度、精确值提示与未知 coverage 已完成 |
+| 全量回归与历史回填 | in_progress | 本地全量 Go/vet/race/PG18 与前端 lint/typecheck/test/build 已通过；待生产正式归档 dry-run/apply 与口径对账 |
+| 生产发布与观察 | in_progress | 远端分支已同步；正在执行备份、迁移、双架构二进制发布、页面实数验收与回滚点确认 |
+
+### 约束
+
+- Token 以最终交付 JSONL 中 `response.response_data.usage` 为唯一业务口径；实际上游 GPT usage 只可作为内部校验，不直接展示为交付 Token。
+- 输入 Token 定义为 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`，总 Token 为输入 Token再加 `output_tokens`；这是最终交付 usage 的口径，且 cache 投影前后总量不变。
+- 15 秒状态轮询不得解压 payload、扫描 Google Drive 或读取 OAuth；优先在 ingest/export 时持久化轻量 BIGINT 聚合。
+- 历史字段必须可回填且幂等；未知旧数据不能被误报为 0。
+- 不修改用户指定不可妥协的 `backend/internal/sessiondelivery/signature.go`，不改变实时 AI 请求/响应链路。
+- 管理台使用 K/M/B 自适应缩写，百万级保留两位小数，并通过 `title`/辅助文本保留精确整数；文件字节降为次级信息，不删除。
+
 ## 2026-08-14 最终 Claude Code × Opus 5 保真抽样验收
 
 ### 验收优先级

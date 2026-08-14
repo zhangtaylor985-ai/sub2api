@@ -78,6 +78,18 @@ export interface SessionDatabaseStatus {
   partitions: number
 }
 
+export interface SessionTokenVolume {
+  input_tokens: number
+  cache_creation_input_tokens: number
+  cache_read_input_tokens: number
+  total_input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  counted_deliveries: number
+  uncounted_deliveries: number
+  breakdown_available: boolean
+}
+
 export interface SessionDataStatus {
   records_in_database: number
   deliverable_in_database: number
@@ -87,6 +99,7 @@ export interface SessionDataStatus {
   records_last_5m: number
   first_ingested_at?: string
   last_ingested_at?: string
+  token_volume: SessionTokenVolume
 }
 
 export interface SessionArchiveStatus {
@@ -98,6 +111,7 @@ export interface SessionArchiveStatus {
   failed_batches: number
   exporting_batches: number
   last_verified_at?: string
+  token_volume: SessionTokenVolume
 }
 
 export interface SessionRecentBatch {
@@ -108,6 +122,7 @@ export interface SessionRecentBatch {
   rejected_count: number
   archive_backend?: string
   archive_size: number
+  token_volume: SessionTokenVolume
   error_message?: string
   started_at: string
   archived_at?: string

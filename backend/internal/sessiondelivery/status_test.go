@@ -36,19 +36,33 @@ func TestStatusEndpointRequiresSignatureAndReturnsSanitizedSnapshot(t *testing.T
 	mock.ExpectQuery(`SELECT COUNT\(\*\).*FROM pg_inherits`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5))
 	mock.ExpectQuery(`SELECT COUNT\(\*\).*FROM session_records`).
-		WillReturnRows(sqlmock.NewRows([]string{"records", "deliverable", "rejected", "bytes", "hour", "recent", "first", "last"}).
-			AddRow(int64(12), int64(10), int64(2), int64(2048), int64(4), int64(2), now.Add(-time.Hour), now))
+		WillReturnRows(sqlmock.NewRows([]string{
+			"records", "deliverable", "rejected", "bytes", "hour", "recent", "first", "last",
+			"token_input", "token_output", "token_counted",
+		}).AddRow(
+			int64(12), int64(10), int64(2), int64(2048), int64(4), int64(2), now.Add(-time.Hour), now,
+			int64(900), int64(100), int64(9),
+		))
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FILTER.*FROM session_export_batches`).
-		WillReturnRows(sqlmock.NewRows([]string{"files", "bytes", "records", "deliveries", "rejected", "failed", "exporting", "last"}).
-			AddRow(int64(2), int64(4096), int64(8), int64(7), int64(1), int64(0), int64(0), now.Add(-time.Minute)))
+		WillReturnRows(sqlmock.NewRows([]string{
+			"files", "bytes", "records", "deliveries", "rejected", "failed", "exporting", "last",
+			"input", "cache_creation", "cache_read", "output", "counted",
+		}).AddRow(
+			int64(2), int64(4096), int64(8), int64(7), int64(1), int64(0), int64(0), now.Add(-time.Minute),
+			int64(100), int64(1000), int64(2000), int64(400), int64(7),
+		))
 	mock.ExpectQuery(`SELECT export_hour, status, record_count.*FROM session_export_batches`).
 		WithArgs(12).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"export_hour", "status", "record_count", "delivery_count", "rejected_count",
-			"archive_backend", "archive_size", "started_at", "archived_at", "verified_at", "purged_at",
+			"archive_backend", "archive_size",
+			"input", "cache_creation", "cache_read", "output", "counted",
+			"started_at", "archived_at", "verified_at", "purged_at",
 		}).AddRow(
 			now.Add(-time.Hour), "purged", int64(8), int64(7), int64(1),
-			"rclone", int64(4096), now.Add(-time.Hour), now.Add(-50*time.Minute), now.Add(-49*time.Minute), now.Add(-48*time.Minute),
+			"rclone", int64(4096),
+			int64(100), int64(1000), int64(2000), int64(400), int64(7),
+			now.Add(-time.Hour), now.Add(-50*time.Minute), now.Add(-49*time.Minute), now.Add(-48*time.Minute),
 		))
 
 	handler := &IngestHandler{
@@ -77,8 +91,13 @@ func TestStatusEndpointRequiresSignatureAndReturnsSanitizedSnapshot(t *testing.T
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &snapshot))
 	require.Equal(t, "healthy", snapshot.Status)
 	require.Equal(t, int64(12), snapshot.Sessions.RecordsInDatabase)
+	require.Equal(t, int64(1000), snapshot.Sessions.TokenVolume.TotalTokens)
+	require.Equal(t, int64(1), snapshot.Sessions.TokenVolume.UncountedDeliveries)
 	require.Equal(t, int64(2), snapshot.Delivery.ArchiveFilesVerified)
+	require.Equal(t, int64(3500), snapshot.Delivery.TokenVolume.TotalTokens)
+	require.Equal(t, int64(2000), snapshot.Delivery.TokenVolume.CacheReadInputTokens)
 	require.Len(t, snapshot.RecentBatches, 1)
+	require.Equal(t, int64(3500), snapshot.RecentBatches[0].TokenVolume.TotalTokens)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -61,25 +61,28 @@
           </div>
         </article>
         <article class="metric-card">
-          <div class="metric-topline"><span>{{ t('admin.sessionDelivery.metrics.inDatabase') }}</span><span>POSTGRES</span></div>
-          <div class="metric-value">{{ formatNumber(remote?.sessions.records_in_database) }}</div>
+          <div class="metric-topline"><span>{{ t('admin.sessionDelivery.metrics.pendingTokens') }}</span><span>POSTGRES</span></div>
+          <div class="metric-value" :title="tokenVolumeTitle(remote?.sessions.token_volume)">{{ formatTokenVolume(remote?.sessions.token_volume) }}</div>
           <div class="metric-caption split-caption">
-            <span>{{ t('admin.sessionDelivery.deliverable') }} {{ formatNumber(remote?.sessions.deliverable_in_database) }}</span>
-            <span>{{ formatBytes(remote?.sessions.payload_bytes_in_database) }}</span>
+            <span>{{ t('admin.sessionDelivery.tokens.sessions', { count: formatNumber(remote?.sessions.deliverable_in_database) }) }}</span>
+            <span>{{ tokenCoverageLabel(remote?.sessions.token_volume) }}</span>
+          </div>
+        </article>
+        <article class="metric-card accent-card">
+          <div class="metric-topline"><span>{{ t('admin.sessionDelivery.metrics.archivedTokens') }}</span><span>CLAUDE DELIVERY</span></div>
+          <div class="metric-value" :title="tokenVolumeTitle(remote?.delivery.token_volume)">{{ formatTokenVolume(remote?.delivery.token_volume) }}</div>
+          <div class="metric-caption split-caption">
+            <span>{{ t('admin.sessionDelivery.tokens.inputShort') }} {{ formatTokenComponent(remote?.delivery.token_volume?.total_input_tokens, remote?.delivery.token_volume) }}</span>
+            <span>{{ t('admin.sessionDelivery.tokens.outputShort') }} {{ formatTokenComponent(remote?.delivery.token_volume?.output_tokens, remote?.delivery.token_volume) }}</span>
           </div>
         </article>
         <article class="metric-card">
           <div class="metric-topline"><span>{{ t('admin.sessionDelivery.metrics.driveFiles') }}</span><span>SHA VERIFIED</span></div>
           <div class="metric-value">{{ formatNumber(remote?.delivery.archive_files_verified) }}</div>
           <div class="metric-caption split-caption">
-            <span>{{ t('admin.sessionDelivery.archivedRecords') }} {{ formatNumber(remote?.delivery.records_archived) }}</span>
+            <span>{{ formatBytes(remote?.delivery.archive_bytes_uploaded) }}</span>
             <span>{{ lastVerifiedLabel }}</span>
           </div>
-        </article>
-        <article class="metric-card accent-card">
-          <div class="metric-topline"><span>{{ t('admin.sessionDelivery.metrics.uploaded') }}</span><span>GOOGLE DRIVE</span></div>
-          <div class="metric-value">{{ formatBytes(remote?.delivery.archive_bytes_uploaded) }}</div>
-          <div class="metric-caption">{{ t('admin.sessionDelivery.fullReadbackVerified') }}</div>
         </article>
       </section>
 
@@ -156,6 +159,10 @@
             <div class="inventory-row"><span>{{ t('admin.sessionDelivery.inventory.lastFiveMinutes') }}</span><strong>{{ formatNumber(remote?.sessions.records_last_5m) }}</strong></div>
             <div class="inventory-row"><span>{{ t('admin.sessionDelivery.inventory.rejected') }}</span><strong>{{ formatNumber(remote?.sessions.rejected_in_database) }}</strong></div>
             <div class="inventory-row"><span>{{ t('admin.sessionDelivery.inventory.archivedDeliveries') }}</span><strong>{{ formatNumber(remote?.delivery.deliveries_archived) }}</strong></div>
+            <div class="inventory-row"><span>{{ t('admin.sessionDelivery.inventory.pendingInputTokens') }}</span><strong :title="tokenComponentTitle(remote?.sessions.token_volume?.total_input_tokens, remote?.sessions.token_volume)">{{ formatTokenComponent(remote?.sessions.token_volume?.total_input_tokens, remote?.sessions.token_volume) }}</strong></div>
+            <div class="inventory-row"><span>{{ t('admin.sessionDelivery.inventory.pendingOutputTokens') }}</span><strong :title="tokenComponentTitle(remote?.sessions.token_volume?.output_tokens, remote?.sessions.token_volume)">{{ formatTokenComponent(remote?.sessions.token_volume?.output_tokens, remote?.sessions.token_volume) }}</strong></div>
+            <div class="inventory-row"><span>{{ t('admin.sessionDelivery.inventory.archivedInputTokens') }}</span><strong :title="tokenComponentTitle(remote?.delivery.token_volume?.total_input_tokens, remote?.delivery.token_volume)">{{ formatTokenComponent(remote?.delivery.token_volume?.total_input_tokens, remote?.delivery.token_volume) }}</strong></div>
+            <div class="inventory-row"><span>{{ t('admin.sessionDelivery.inventory.archivedOutputTokens') }}</span><strong :title="tokenComponentTitle(remote?.delivery.token_volume?.output_tokens, remote?.delivery.token_volume)">{{ formatTokenComponent(remote?.delivery.token_volume?.output_tokens, remote?.delivery.token_volume) }}</strong></div>
           </div>
           <div class="spool-box">
             <div>
@@ -182,13 +189,14 @@
         </div>
         <div class="batch-table-wrap">
           <table class="batch-table">
-            <thead><tr><th>{{ t('admin.sessionDelivery.batches.hour') }}</th><th>{{ t('admin.sessionDelivery.batches.status') }}</th><th>{{ t('admin.sessionDelivery.batches.records') }}</th><th>{{ t('admin.sessionDelivery.batches.delivery') }}</th><th>{{ t('admin.sessionDelivery.batches.size') }}</th><th>{{ t('admin.sessionDelivery.batches.verifiedAt') }}</th></tr></thead>
+            <thead><tr><th>{{ t('admin.sessionDelivery.batches.hour') }}</th><th>{{ t('admin.sessionDelivery.batches.status') }}</th><th>{{ t('admin.sessionDelivery.batches.records') }}</th><th>{{ t('admin.sessionDelivery.batches.delivery') }}</th><th>{{ t('admin.sessionDelivery.batches.tokens') }}</th><th>{{ t('admin.sessionDelivery.batches.size') }}</th><th>{{ t('admin.sessionDelivery.batches.verifiedAt') }}</th></tr></thead>
             <tbody v-if="remote?.recent_batches?.length">
               <tr v-for="batch in remote.recent_batches" :key="batch.hour">
                 <td class="font-mono">{{ formatUTCHour(batch.hour) }}</td>
                 <td><span class="batch-status" :class="`batch-${batch.status}`">{{ batchStatusLabel(batch.status) }}</span></td>
                 <td>{{ formatNumber(batch.record_count) }}</td>
                 <td>{{ formatNumber(batch.delivery_count) }}</td>
+                <td class="font-mono" :title="tokenVolumeTitle(batch.token_volume)">{{ formatTokenVolume(batch.token_volume) }}</td>
                 <td>{{ formatBytes(batch.archive_size) }}</td>
                 <td>{{ formatDate(batch.verified_at || batch.purged_at) }}</td>
               </tr>
@@ -289,7 +297,8 @@ import sessionDeliveryAPI, {
   type SessionCaptureMode,
   type SessionCapturePolicyResponse,
   type SessionDeliveryOverview,
-  type SessionDeliveryStatus
+  type SessionDeliveryStatus,
+  type SessionTokenVolume
 } from '@/api/admin/sessionDelivery'
 
 const { t } = useI18n()
@@ -352,7 +361,7 @@ const pipelineSteps = computed(() => {
     },
     {
       code: 'ISOLATED PG 18', title: t('admin.sessionDelivery.pipeline.database'),
-      detail: t('admin.sessionDelivery.pipeline.databaseDetail', { count: records, size: formatBytes(remote.value?.database.size_bytes) }),
+      detail: t('admin.sessionDelivery.pipeline.databaseDetail', { count: records, tokens: formatTokenVolume(remote.value?.sessions.token_volume), size: formatBytes(remote.value?.database.size_bytes) }),
       state: remote.value ? t('admin.sessionDelivery.pipeline.online') : t('admin.sessionDelivery.pipeline.unavailable'),
       tone: remote.value ? 'healthy' : 'critical'
     },
@@ -364,7 +373,7 @@ const pipelineSteps = computed(() => {
     },
     {
       code: 'GOOGLE DRIVE', title: t('admin.sessionDelivery.pipeline.archive'),
-      detail: t('admin.sessionDelivery.pipeline.archiveDetail', { files: delivery?.archive_files_verified || 0, size: formatBytes(delivery?.archive_bytes_uploaded) }),
+      detail: t('admin.sessionDelivery.pipeline.archiveDetail', { files: delivery?.archive_files_verified || 0, tokens: formatTokenVolume(delivery?.token_volume), size: formatBytes(delivery?.archive_bytes_uploaded) }),
       state: delivery?.archive_files_verified ? t('admin.sessionDelivery.pipeline.verified') : t('admin.sessionDelivery.pipeline.waiting'),
       tone: delivery?.failed_batches ? 'critical' : 'healthy'
     }
@@ -487,6 +496,53 @@ function batchStatusLabel(status: string) {
 
 function formatNumber(value?: number) {
   return new Intl.NumberFormat().format(Number.isFinite(value) ? value! : 0)
+}
+
+function formatTokens(value?: number) {
+  const tokens = Number.isFinite(value) ? Math.max(0, value!) : 0
+  if (tokens < 1_000) return formatNumber(tokens)
+  const units = [
+    { threshold: 1_000_000_000, suffix: 'B' },
+    { threshold: 1_000_000, suffix: 'M' },
+    { threshold: 1_000, suffix: 'K' }
+  ]
+  const unit = units.find(candidate => tokens >= candidate.threshold)!
+  const scaled = tokens / unit.threshold
+  const decimals = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2
+  return `${scaled.toFixed(decimals)}${unit.suffix}`
+}
+
+function formatTokenVolume(volume?: SessionTokenVolume) {
+  if (!volume) return '—'
+  if (volume.counted_deliveries === 0 && volume.uncounted_deliveries > 0) return t('admin.sessionDelivery.tokens.awaitingBackfill')
+  const prefix = volume.uncounted_deliveries > 0 ? '≥ ' : ''
+  return `${prefix}${formatTokens(volume.total_tokens)}`
+}
+
+function formatTokenComponent(value: number | undefined, volume?: SessionTokenVolume) {
+  if (!volume || (volume.counted_deliveries === 0 && volume.uncounted_deliveries > 0)) return '—'
+  const prefix = volume.uncounted_deliveries > 0 ? '≥ ' : ''
+  return `${prefix}${formatTokens(value)}`
+}
+
+function tokenCoverageLabel(volume?: SessionTokenVolume) {
+  if (!volume) return t('admin.sessionDelivery.tokens.unavailable')
+  if (volume.uncounted_deliveries === 0) return t('admin.sessionDelivery.tokens.coverageComplete', { count: formatNumber(volume.counted_deliveries) })
+  if (volume.counted_deliveries === 0) return t('admin.sessionDelivery.tokens.coveragePending', { count: formatNumber(volume.uncounted_deliveries) })
+  return t('admin.sessionDelivery.tokens.coveragePartial', { count: formatNumber(volume.uncounted_deliveries) })
+}
+
+function tokenVolumeTitle(volume?: SessionTokenVolume) {
+  if (!volume) return t('admin.sessionDelivery.tokens.unavailable')
+  if (volume.counted_deliveries === 0 && volume.uncounted_deliveries > 0) return tokenCoverageLabel(volume)
+  const exact = t('admin.sessionDelivery.tokens.exact', { count: formatNumber(volume.total_tokens) })
+  return volume.uncounted_deliveries > 0 ? `${exact} · ${tokenCoverageLabel(volume)}` : exact
+}
+
+function tokenComponentTitle(value: number | undefined, volume?: SessionTokenVolume) {
+  if (!volume || (volume.counted_deliveries === 0 && volume.uncounted_deliveries > 0)) return tokenCoverageLabel(volume)
+  const exact = t('admin.sessionDelivery.tokens.exact', { count: formatNumber(value) })
+  return volume.uncounted_deliveries > 0 ? `${exact} · ${tokenCoverageLabel(volume)}` : exact
 }
 
 function formatBytes(value?: number) {

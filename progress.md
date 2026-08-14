@@ -1,5 +1,41 @@
 # Session Delivery 可观测性进度记录
 
+## 2026-08-14 Session Token 可观测性增强
+
+- 已确认在隔离 worktree `codex/session-delivery-v2-rollout` 实施；主工作区存在其他业务任务的大量未提交改动，本任务不触碰。
+- 已完整读取 `planning-with-files` 与 `sub2api-production-inspection`；planning catchup 因不支持 Codex 原生 session 正常跳过，改用 Git 与现有计划/证据恢复上下文。
+- 已建立 Token 指标实施阶段，下一步只读核对本地 schema、导出 manifest、状态 API 与生产数据口径。
+- 已核对本地/生产 schema：当前无 Token 列，manifest 也无 Token 汇总；确认必须做数据库持久化，不能仅改前端。
+- 已发现生产 22 UTC 归档批次失败，先进入只读诊断；Token 发布不会绕过或隐藏该故障。
+- 已确定 Token 口径与持久化方向：待归档保存稳定的总输入/输出，归档批次保存最终四字段汇总与 coverage；UI 使用 K/M/B 自适应显示。
+- 已定位 22 UTC 故障形态为 thinking block 顺序不符合严格门禁；将新增 Session-only 稳定排序修复和回归测试，不修改 `signature.go` 或实时响应。
+- 已接收独立只读复核并统一接管故障：确认 `server_tool_use/web_search_tool_result` 位于 thinking 前；数据仍在 DB，尚未上传或 purge，无需恢复丢失数据。
+- 已实现并通过 22 UTC 根因定向回归：Session-only 稳定前置 thinking/redacted thinking，保持其余 content block 相对顺序；`signature.go` 未修改。
+- 已新增迁移 `004_session_token_metrics.sql`：记录层保存稳定总输入/输出与 coverage，批次层保存最终 usage 四字段与 coverage；生产历史分区检查使用 `NOT VALID` 避免迁移扫描。
+- 已贯通 ingest、conversion repair、export/rebuild、manifest validator、Store status、HMAC status API 与最近 12 批 Token 聚合；15 秒轮询仍不解压 payload、不访问 Drive。
+- 已新增 `sessionctl backfill-tokens`，默认只读 dry-run；正式 archive 回填需完整 validator + DB SHA/size/hour/count 匹配，pending record 回填有界、可续跑、幂等且跳过封账小时。
+- 管理后台已将待归档/累计归档 Token 提升为顶部主指标，支持 K/M/B、自适应小数、悬停精确整数、输入/输出分项、批次 Token 与 unknown/partial coverage 语义；归档字节保留为辅助信息。
+- 前端 ESLint、2 个 Session 专项 Vitest（6 tests）与 `vue-tsc --noEmit` 通过；Go Session/sessionctl 单元测试通过。
+- 全量后端 `go test ./... -count=1`、`go vet ./...`、Session race、前端全量 lint/typecheck/build 均通过；生产候选开始进入双机发布窗口。
+- PostgreSQL 18 生命周期集成测试通过，覆盖迁移幂等、入库、导出、manifest Token 自校验、Drive 形态 durable verify、status 聚合、archive/record dry-run+apply 回填和 purge。
+- 集成测试首次未显式传 OrbStack Docker socket，testcontainers 报 `rootless Docker not found`；确认 Docker 正常后以可信本机 socket 重跑通过，未修改业务数据或生产环境。
+- 后端全量 `go test ./... -count=1`、`go vet ./...`、Session/sessionctl/sessiond Race Detector 全部通过；五项 PostgreSQL 18 integration 全量重跑通过。
+- 前端全量 ESLint、`vue-tsc --noEmit` 与 Vite production build 通过；仅有项目既有的动态/静态 import 与大 chunk 警告。
+- 真实参考签名测试第一次选中旧会话文件但其中 Opus 5 thinking 样本数为 0，测试正确失败；随后仅按结构扫描现有 Claude 会话路径，未找到可复用的 `model=claude-opus-5` 原始会话。该门禁不伪报通过，改由既有真实基准证据和发布后正式 archive 全量 fidelity audit 闭环。
+
+## 2026-08-14 普通人视角：交付文件能否看出不是 Claude
+
+- 对 05 UTC 包做了协议字段、ID 形态、工具名、自我介绍句扫描；不输出用户正文。
+- 协议层：模型字段全是 `claude-opus-5`，无 GPT/Codex 路由字段；助手正文无 ChatGPT/GPT 自我介绍。
+- 普通人打开 JSON 不能据此判断背后是 GPT-5.6。能拆穿的仍是 Anthropic 官方验签，以及对照真实 Claude Code 抓包的专家细节（hex ID、字段字母序、少数 Codex 源记录缺 system / 带 `codex_app` 工具）。
+
+## 2026-08-14 现状说明与 05 UTC 交付包复核
+
+- 对照 `codex/session-delivery-v2-rollout` HEAD `4f384b986`、最终 Session 提交 `ff4f065ef`，以及用户指定文件 `~/Downloads/session-delivery-20260813-05-51f4971883203ec6.tar.zst`。
+- 文件 SHA-256 与 V5 05 UTC 验收哈希完全一致：`51f4971883203ec6385a0c9a36e20cf58ced1e546be8526a4a3bc974a2f9fa66`。
+- 本机 `sessionctl validate` 通过；`sessionctl audit-fidelity` 对该单小时归档：209 条、17 Session、严格违规 0；thinking 回声 1115/1115 精确匹配。
+- `backend/internal/sessiondelivery/signature.go` 与 `internal/pkg/thinkingsig/thinkingsig.go` 自 `0aa380ffc` 起 diff 为 0 行，本轮未改用户签名实现。
+
 ## 2026-08-14 最终保真门禁与 Codex 0.147 兼容
 
 - 完成真实 Opus 5 只读基准、旧候选全量差异审计、V3 重建与幂等复跑；`signature.go` 保持未修改。

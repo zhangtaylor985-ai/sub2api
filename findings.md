@@ -1,5 +1,28 @@
 # Session Delivery 可观测性发现记录
 
+## 2026-08-14 Session Token 可观测性增强
+
+- 用户最关注交付 Token 量，现有控制台仅展示记录数与归档字节，缺少待归档、已归档和累计 Token 指标。
+- 初步最佳实践不是在前端按文件大小估算，也不是每 15 秒解压 Session payload；应在 Session 入库时提取最终交付 usage，并在批次归档时持久化汇总，状态 API 只做 BIGINT 聚合。
+- 需进一步核对现有 `session_records`、`session_export_batches.manifest` 与最终 JSONL usage，决定新增列、历史回填和旧批次 unknown/known 语义。
+- 本地与生产 schema 均确认 `session_records` 只有压缩 payload、deliverable 和元数据，没有 Token 列；`session_export_batches` 只有记录数、归档字节和 manifest。
+- 生产 manifest 的 12 个顶层字段不含 usage/tokens，现有状态 API 只聚合记录数与字节；因此无法从现有轻量查询得到可靠 Token 总量。
+- 数据库仍按 `ingested_at` 小时分区；已 purge 小时的 `session_records` 不存在，只能从保留的 Drive 归档回填历史 batch Token。未完成小时可从 payload 一次性迁移回填，之后新记录应在 ingest 时直接提取。
+- 为区分真实 0 与历史未知，记录/批次需要显式 `token_counted`（或等价语义），不能只给四个 BIGINT 默认 0 后直接累计。
+- 生产最新账本发现 22 UTC 批次为 `failed`，其余 18–21 UTC 已 purged；发布前需先只读定位错误并确认不会与 Token 改造互相掩盖。
+- usage projector 只是在 `input_tokens`、`cache_creation_input_tokens`、`cache_read_input_tokens` 之间重新分配 prompt prefix，三者之和保持不变；`output_tokens` 也不变。因此待归档阶段可以可靠保存“总输入 + 输出”，最终归档再保存完整四字段分项。
+- 记录层拟新增 `delivery_input_tokens`（包含 uncached/cache-create/cache-read）、`delivery_output_tokens` 与 `delivery_tokens_counted`；批次层拟新增同口径输入/输出/总量和 counted delivery 数。布尔/coverage 用来区分真实 0 与旧数据未知。
+- 新 manifest 将携带可选 Token 汇总并由 archive validator 重算核对；旧 manifest 缺字段仍保持兼容，历史 Token 通过 dry-run-first 工具从已验证正式归档回填，不能按文件字节估算。
+- UI 产品决策：accent 主卡从“上传字节”提升为“已归档 Token”，字节移到副文案；数据库卡增加待归档 Token；最近批次表增加 Token 列。格式为 K/M/B 自适应，M 级保留两位小数并提供精确整数提示。
+- 22 UTC 失败已定位为一条 thinking-enabled 响应中 thinking block 存在但不在首位；现有 `ensureThinkingSignatures` 因检测到 block 而不会前插。修复应在独立 fidelity normalizer 中稳定地把 thinking/redacted_thinking 移到首位，继续保持 `signature.go` 不变。
+- 独立生产复核补充了精确形态：`rec_df88710797e248c092f604376a55d699` 来自 `openai_responses`，原始 output 为 `web_search_call` 后置 reasoning；投影 content 为 `server_tool_use → web_search_tool_result → thinking`。故障发生在 Drive 上传前，22–04 UTC 共 3,549 条仍完整保留，spool/quarantine 均为 0。
+- 另一任务已停止同问题的重复实现，本 worktree 统一负责 Session-only 稳定排序、22 UTC 重试、后续小时追赶、Drive 回读/purge 和连续审计。
+- 最终 schema 采用记录层 `delivery_total_input_tokens/delivery_output_tokens/delivery_tokens_counted`，批次层保存 uncached/cache-create/cache-read/output/count；检查约束使用 `NOT VALID`，避免生产迁移为历史分区做同步全表扫描，同时继续约束所有新写入。
+- exporter 在 usage 投影与严格保真校验之后重算批次 Token；新 manifest 携带可选 `token_usage` 并由 validator 从 JSONL 重算比对。旧 manifest 缺字段仍可验证与回填。
+- 历史回填命令默认 dry-run：Drive 正式对象必须逐条验证、并以 batch SHA/size/hour/count 四重匹配后才能写批次；数据库 pending 记录按上限顺序流式解压，幂等更新且跳过 exporting/archived/verified/purged 小时。
+- 管理台对完全未知旧数据显示“待回填”，部分 coverage 显示 `≥ 已统计值` 和剩余条数；不会把未知量展示成 0。顶部已归档 Token 为 accent 主指标，字节降为次级信息。
+- 22 UTC 根因回归已通过：thinking-enabled 投影会稳定地把所有 thinking/redacted thinking 前置，server tool/result 和其他块保持相对顺序，严格 validator 通过；修改仅在 Session fidelity normalizer，`signature.go` 与实时响应均未改变。
+
 ## 2026-08-14 最终 Claude Code × Opus 5 保真审计
 
 - 真实本机 Claude Code × `claude-opus-5` 参考会话显示：工具 ID 为 `toolu_`，adaptive thinking 使用 `display=omitted`；同一组六轮缓存序列固定为 `input_tokens=2`，并按前轮 prefix 形成 creation/read 链。参考会话中的四个真实签名均通过当前结构校验器，校验过程不输出签名或正文。

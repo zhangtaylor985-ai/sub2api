@@ -35,53 +35,57 @@ type Store struct {
 }
 
 type HourStats struct {
-	Records     int64 `json:"records"`
-	Deliverable int64 `json:"deliverable"`
-	Rejected    int64 `json:"rejected"`
+	Records     int64                `json:"records"`
+	Deliverable int64                `json:"deliverable"`
+	Rejected    int64                `json:"rejected"`
+	TokenUsage  DeliveryTokenMetrics `json:"token_usage"`
 }
 
 type ExportBatch struct {
-	Hour           time.Time       `json:"hour"`
-	Status         string          `json:"status"`
-	RecordCount    int64           `json:"record_count"`
-	DeliveryCount  int64           `json:"delivery_count"`
-	RejectedCount  int64           `json:"rejected_count"`
-	ArchiveBackend string          `json:"archive_backend"`
-	ArchiveObject  string          `json:"archive_object"`
-	ArchiveSHA256  string          `json:"archive_sha256"`
-	ArchiveSize    int64           `json:"archive_size"`
-	Manifest       json.RawMessage `json:"manifest,omitempty"`
-	ErrorMessage   string          `json:"error_message,omitempty"`
-	StartedAt      time.Time       `json:"started_at"`
-	ArchivedAt     *time.Time      `json:"archived_at,omitempty"`
-	VerifiedAt     *time.Time      `json:"verified_at,omitempty"`
-	PurgedAt       *time.Time      `json:"purged_at,omitempty"`
+	Hour           time.Time            `json:"hour"`
+	Status         string               `json:"status"`
+	RecordCount    int64                `json:"record_count"`
+	DeliveryCount  int64                `json:"delivery_count"`
+	RejectedCount  int64                `json:"rejected_count"`
+	ArchiveBackend string               `json:"archive_backend"`
+	ArchiveObject  string               `json:"archive_object"`
+	ArchiveSHA256  string               `json:"archive_sha256"`
+	ArchiveSize    int64                `json:"archive_size"`
+	TokenUsage     DeliveryTokenMetrics `json:"token_usage"`
+	Manifest       json.RawMessage      `json:"manifest,omitempty"`
+	ErrorMessage   string               `json:"error_message,omitempty"`
+	StartedAt      time.Time            `json:"started_at"`
+	ArchivedAt     *time.Time           `json:"archived_at,omitempty"`
+	VerifiedAt     *time.Time           `json:"verified_at,omitempty"`
+	PurgedAt       *time.Time           `json:"purged_at,omitempty"`
 }
 
 // StoreStatus is a payload-free operational snapshot of the isolated Session
 // database. It is safe to expose to the admin observability API.
 type StoreStatus struct {
-	DatabaseSizeBytes      int64      `json:"database_size_bytes"`
-	ConnectionsActive      int        `json:"connections_active"`
-	ConnectionsTotal       int        `json:"connections_total"`
-	ConnectionsMax         int        `json:"connections_max"`
-	Partitions             int        `json:"partitions"`
-	RecordsInDatabase      int64      `json:"records_in_database"`
-	DeliverableInDatabase  int64      `json:"deliverable_in_database"`
-	RejectedInDatabase     int64      `json:"rejected_in_database"`
-	PayloadBytesInDatabase int64      `json:"payload_bytes_in_database"`
-	CurrentHourRecords     int64      `json:"current_hour_records"`
-	RecordsLast5Minutes    int64      `json:"records_last_5m"`
-	FirstIngestedAt        *time.Time `json:"first_ingested_at,omitempty"`
-	LastIngestedAt         *time.Time `json:"last_ingested_at,omitempty"`
-	ArchiveFilesVerified   int64      `json:"archive_files_verified"`
-	ArchiveBytesUploaded   int64      `json:"archive_bytes_uploaded"`
-	RecordsArchived        int64      `json:"records_archived"`
-	DeliveriesArchived     int64      `json:"deliveries_archived"`
-	RejectedArchived       int64      `json:"rejected_archived"`
-	FailedBatches          int64      `json:"failed_batches"`
-	ExportingBatches       int64      `json:"exporting_batches"`
-	LastVerifiedAt         *time.Time `json:"last_verified_at,omitempty"`
+	DatabaseSizeBytes      int64       `json:"database_size_bytes"`
+	ConnectionsActive      int         `json:"connections_active"`
+	ConnectionsTotal       int         `json:"connections_total"`
+	ConnectionsMax         int         `json:"connections_max"`
+	Partitions             int         `json:"partitions"`
+	RecordsInDatabase      int64       `json:"records_in_database"`
+	DeliverableInDatabase  int64       `json:"deliverable_in_database"`
+	RejectedInDatabase     int64       `json:"rejected_in_database"`
+	PayloadBytesInDatabase int64       `json:"payload_bytes_in_database"`
+	CurrentHourRecords     int64       `json:"current_hour_records"`
+	RecordsLast5Minutes    int64       `json:"records_last_5m"`
+	FirstIngestedAt        *time.Time  `json:"first_ingested_at,omitempty"`
+	LastIngestedAt         *time.Time  `json:"last_ingested_at,omitempty"`
+	DatabaseTokenVolume    TokenVolume `json:"database_token_volume"`
+	ArchiveFilesVerified   int64       `json:"archive_files_verified"`
+	ArchiveBytesUploaded   int64       `json:"archive_bytes_uploaded"`
+	RecordsArchived        int64       `json:"records_archived"`
+	DeliveriesArchived     int64       `json:"deliveries_archived"`
+	RejectedArchived       int64       `json:"rejected_archived"`
+	FailedBatches          int64       `json:"failed_batches"`
+	ExportingBatches       int64       `json:"exporting_batches"`
+	LastVerifiedAt         *time.Time  `json:"last_verified_at,omitempty"`
+	ArchiveTokenVolume     TokenVolume `json:"archive_token_volume"`
 }
 
 func OpenStore(ctx context.Context, dsn string) (*Store, error) {
@@ -178,6 +182,14 @@ func (s *Store) Insert(ctx context.Context, envelope *Envelope) (bool, error) {
 	if envelope.Rejection != nil {
 		rejectionCode = envelope.Rejection.Code
 	}
+	var tokenMetrics DeliveryTokenMetrics
+	tokensCounted := false
+	if envelope.Delivery != nil {
+		if extracted, extractErr := ExtractDeliveryTokenMetrics(envelope.Delivery); extractErr == nil {
+			tokenMetrics = extracted
+			tokensCounted = true
+		}
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -226,18 +238,21 @@ func (s *Store) Insert(ctx context.Context, envelope *Envelope) (bool, error) {
             ingested_at, occurred_at, record_id, session_id, request_id,
             source_protocol, source_endpoint, api_key_id, user_id, group_id,
             http_status, duration_ms, deliverable, rejection_code,
-            schema_version, payload_zstd, payload_sha256, captured_at
+			schema_version, payload_zstd, payload_sha256, captured_at,
+			delivery_total_input_tokens, delivery_output_tokens, delivery_tokens_counted
         ) VALUES (
             $1, $2, $3, $4, $5,
             $6, $7, $8, $9, $10,
             $11, $12, $13, $14,
-            $15, $16, $17, $18
+			$15, $16, $17, $18,
+			$19, $20, $21
         )`,
 		ingestedAt, envelope.OccurredAt, envelope.RecordID, envelope.SessionID, envelope.RequestID,
 		envelope.Source.Protocol, envelope.Source.Endpoint,
 		envelope.Source.Scope.APIKeyID, envelope.Source.Scope.UserID, envelope.Source.Scope.GroupID,
 		envelope.HTTPStatus, envelope.DurationMS, deliverable, rejectionCode,
 		envelope.SchemaVersion, compressed, payloadSHA, envelope.CapturedAt,
+		tokenMetrics.TotalInputTokens, tokenMetrics.OutputTokens, tokensCounted,
 	)
 	if err != nil {
 		return false, fmt.Errorf("insert Session record: %w", err)
@@ -395,6 +410,9 @@ func (s *Store) StatsForHour(ctx context.Context, hour time.Time) (HourStats, er
 // captured Session payloads.
 func (s *Store) Status(ctx context.Context) (StoreStatus, error) {
 	var status StoreStatus
+	var databaseTotalInputTokens int64
+	var databaseOutputTokens int64
+	var databaseTokensCounted int64
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT pg_database_size(current_database()),
 		       COUNT(*) FILTER (WHERE state = 'active'),
@@ -423,7 +441,14 @@ func (s *Store) Status(ctx context.Context) (StoreStatus, error) {
 		       COUNT(*) FILTER (WHERE ingested_at >= date_trunc('hour', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),
 		       COUNT(*) FILTER (WHERE ingested_at >= NOW() - INTERVAL '5 minutes'),
 		       MIN(ingested_at),
-		       MAX(ingested_at)
+		       MAX(ingested_at),
+		       COALESCE(SUM(delivery_total_input_tokens) FILTER (
+		           WHERE deliverable AND delivery_tokens_counted
+		       ), 0),
+		       COALESCE(SUM(delivery_output_tokens) FILTER (
+		           WHERE deliverable AND delivery_tokens_counted
+		       ), 0),
+		       COUNT(*) FILTER (WHERE deliverable AND delivery_tokens_counted)
 		FROM session_records`).Scan(
 		&status.RecordsInDatabase,
 		&status.DeliverableInDatabase,
@@ -433,9 +458,23 @@ func (s *Store) Status(ctx context.Context) (StoreStatus, error) {
 		&status.RecordsLast5Minutes,
 		&status.FirstIngestedAt,
 		&status.LastIngestedAt,
+		&databaseTotalInputTokens,
+		&databaseOutputTokens,
+		&databaseTokensCounted,
 	); err != nil {
 		return StoreStatus{}, fmt.Errorf("read Session record status: %w", err)
 	}
+	databaseTokenVolume, err := tokenVolumeFromPending(
+		databaseTotalInputTokens,
+		databaseOutputTokens,
+		databaseTokensCounted,
+		status.DeliverableInDatabase,
+	)
+	if err != nil {
+		return StoreStatus{}, fmt.Errorf("build Session database token status: %w", err)
+	}
+	status.DatabaseTokenVolume = databaseTokenVolume
+	var archiveTokenUsage DeliveryTokenMetrics
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FILTER (
 		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
@@ -456,7 +495,22 @@ func (s *Store) Status(ctx context.Context) (StoreStatus, error) {
 		       COUNT(*) FILTER (WHERE status = 'exporting'),
 		       MAX(verified_at) FILTER (
 		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
-		       )
+		       ),
+		       COALESCE(SUM(delivery_input_tokens) FILTER (
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
+		       ), 0),
+		       COALESCE(SUM(delivery_cache_creation_input_tokens) FILTER (
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
+		       ), 0),
+		       COALESCE(SUM(delivery_cache_read_input_tokens) FILTER (
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
+		       ), 0),
+		       COALESCE(SUM(delivery_output_tokens) FILTER (
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
+		       ), 0),
+		       COALESCE(SUM(delivery_tokens_counted) FILTER (
+		           WHERE archive_backend = $1 AND status IN ('verified', 'purged')
+		       ), 0)
 		FROM session_export_batches`, rcloneArchiveBackendName).Scan(
 		&status.ArchiveFilesVerified,
 		&status.ArchiveBytesUploaded,
@@ -466,9 +520,31 @@ func (s *Store) Status(ctx context.Context) (StoreStatus, error) {
 		&status.FailedBatches,
 		&status.ExportingBatches,
 		&status.LastVerifiedAt,
+		&archiveTokenUsage.InputTokens,
+		&archiveTokenUsage.CacheCreationInputTokens,
+		&archiveTokenUsage.CacheReadInputTokens,
+		&archiveTokenUsage.OutputTokens,
+		&archiveTokenUsage.CountedDeliveries,
 	); err != nil {
 		return StoreStatus{}, fmt.Errorf("read Session archive status: %w", err)
 	}
+	archiveTokenUsage.TotalInputTokens, err = addTokenValues(
+		archiveTokenUsage.InputTokens,
+		archiveTokenUsage.CacheCreationInputTokens,
+		archiveTokenUsage.CacheReadInputTokens,
+	)
+	if err != nil {
+		return StoreStatus{}, fmt.Errorf("build Session archive input token status: %w", err)
+	}
+	archiveTokenUsage.TotalTokens, err = addTokenValues(archiveTokenUsage.TotalInputTokens, archiveTokenUsage.OutputTokens)
+	if err != nil {
+		return StoreStatus{}, fmt.Errorf("build Session archive total token status: %w", err)
+	}
+	archiveTokenVolume, err := tokenVolumeFromArchived(archiveTokenUsage, status.DeliveriesArchived)
+	if err != nil {
+		return StoreStatus{}, fmt.Errorf("build Session archive token status: %w", err)
+	}
+	status.ArchiveTokenVolume = archiveTokenVolume
 	return status, nil
 }
 
@@ -481,7 +557,11 @@ func (s *Store) RecentExportBatches(ctx context.Context, limit int) ([]ExportBat
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT export_hour, status, record_count, delivery_count, rejected_count,
-		       archive_backend, archive_size, started_at, archived_at, verified_at, purged_at
+		       archive_backend, archive_size,
+		       delivery_input_tokens, delivery_cache_creation_input_tokens,
+		       delivery_cache_read_input_tokens, delivery_output_tokens,
+		       delivery_tokens_counted,
+		       started_at, archived_at, verified_at, purged_at
 		FROM session_export_batches
 		ORDER BY export_hour DESC
 		LIMIT $1`, limit)
@@ -495,9 +575,24 @@ func (s *Store) RecentExportBatches(ctx context.Context, limit int) ([]ExportBat
 		if err := rows.Scan(
 			&batch.Hour, &batch.Status, &batch.RecordCount, &batch.DeliveryCount, &batch.RejectedCount,
 			&batch.ArchiveBackend, &batch.ArchiveSize,
+			&batch.TokenUsage.InputTokens, &batch.TokenUsage.CacheCreationInputTokens,
+			&batch.TokenUsage.CacheReadInputTokens, &batch.TokenUsage.OutputTokens,
+			&batch.TokenUsage.CountedDeliveries,
 			&batch.StartedAt, &batch.ArchivedAt, &batch.VerifiedAt, &batch.PurgedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan recent Session export batch: %w", err)
+		}
+		batch.TokenUsage.TotalInputTokens, err = addTokenValues(
+			batch.TokenUsage.InputTokens,
+			batch.TokenUsage.CacheCreationInputTokens,
+			batch.TokenUsage.CacheReadInputTokens,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("aggregate recent Session export input tokens: %w", err)
+		}
+		batch.TokenUsage.TotalTokens, err = addTokenValues(batch.TokenUsage.TotalInputTokens, batch.TokenUsage.OutputTokens)
+		if err != nil {
+			return nil, fmt.Errorf("aggregate recent Session export total tokens: %w", err)
 		}
 		batches = append(batches, batch)
 	}
@@ -616,6 +711,12 @@ func (s *Store) MarkExportArchived(
 	durable bool,
 	checkpoints map[string]projectionCheckpoint,
 ) error {
+	if err := stats.TokenUsage.Validate(); err != nil {
+		return fmt.Errorf("validate Session export token metrics: %w", err)
+	}
+	if stats.TokenUsage.CountedDeliveries != stats.Deliverable {
+		return errors.New("Session export token coverage does not match delivery count")
+	}
 	status := "archived"
 	if durable {
 		status = "verified"
@@ -651,14 +752,23 @@ func (s *Store) MarkExportArchived(
 			archive_object = $7,
 			archive_sha256 = $8,
 			archive_size = $9,
-			manifest = $10,
+			delivery_input_tokens = $10,
+			delivery_cache_creation_input_tokens = $11,
+			delivery_cache_read_input_tokens = $12,
+			delivery_output_tokens = $13,
+			delivery_tokens_counted = $14,
+			manifest = $15,
             archived_at = NOW(),
             verified_at = CASE WHEN $2 = 'verified' THEN NOW() ELSE NULL END,
             error_message = '',
             updated_at = NOW()
-		WHERE export_hour = $1 AND status = 'exporting' AND attempt_id = $11`,
+		WHERE export_hour = $1 AND status = 'exporting' AND attempt_id = $16`,
 		hourUTC(hour), status, stats.Records, stats.Deliverable, stats.Rejected,
-		backend, object, archiveSHA, archiveSize, nullableJSON(manifest), strings.TrimSpace(attemptID),
+		backend, object, archiveSHA, archiveSize,
+		stats.TokenUsage.InputTokens, stats.TokenUsage.CacheCreationInputTokens,
+		stats.TokenUsage.CacheReadInputTokens, stats.TokenUsage.OutputTokens,
+		stats.TokenUsage.CountedDeliveries,
+		nullableJSON(manifest), strings.TrimSpace(attemptID),
 	)
 	if err != nil {
 		return fmt.Errorf("mark Session export archived: %w", err)
@@ -768,15 +878,34 @@ func (s *Store) GetExportBatch(ctx context.Context, hour time.Time) (*ExportBatc
 	var manifest []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT export_hour, status, record_count, delivery_count, rejected_count,
-               archive_backend, archive_object, archive_sha256, archive_size, manifest,
-               error_message, started_at, archived_at, verified_at, purged_at
+		       archive_backend, archive_object, archive_sha256, archive_size,
+		       delivery_input_tokens, delivery_cache_creation_input_tokens,
+		       delivery_cache_read_input_tokens, delivery_output_tokens,
+		       delivery_tokens_counted,
+		       manifest, error_message, started_at, archived_at, verified_at, purged_at
 		FROM session_export_batches WHERE export_hour = $1`, hourUTC(hour)).Scan(
 		&batch.Hour, &batch.Status, &batch.RecordCount, &batch.DeliveryCount, &batch.RejectedCount,
-		&batch.ArchiveBackend, &batch.ArchiveObject, &batch.ArchiveSHA256, &batch.ArchiveSize, &manifest,
+		&batch.ArchiveBackend, &batch.ArchiveObject, &batch.ArchiveSHA256, &batch.ArchiveSize,
+		&batch.TokenUsage.InputTokens, &batch.TokenUsage.CacheCreationInputTokens,
+		&batch.TokenUsage.CacheReadInputTokens, &batch.TokenUsage.OutputTokens,
+		&batch.TokenUsage.CountedDeliveries,
+		&manifest,
 		&batch.ErrorMessage, &batch.StartedAt, &batch.ArchivedAt, &batch.VerifiedAt, &batch.PurgedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get Session export batch: %w", err)
+	}
+	batch.TokenUsage.TotalInputTokens, err = addTokenValues(
+		batch.TokenUsage.InputTokens,
+		batch.TokenUsage.CacheCreationInputTokens,
+		batch.TokenUsage.CacheReadInputTokens,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate Session export batch input tokens: %w", err)
+	}
+	batch.TokenUsage.TotalTokens, err = addTokenValues(batch.TokenUsage.TotalInputTokens, batch.TokenUsage.OutputTokens)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate Session export batch total tokens: %w", err)
 	}
 	batch.Manifest = manifest
 	return &batch, nil

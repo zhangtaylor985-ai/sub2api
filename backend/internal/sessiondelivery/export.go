@@ -34,18 +34,19 @@ type ManifestFile struct {
 }
 
 type ExportManifest struct {
-	FormatVersion string         `json:"format_version"`
-	SchemaVersion int            `json:"schema_version"`
-	PublicModel   string         `json:"public_model"`
-	ExportDay     string         `json:"export_day"`
-	ExportHour    string         `json:"export_hour"`
-	RangeStart    string         `json:"range_start"`
-	RangeEnd      string         `json:"range_end"`
-	RecordCount   int64          `json:"record_count"`
-	DeliveryCount int64          `json:"delivery_count"`
-	ExcludedCount int64          `json:"excluded_count"`
-	Specification string         `json:"specification"`
-	Files         []ManifestFile `json:"files"`
+	FormatVersion string                `json:"format_version"`
+	SchemaVersion int                   `json:"schema_version"`
+	PublicModel   string                `json:"public_model"`
+	ExportDay     string                `json:"export_day"`
+	ExportHour    string                `json:"export_hour"`
+	RangeStart    string                `json:"range_start"`
+	RangeEnd      string                `json:"range_end"`
+	RecordCount   int64                 `json:"record_count"`
+	DeliveryCount int64                 `json:"delivery_count"`
+	ExcludedCount int64                 `json:"excluded_count"`
+	TokenUsage    *DeliveryTokenMetrics `json:"token_usage,omitempty"`
+	Specification string                `json:"specification"`
+	Files         []ManifestFile        `json:"files"`
 }
 
 type ExporterConfig struct {
@@ -71,8 +72,9 @@ type ExportResult struct {
 }
 
 type ArchiveValidation struct {
-	Manifest ExportManifest `json:"manifest"`
-	Files    []ManifestFile `json:"files"`
+	Manifest   ExportManifest       `json:"manifest"`
+	Files      []ManifestFile       `json:"files"`
+	TokenUsage DeliveryTokenMetrics `json:"token_usage"`
 }
 
 func NewExporter(store *Store, backend ArchiveBackend, config ExporterConfig) (*Exporter, error) {
@@ -360,6 +362,13 @@ func (e *Exporter) buildArchive(
 		if err := ValidateDeliveryFidelity(delivery, e.publicModel); err != nil {
 			return fmt.Errorf("validate delivery record %s: %w", recordID, err)
 		}
+		tokens, err := ExtractDeliveryTokenMetrics(delivery)
+		if err != nil {
+			return fmt.Errorf("extract delivery token metrics for record %s: %w", recordID, err)
+		}
+		if err := stats.TokenUsage.Add(tokens); err != nil {
+			return fmt.Errorf("aggregate delivery token metrics for record %s: %w", recordID, err)
+		}
 		stats.Deliverable++
 		return sessionWriter.write(delivery)
 	})
@@ -377,6 +386,7 @@ func (e *Exporter) buildArchive(
 	manifest.RecordCount = stats.Deliverable
 	manifest.DeliveryCount = stats.Deliverable
 	manifest.ExcludedCount = stats.Rejected
+	manifest.TokenUsage = &stats.TokenUsage
 
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
@@ -570,6 +580,7 @@ func ValidateArchive(path, publicModel string) (*ArchiveValidation, error) {
 	manifestFound := false
 	var files []ManifestFile
 	var deliveryCount int64
+	var tokenUsage DeliveryTokenMetrics
 	seenPaths := make(map[string]struct{})
 	for {
 		header, err := reader.Next()
@@ -606,12 +617,15 @@ func ValidateArchive(path, publicModel string) (*ArchiveValidation, error) {
 			manifestFound = true
 			continue
 		}
-		entry, delivered, err := validateJSONLEntry(reader, header, publicModel)
+		entry, delivered, entryTokens, err := validateJSONLEntry(reader, header, publicModel)
 		if err != nil {
 			return nil, fmt.Errorf("validate %s: %w", header.Name, err)
 		}
 		files = append(files, entry)
 		deliveryCount += delivered
+		if err := tokenUsage.Add(entryTokens); err != nil {
+			return nil, fmt.Errorf("aggregate archive token metrics: %w", err)
+		}
 	}
 	if !manifestFound {
 		return nil, errors.New("Session archive is missing manifest.json")
@@ -635,48 +649,64 @@ func ValidateArchive(path, publicModel string) (*ArchiveValidation, error) {
 	if err := compareManifestFiles(manifest.Files, files); err != nil {
 		return nil, err
 	}
-	return &ArchiveValidation{Manifest: manifest, Files: files}, nil
+	if manifest.TokenUsage != nil {
+		if err := manifest.TokenUsage.Validate(); err != nil {
+			return nil, fmt.Errorf("Session archive manifest token metrics: %w", err)
+		}
+		if manifest.TokenUsage.CountedDeliveries != deliveryCount || *manifest.TokenUsage != tokenUsage {
+			return nil, errors.New("Session archive manifest token metrics do not match JSONL entries")
+		}
+	}
+	return &ArchiveValidation{Manifest: manifest, Files: files, TokenUsage: tokenUsage}, nil
 }
 
-func validateJSONLEntry(reader io.Reader, header *tar.Header, publicModel string) (ManifestFile, int64, error) {
+func validateJSONLEntry(reader io.Reader, header *tar.Header, publicModel string) (ManifestFile, int64, DeliveryTokenMetrics, error) {
 	if !strings.HasPrefix(header.Name, "delivery/") || !strings.HasSuffix(header.Name, ".jsonl") {
-		return ManifestFile{}, 0, errors.New("unknown JSONL archive path")
+		return ManifestFile{}, 0, DeliveryTokenMetrics{}, errors.New("unknown JSONL archive path")
 	}
 	hash := sha256.New()
 	limited := io.LimitReader(reader, header.Size)
 	scanner := bufio.NewScanner(io.TeeReader(limited, hash))
 	scanner.Buffer(make([]byte, 64<<10), int(defaultDecodedEnvelopeMaxBytes))
 	var records int64
+	var tokenUsage DeliveryTokenMetrics
 	expectedSessionComponent := strings.TrimSuffix(strings.TrimPrefix(header.Name, "delivery/"), ".jsonl")
 	for scanner.Scan() {
 		line := append([]byte(nil), scanner.Bytes()...)
 		if len(bytes.TrimSpace(line)) == 0 {
-			return ManifestFile{}, 0, errors.New("JSONL contains an empty line")
+			return ManifestFile{}, 0, DeliveryTokenMetrics{}, errors.New("JSONL contains an empty line")
 		}
 		records++
 		if err := ValidateDeliveryJSON(line, publicModel); err != nil {
-			return ManifestFile{}, 0, err
+			return ManifestFile{}, 0, DeliveryTokenMetrics{}, err
 		}
 		var record DeliveryRecord
 		if err := json.Unmarshal(line, &record); err != nil {
-			return ManifestFile{}, 0, err
+			return ManifestFile{}, 0, DeliveryTokenMetrics{}, err
 		}
 		if safeArchiveComponent(record.SessionID) != expectedSessionComponent {
-			return ManifestFile{}, 0, errors.New("delivery JSONL path does not match record session_id")
+			return ManifestFile{}, 0, DeliveryTokenMetrics{}, errors.New("delivery JSONL path does not match record session_id")
+		}
+		tokens, err := ExtractDeliveryTokenMetrics(&record)
+		if err != nil {
+			return ManifestFile{}, 0, DeliveryTokenMetrics{}, err
+		}
+		if err := tokenUsage.Add(tokens); err != nil {
+			return ManifestFile{}, 0, DeliveryTokenMetrics{}, err
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return ManifestFile{}, 0, err
+		return ManifestFile{}, 0, DeliveryTokenMetrics{}, err
 	}
 	if records == 0 {
-		return ManifestFile{}, 0, errors.New("delivery JSONL file is empty")
+		return ManifestFile{}, 0, DeliveryTokenMetrics{}, errors.New("delivery JSONL file is empty")
 	}
 	return ManifestFile{
 		Path:    header.Name,
 		Records: records,
 		Bytes:   header.Size,
 		SHA256:  hex.EncodeToString(hash.Sum(nil)),
-	}, records, nil
+	}, records, tokenUsage, nil
 }
 
 func compareManifestFiles(expected, actual []ManifestFile) error {

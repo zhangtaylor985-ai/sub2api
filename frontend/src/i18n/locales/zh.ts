@@ -1542,9 +1542,20 @@ export default {
       },
       metrics: {
         dbDisk: '数据库服务器磁盘',
-        inDatabase: '数据库内 Session',
+        pendingTokens: '数据库待归档 Token',
+        archivedTokens: '累计已归档 Token',
         driveFiles: 'Drive 已校验文件',
-        uploaded: '累计上传数据'
+      },
+      tokens: {
+        sessions: '{count} 条可交付会话',
+        inputShort: '输入',
+        outputShort: '输出',
+        awaitingBackfill: '待回填',
+        unavailable: 'Token 指标暂不可用',
+        coverageComplete: '已统计 {count} 条',
+        coveragePending: '{count} 条待回填',
+        coveragePartial: '另有 {count} 条待回填',
+        exact: '{count} Token'
       },
       pipeline: {
         title: '实时交付链路',
@@ -1552,11 +1563,11 @@ export default {
         spool: '网关缓冲区',
         spoolDetail: '{count} 条待发送 · {size}',
         database: '隔离会话数据库',
-        databaseDetail: '{count} 条记录 · 数据库 {size}',
+        databaseDetail: '{count} 条记录 · {tokens} Token · 数据库 {size}',
         package: 'UTC 小时归档',
         packageDetail: '封账后打包、上传、回读校验',
         archive: 'Google Drive 归档',
-        archiveDetail: '{files} 个文件 · {size}',
+        archiveDetail: '{files} 个文件 · {tokens} Token · {size}',
         flowing: '流转正常',
         attention: '存在隔离项',
         online: '在线',
@@ -1584,7 +1595,11 @@ export default {
         currentHour: '当前 UTC 小时',
         lastFiveMinutes: '最近 5 分钟新增',
         rejected: '不可交付 / 已拒绝',
-        archivedDeliveries: '累计可交付会话'
+        archivedDeliveries: '累计可交付会话',
+        pendingInputTokens: '数据库待归档输入 Token',
+        pendingOutputTokens: '数据库待归档输出 Token',
+        archivedInputTokens: '累计已归档输入 Token',
+        archivedOutputTokens: '累计已归档输出 Token'
       },
       spool: {
         title: '生产网关本地缓冲',
@@ -1598,6 +1613,7 @@ export default {
         status: '状态',
         records: '数据库记录',
         delivery: '交付会话',
+        tokens: '交付 Token',
         size: '归档大小',
         verifiedAt: '校验时间',
         waitingTitle: '等待首个 UTC 小时关闭',

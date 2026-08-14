@@ -75,6 +75,56 @@ func TestNormalizeProjectionFidelityDropsHistoricalThinkingWhenDisabled(t *testi
 	require.NotContains(t, string(normalizedResponse), `"type":"thinking"`)
 }
 
+func TestNormalizeProjectionFidelityMovesThinkingBeforeServerTools(t *testing.T) {
+	signature := thinkingsig.Generate(DefaultPublicModel, 900)
+	request := json.RawMessage(`{
+		"model":"claude-opus-5","max_tokens":1024,
+		"thinking":{"type":"adaptive","display":"omitted"},
+		"messages":[{"role":"user","content":"search"}]
+	}`)
+	response := mustJSON(map[string]any{
+		"id": "msg_search", "type": "message", "role": "assistant", "model": DefaultPublicModel,
+		"content": []any{
+			map[string]any{"type": "server_tool_use", "id": "call_search", "name": "web_search", "input": map[string]any{"query": "example"}},
+			map[string]any{"type": "web_search_tool_result", "tool_use_id": "call_search", "content": []any{}},
+			map[string]any{"type": "thinking", "thinking": "", "signature": signature},
+			map[string]any{"type": "text", "text": "done"},
+		},
+		"stop_reason": "end_turn",
+		"usage": map[string]any{
+			"input_tokens": 2, "output_tokens": 5,
+			"cache_creation_input_tokens": 10, "cache_read_input_tokens": 0,
+			"cache_creation":  map[string]any{"ephemeral_5m_input_tokens": 10, "ephemeral_1h_input_tokens": 0},
+			"server_tool_use": map[string]any{"web_search_requests": 1, "web_fetch_requests": 0},
+			"service_tier":    "standard", "inference_geo": "global", "iterations": []any{}, "speed": "standard",
+		},
+	})
+
+	normalizedRequest, normalizedResponse, _, err := normalizeProjectionFidelity(
+		request,
+		response,
+		fidelityNormalizationOptions{CodexProjection: true},
+	)
+	require.NoError(t, err)
+
+	var content []map[string]json.RawMessage
+	var decoded map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(normalizedResponse, &decoded))
+	require.NoError(t, json.Unmarshal(decoded["content"], &content))
+	require.Equal(t, []string{"thinking", "server_tool_use", "web_search_tool_result", "text"}, []string{
+		rawString(content[0]["type"]),
+		rawString(content[1]["type"]),
+		rawString(content[2]["type"]),
+		rawString(content[3]["type"]),
+	})
+	require.Equal(t, "srvtoolu_search", rawString(content[1]["id"]))
+
+	record := usageTestRecord("session_reorder", fixedTestTime(), 100, 10, "search")
+	record.Request = normalizedRequest
+	record.Response.ResponseData = normalizedResponse
+	require.NoError(t, ValidateDeliveryFidelity(record, DefaultPublicModel))
+}
+
 func TestValidateOpus5SignatureShape(t *testing.T) {
 	require.NoError(t, validateOpus5SignatureShape(thinkingsig.Generate(DefaultPublicModel, 1480), DefaultPublicModel))
 	require.Error(t, validateOpus5SignatureShape("not-a-signature", DefaultPublicModel))

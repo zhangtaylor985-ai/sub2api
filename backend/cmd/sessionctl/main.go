@@ -55,6 +55,8 @@ func run() error {
 		return runSeedProjection(ctx, os.Args[2:])
 	case "reseed-projection":
 		return runReseedProjection(ctx, os.Args[2:])
+	case "backfill-tokens":
+		return runBackfillTokens(ctx, os.Args[2:])
 	case "status":
 		return runStatus(ctx, os.Args[2:])
 	case "purge":
@@ -62,6 +64,45 @@ func run() error {
 	default:
 		return usageError()
 	}
+}
+
+func runBackfillTokens(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("backfill-tokens", flag.ContinueOnError)
+	dsnEnv := flags.String("dsn-env", "SESSION_DATABASE_DSN", "environment variable containing the Session PostgreSQL DSN")
+	archiveDir := flags.String("archive-dir", "", "directory containing exact verified archive objects to validate and match by SHA")
+	records := flags.Bool("records", false, "backfill unsealed deliverable records still stored in PostgreSQL")
+	limit := flags.Int("limit", 1000, "maximum pending records to inspect in this resumable pass")
+	apply := flags.Bool("apply", false, "persist verified token metrics; omitted means read-only dry-run")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*archiveDir) == "" && !*records {
+		return errors.New("backfill-tokens requires -archive-dir and/or -records")
+	}
+	store, err := openStoreFromEnv(ctx, *dsnEnv)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		return err
+	}
+	output := map[string]any{"dry_run": !*apply}
+	if strings.TrimSpace(*archiveDir) != "" {
+		result, err := store.BackfillArchiveTokenMetrics(ctx, *archiveDir, sessiondelivery.DefaultPublicModel, *apply)
+		if err != nil {
+			return err
+		}
+		output["archives"] = result
+	}
+	if *records {
+		result, err := store.BackfillPendingRecordTokenMetrics(ctx, *limit, *apply)
+		if err != nil {
+			return err
+		}
+		output["records"] = result
+	}
+	return writeOutput(output)
 }
 
 func runRepairConversions(ctx context.Context, args []string) error {
@@ -627,7 +668,7 @@ func writeOutput(value any) error {
 }
 
 func usageError() error {
-	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|repair-conversions|export|validate|audit-fidelity|rebuild-archives|seed-projection|reseed-projection|status|purge> [flags]")
+	return errors.New("usage: sessionctl <migrate|forward|spool-status|repair-quarantine|repair-conversions|export|validate|audit-fidelity|rebuild-archives|seed-projection|reseed-projection|backfill-tokens|status|purge> [flags]")
 }
 
 func envOr(name, fallback string) string {

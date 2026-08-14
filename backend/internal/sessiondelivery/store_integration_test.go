@@ -152,6 +152,35 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 	require.Equal(t, int64(3), storeStatus.DeliveriesArchived)
 	require.Equal(t, int64(1), storeStatus.RejectedArchived)
 	require.NotNil(t, storeStatus.LastVerifiedAt)
+	require.Equal(t, durableResult.Stats.TokenUsage.TotalTokens, storeStatus.ArchiveTokenVolume.TotalTokens)
+	require.Zero(t, storeStatus.ArchiveTokenVolume.UncountedDeliveries)
+
+	_, err = store.db.ExecContext(ctx, `
+		UPDATE session_export_batches
+		SET delivery_input_tokens = 0,
+		    delivery_cache_creation_input_tokens = 0,
+		    delivery_cache_read_input_tokens = 0,
+		    delivery_output_tokens = 0,
+		    delivery_tokens_counted = 0
+		WHERE export_hour = $1`, hour)
+	require.NoError(t, err)
+	dryRunTokens, err := store.BackfillArchiveTokenMetrics(
+		ctx, filepath.Dir(durableResult.Archive.Name), DefaultPublicModel, false,
+	)
+	require.NoError(t, err)
+	require.True(t, dryRunTokens.DryRun)
+	require.Equal(t, int64(1), dryRunTokens.BatchesEligible)
+	require.Equal(t, durableResult.Stats.TokenUsage, dryRunTokens.TokenUsage)
+	appliedTokens, err := store.BackfillArchiveTokenMetrics(
+		ctx, filepath.Dir(durableResult.Archive.Name), DefaultPublicModel, true,
+	)
+	require.NoError(t, err)
+	require.False(t, appliedTokens.DryRun)
+	require.Equal(t, int64(1), appliedTokens.BatchesUpdated)
+	batch, err = store.GetExportBatch(ctx, hour)
+	require.NoError(t, err)
+	require.Equal(t, durableResult.Stats.TokenUsage, batch.TokenUsage)
+
 	_, err = store.NextExportableHour(ctx, hour.Add(time.Hour), false)
 	require.ErrorIs(t, err, sql.ErrNoRows)
 	nextHour, err = store.NextExportableHour(ctx, hour.Add(time.Hour), true)
@@ -182,6 +211,24 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 	lateStats, err := store.StatsForHour(ctx, hour.Add(time.Hour))
 	require.NoError(t, err)
 	require.Equal(t, HourStats{Records: 1, Deliverable: 1}, lateStats)
+	_, err = store.db.ExecContext(ctx, `
+		UPDATE session_records
+		SET delivery_total_input_tokens = 0,
+		    delivery_output_tokens = 0,
+		    delivery_tokens_counted = FALSE
+		WHERE ingested_at >= $1 AND ingested_at < $2`, hour.Add(time.Hour), hour.Add(2*time.Hour))
+	require.NoError(t, err)
+	dryRunRecords, err := store.BackfillPendingRecordTokenMetrics(ctx, 10, false)
+	require.NoError(t, err)
+	require.True(t, dryRunRecords.DryRun)
+	require.Equal(t, int64(1), dryRunRecords.Eligible)
+	appliedRecords, err := store.BackfillPendingRecordTokenMetrics(ctx, 10, true)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), appliedRecords.Updated)
+	storeStatus, err = store.Status(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), storeStatus.DatabaseTokenVolume.CountedDeliveries)
+	require.Zero(t, storeStatus.DatabaseTokenVolume.UncountedDeliveries)
 }
 
 func TestHourlyExportPreservesProjectionStateAfterPurge(t *testing.T) {

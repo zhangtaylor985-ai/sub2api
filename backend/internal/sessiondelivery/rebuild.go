@@ -338,7 +338,9 @@ func buildReprojectedArchive(
 	hourEnd := input.hour.Add(time.Hour)
 	manifest := input.validation.Manifest
 	manifest.Files = nil
+	manifest.TokenUsage = nil
 	var changes RebuildChangeStats
+	var tokenUsage DeliveryTokenMetrics
 	sessionWriter := newSessionEntryWriter(workDir, tarWriter, hourEnd)
 	iterateErr := forEachArchiveSession(input.path, func(sessionID string, records []*DeliveryRecord) error {
 		echo := echoBySession[sessionID]
@@ -399,6 +401,13 @@ func buildReprojectedArchive(
 			if err := ValidateDelivery(record, publicModel); err != nil {
 				return fmt.Errorf("validate rebuilt record %s: %w", record.RequestID, err)
 			}
+			tokens, err := ExtractDeliveryTokenMetrics(record)
+			if err != nil {
+				return fmt.Errorf("extract rebuilt token metrics for record %s: %w", record.RequestID, err)
+			}
+			if err := tokenUsage.Add(tokens); err != nil {
+				return fmt.Errorf("aggregate rebuilt token metrics for record %s: %w", record.RequestID, err)
+			}
 			if err := sessionWriter.write(record); err != nil {
 				return err
 			}
@@ -441,6 +450,7 @@ func buildReprojectedArchive(
 	manifest.Files = append(manifest.Files, entries...)
 	manifest.RecordCount = changes.Records
 	manifest.DeliveryCount = changes.Records
+	manifest.TokenUsage = &tokenUsage
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		return ExportManifest{}, RebuildChangeStats{}, err

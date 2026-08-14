@@ -43,39 +43,42 @@ type DatabaseStatus struct {
 }
 
 type SessionDataStatus struct {
-	RecordsInDatabase      int64      `json:"records_in_database"`
-	DeliverableInDatabase  int64      `json:"deliverable_in_database"`
-	RejectedInDatabase     int64      `json:"rejected_in_database"`
-	PayloadBytesInDatabase int64      `json:"payload_bytes_in_database"`
-	CurrentHourRecords     int64      `json:"current_hour_records"`
-	RecordsLast5Minutes    int64      `json:"records_last_5m"`
-	FirstIngestedAt        *time.Time `json:"first_ingested_at,omitempty"`
-	LastIngestedAt         *time.Time `json:"last_ingested_at,omitempty"`
+	RecordsInDatabase      int64       `json:"records_in_database"`
+	DeliverableInDatabase  int64       `json:"deliverable_in_database"`
+	RejectedInDatabase     int64       `json:"rejected_in_database"`
+	PayloadBytesInDatabase int64       `json:"payload_bytes_in_database"`
+	CurrentHourRecords     int64       `json:"current_hour_records"`
+	RecordsLast5Minutes    int64       `json:"records_last_5m"`
+	FirstIngestedAt        *time.Time  `json:"first_ingested_at,omitempty"`
+	LastIngestedAt         *time.Time  `json:"last_ingested_at,omitempty"`
+	TokenVolume            TokenVolume `json:"token_volume"`
 }
 
 type DeliveryStatus struct {
-	ArchiveFilesVerified int64      `json:"archive_files_verified"`
-	ArchiveBytesUploaded int64      `json:"archive_bytes_uploaded"`
-	RecordsArchived      int64      `json:"records_archived"`
-	DeliveriesArchived   int64      `json:"deliveries_archived"`
-	RejectedArchived     int64      `json:"rejected_archived"`
-	FailedBatches        int64      `json:"failed_batches"`
-	ExportingBatches     int64      `json:"exporting_batches"`
-	LastVerifiedAt       *time.Time `json:"last_verified_at,omitempty"`
+	ArchiveFilesVerified int64       `json:"archive_files_verified"`
+	ArchiveBytesUploaded int64       `json:"archive_bytes_uploaded"`
+	RecordsArchived      int64       `json:"records_archived"`
+	DeliveriesArchived   int64       `json:"deliveries_archived"`
+	RejectedArchived     int64       `json:"rejected_archived"`
+	FailedBatches        int64       `json:"failed_batches"`
+	ExportingBatches     int64       `json:"exporting_batches"`
+	LastVerifiedAt       *time.Time  `json:"last_verified_at,omitempty"`
+	TokenVolume          TokenVolume `json:"token_volume"`
 }
 
 type RecentBatchStatus struct {
-	Hour           time.Time  `json:"hour"`
-	Status         string     `json:"status"`
-	RecordCount    int64      `json:"record_count"`
-	DeliveryCount  int64      `json:"delivery_count"`
-	RejectedCount  int64      `json:"rejected_count"`
-	ArchiveBackend string     `json:"archive_backend,omitempty"`
-	ArchiveSize    int64      `json:"archive_size"`
-	StartedAt      time.Time  `json:"started_at"`
-	ArchivedAt     *time.Time `json:"archived_at,omitempty"`
-	VerifiedAt     *time.Time `json:"verified_at,omitempty"`
-	PurgedAt       *time.Time `json:"purged_at,omitempty"`
+	Hour           time.Time   `json:"hour"`
+	Status         string      `json:"status"`
+	RecordCount    int64       `json:"record_count"`
+	DeliveryCount  int64       `json:"delivery_count"`
+	RejectedCount  int64       `json:"rejected_count"`
+	ArchiveBackend string      `json:"archive_backend,omitempty"`
+	ArchiveSize    int64       `json:"archive_size"`
+	TokenVolume    TokenVolume `json:"token_volume"`
+	StartedAt      time.Time   `json:"started_at"`
+	ArchivedAt     *time.Time  `json:"archived_at,omitempty"`
+	VerifiedAt     *time.Time  `json:"verified_at,omitempty"`
+	PurgedAt       *time.Time  `json:"purged_at,omitempty"`
 }
 
 type StatusSnapshot struct {
@@ -197,6 +200,10 @@ func BuildStatusSnapshot(ctx context.Context, store *Store, collector HostStatus
 	}
 	recent := make([]RecentBatchStatus, 0, len(batches))
 	for _, batch := range batches {
+		tokenVolume, err := tokenVolumeFromArchived(batch.TokenUsage, batch.DeliveryCount)
+		if err != nil {
+			return StatusSnapshot{}, fmt.Errorf("build recent Session batch token status: %w", err)
+		}
 		recent = append(recent, RecentBatchStatus{
 			Hour:           batch.Hour,
 			Status:         batch.Status,
@@ -205,6 +212,7 @@ func BuildStatusSnapshot(ctx context.Context, store *Store, collector HostStatus
 			RejectedCount:  batch.RejectedCount,
 			ArchiveBackend: batch.ArchiveBackend,
 			ArchiveSize:    batch.ArchiveSize,
+			TokenVolume:    tokenVolume,
 			StartedAt:      batch.StartedAt,
 			ArchivedAt:     batch.ArchivedAt,
 			VerifiedAt:     batch.VerifiedAt,
@@ -233,6 +241,7 @@ func BuildStatusSnapshot(ctx context.Context, store *Store, collector HostStatus
 			RecordsLast5Minutes:    database.RecordsLast5Minutes,
 			FirstIngestedAt:        database.FirstIngestedAt,
 			LastIngestedAt:         database.LastIngestedAt,
+			TokenVolume:            database.DatabaseTokenVolume,
 		},
 		Delivery: DeliveryStatus{
 			ArchiveFilesVerified: database.ArchiveFilesVerified,
@@ -243,6 +252,7 @@ func BuildStatusSnapshot(ctx context.Context, store *Store, collector HostStatus
 			FailedBatches:        database.FailedBatches,
 			ExportingBatches:     database.ExportingBatches,
 			LastVerifiedAt:       database.LastVerifiedAt,
+			TokenVolume:          database.ArchiveTokenVolume,
 		},
 		RecentBatches: recent,
 	}, nil

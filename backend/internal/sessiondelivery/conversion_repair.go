@@ -117,6 +117,12 @@ func (s *Store) RepairRequestConversionRejections(
 			continue
 		}
 		digest := sha256.Sum256(payload)
+		var tokenMetrics DeliveryTokenMetrics
+		tokensCounted := false
+		if extracted, extractErr := ExtractDeliveryTokenMetrics(repaired.Delivery); extractErr == nil {
+			tokenMetrics = extracted
+			tokensCounted = true
+		}
 		updated, err := s.applyConversionRepair(
 			ctx,
 			ingestedAt,
@@ -125,6 +131,9 @@ func (s *Store) RepairRequestConversionRejections(
 			encoder.EncodeAll(payload, nil),
 			hex.EncodeToString(digest[:]),
 			repaired.SchemaVersion,
+			tokenMetrics.TotalInputTokens,
+			tokenMetrics.OutputTokens,
+			tokensCounted,
 		)
 		if err != nil {
 			recordConversionRepairFailure(&stats, err)
@@ -219,6 +228,9 @@ func (s *Store) applyConversionRepair(
 	compressed []byte,
 	payloadSHA string,
 	schemaVersion int,
+	totalInputTokens int64,
+	outputTokens int64,
+	tokensCounted bool,
 ) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -238,12 +250,17 @@ func (s *Store) applyConversionRepair(
 		    rejection_code = '',
 		    schema_version = $1,
 		    payload_zstd = $2,
-		    payload_sha256 = $3
-		WHERE ingested_at = $4
-		  AND record_id = $5
-		  AND payload_sha256 = $6
+		    payload_sha256 = $3,
+		    delivery_total_input_tokens = $4,
+		    delivery_output_tokens = $5,
+		    delivery_tokens_counted = $6
+		WHERE ingested_at = $7
+		  AND record_id = $8
+		  AND payload_sha256 = $9
 		  AND rejection_code = 'request_conversion_failed'`,
-		schemaVersion, compressed, payloadSHA, ingestedAt, recordID, expectedSHA)
+		schemaVersion, compressed, payloadSHA,
+		totalInputTokens, outputTokens, tokensCounted,
+		ingestedAt, recordID, expectedSHA)
 	if err != nil {
 		return false, fmt.Errorf("update Session conversion repair: %w", err)
 	}

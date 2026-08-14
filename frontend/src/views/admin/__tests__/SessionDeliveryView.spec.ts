@@ -27,4 +27,13 @@ describe('Session delivery console contract', () => {
     expect(source).toContain('overview.value?.public_model')
     expect(source).not.toMatch(/gpt-5\.[0-9]/i)
   })
+
+  it('makes delivery token volume a first-class observable metric', () => {
+    expect(source).toContain("metrics.pendingTokens")
+    expect(source).toContain("metrics.archivedTokens")
+    expect(source).toContain('batch.token_volume')
+    expect(source).toContain('formatTokenVolume')
+    expect(source).toContain("suffix: 'M'")
+    expect(source).toContain('uncounted_deliveries')
+  })
 })

@@ -20,6 +20,7 @@ type fidelityNormalizationStats struct {
 	OpenAIContentBlocksNormalized int64
 	ResponseThinkingRemoved       int64
 	AssistantTextTrackingStripped int64
+	AssistantToolTrackingStripped int64
 }
 
 // openAISearchParamPattern matches the tracking parameter OpenAI web search
@@ -39,55 +40,161 @@ var openAISearchParamPattern = regexp.MustCompile(`(?i)utm_source=openai`)
 // deterministic, so a sanitized response and its echo in later request
 // history stay byte-identical.
 func stripOpenAISearchTracking(text string) (string, int64) {
-	matches := openAISearchParamPattern.FindAllStringIndex(text, -1)
-	if len(matches) == 0 {
-		return text, 0
-	}
-	var out strings.Builder
-	out.Grow(len(text))
 	var stripped int64
-	cursor := 0
-	for _, match := range matches {
-		pos, after := match[0], match[1]
-		preceded := pos > 0 && (text[pos-1] == '?' || text[pos-1] == '&')
-		followedByAmp := after < len(text) && text[after] == '&'
-		bounded := after >= len(text) || followedByAmp || !isQueryValueChar(text[after])
-		if !preceded || !bounded {
-			continue
+	for {
+		removed := false
+		for _, match := range openAISearchParamPattern.FindAllStringIndex(text, -1) {
+			pos, after := match[0], match[1]
+			if pos == 0 || (text[pos-1] != '?' && text[pos-1] != '&') || !isTrackingParamEnd(text, after) {
+				continue
+			}
+			if text[pos-1] == '?' && after < len(text) && text[after] == '&' {
+				// Keep the query marker and promote the next parameter. Repeating
+				// the scan also handles adjacent duplicate tracking parameters.
+				text = text[:pos] + text[after+1:]
+			} else {
+				text = text[:pos-1] + text[after:]
+			}
+			stripped++
+			removed = true
+			break
 		}
-		stripped++
-		if text[pos-1] == '?' && followedByAmp {
-			out.WriteString(text[cursor:pos]) // keep '?', drop param and following '&'
-			cursor = after + 1
-			continue
+		if !removed {
+			return text, stripped
 		}
-		out.WriteString(text[cursor : pos-1]) // drop the '?' or '&' with the param
-		cursor = after
 	}
-	if stripped == 0 {
-		return text, 0
-	}
-	out.WriteString(text[cursor:])
-	return out.String(), stripped
 }
 
-func isQueryValueChar(b byte) bool {
-	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_' || b == '-' || b == '.'
+func isTrackingParamEnd(text string, offset int) bool {
+	if offset >= len(text) {
+		return true
+	}
+	switch text[offset] {
+	case '&', '#', ' ', '\t', '\r', '\n', ')', ']', '}', '>', '<', '\'', '"', '`':
+		return true
+	default:
+		return false
+	}
 }
 
 // sanitizeAssistantTextBlock rewrites the text field of an assistant text
-// block in place, returning whether the block changed.
+// block in place, returning whether the block changed. Web search citations
+// on the block carry the same cited URLs, so their url fields are stripped
+// together to keep the block internally consistent.
 func sanitizeAssistantTextBlock(block map[string]json.RawMessage) (bool, int64) {
-	text := rawString(block["text"])
-	if text == "" {
-		return false, 0
+	changed := false
+	var stripped int64
+	if text := rawString(block["text"]); text != "" {
+		if sanitized, n := stripOpenAISearchTracking(text); n > 0 {
+			block["text"] = mustJSON(sanitized)
+			changed = true
+			stripped += n
+		}
 	}
-	sanitized, stripped := stripOpenAISearchTracking(text)
+	if rawCitations := block["citations"]; len(rawCitations) > 0 {
+		var citations []map[string]json.RawMessage
+		if err := json.Unmarshal(rawCitations, &citations); err == nil {
+			citationsChanged := false
+			for _, citation := range citations {
+				url := rawString(citation["url"])
+				if url == "" {
+					continue
+				}
+				if sanitized, n := stripOpenAISearchTracking(url); n > 0 {
+					citation["url"] = mustJSON(sanitized)
+					citationsChanged = true
+					stripped += n
+				}
+			}
+			if citationsChanged {
+				block["citations"] = mustJSON(citations)
+				changed = true
+			}
+		}
+	}
+	return changed, stripped
+}
+
+// sanitizeJSONStrings removes tracking parameters from string values inside
+// assistant-generated JSON while preserving every untouched raw subtree. It
+// is used for tool inputs only; user and tool-result data never enters here.
+func sanitizeJSONStrings(raw json.RawMessage) (json.RawMessage, int64, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return raw, 0, nil
+	}
+	switch trimmed[0] {
+	case '"':
+		var value string
+		if err := json.Unmarshal(trimmed, &value); err != nil {
+			return nil, 0, err
+		}
+		sanitized, stripped := stripOpenAISearchTracking(value)
+		if stripped == 0 {
+			return raw, 0, nil
+		}
+		return mustJSON(sanitized), stripped, nil
+	case '{':
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal(trimmed, &object); err != nil {
+			return nil, 0, err
+		}
+		var total int64
+		for key, value := range object {
+			sanitized, stripped, err := sanitizeJSONStrings(value)
+			if err != nil {
+				return nil, 0, err
+			}
+			if stripped > 0 {
+				object[key] = sanitized
+				total += stripped
+			}
+		}
+		if total == 0 {
+			return raw, 0, nil
+		}
+		encoded, err := json.Marshal(object)
+		return encoded, total, err
+	case '[':
+		var array []json.RawMessage
+		if err := json.Unmarshal(trimmed, &array); err != nil {
+			return nil, 0, err
+		}
+		var total int64
+		for index, value := range array {
+			sanitized, stripped, err := sanitizeJSONStrings(value)
+			if err != nil {
+				return nil, 0, err
+			}
+			if stripped > 0 {
+				array[index] = sanitized
+				total += stripped
+			}
+		}
+		if total == 0 {
+			return raw, 0, nil
+		}
+		encoded, err := json.Marshal(array)
+		return encoded, total, err
+	default:
+		return raw, 0, nil
+	}
+}
+
+func sanitizeAssistantToolInput(block map[string]json.RawMessage) (bool, int64, error) {
+	input, exists := block["input"]
+	if !exists {
+		return false, 0, nil
+	}
+	sanitized, stripped, err := sanitizeJSONStrings(input)
+	if err != nil {
+		return false, 0, fmt.Errorf("sanitize assistant tool input: %w", err)
+	}
 	if stripped == 0 {
-		return false, 0
+		return false, 0, nil
 	}
-	block["text"] = mustJSON(sanitized)
-	return true, stripped
+	block["input"] = sanitized
+	return true, stripped, nil
 }
 
 // normalizeProjectionFidelity removes observable GPT/Codex wire artifacts
@@ -108,15 +215,16 @@ func normalizeProjectionFidelity(
 	}
 
 	var stats fidelityNormalizationStats
-	requestChanged, toolIDs, openAIBlocks, requestTrackingStripped, err := normalizeRequestFidelity(request, options.CodexProjection)
+	requestChanged, toolIDs, openAIBlocks, requestTrackingStripped, requestToolTrackingStripped, err := normalizeRequestFidelity(request, options.CodexProjection)
 	if err != nil {
 		return nil, nil, fidelityNormalizationStats{}, err
 	}
 	stats.ToolIDsNormalized += toolIDs
 	stats.OpenAIContentBlocksNormalized += openAIBlocks
 	stats.AssistantTextTrackingStripped += requestTrackingStripped
+	stats.AssistantToolTrackingStripped += requestToolTrackingStripped
 
-	responseChanged, responseToolIDs, thinkingRemoved, responseTrackingStripped, err := normalizeResponseFidelity(
+	responseChanged, responseToolIDs, thinkingRemoved, responseTrackingStripped, responseToolTrackingStripped, err := normalizeResponseFidelity(
 		request,
 		response,
 		options.RemoveSignedWhenDisabled,
@@ -127,6 +235,7 @@ func normalizeProjectionFidelity(
 	stats.ToolIDsNormalized += responseToolIDs
 	stats.ResponseThinkingRemoved += thinkingRemoved
 	stats.AssistantTextTrackingStripped += responseTrackingStripped
+	stats.AssistantToolTrackingStripped += responseToolTrackingStripped
 
 	normalizedRequest := requestRaw
 	if requestChanged {
@@ -145,16 +254,17 @@ func normalizeProjectionFidelity(
 	return normalizedRequest, normalizedResponse, stats, nil
 }
 
-func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjection bool) (bool, int64, int64, int64, error) {
+func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjection bool) (bool, int64, int64, int64, int64, error) {
 	var messages []json.RawMessage
 	if err := json.Unmarshal(request["messages"], &messages); err != nil {
-		return false, 0, 0, 0, fmt.Errorf("decode request messages for fidelity normalization: %w", err)
+		return false, 0, 0, 0, 0, fmt.Errorf("decode request messages for fidelity normalization: %w", err)
 	}
 
 	changed := false
 	var toolIDsNormalized int64
 	var openAIBlocksNormalized int64
 	var trackingStripped int64
+	var toolTrackingStripped int64
 	for messageIndex, rawMessage := range messages {
 		var message map[string]json.RawMessage
 		if err := json.Unmarshal(rawMessage, &message); err != nil {
@@ -174,7 +284,7 @@ func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjectio
 						message["content"] = mustJSON(sanitized)
 						reencoded, merr := json.Marshal(message)
 						if merr != nil {
-							return false, 0, 0, 0, fmt.Errorf("re-encode assistant string message: %w", merr)
+							return false, 0, 0, 0, 0, fmt.Errorf("re-encode assistant string message: %w", merr)
 						}
 						messages[messageIndex] = reencoded
 						changed = true
@@ -188,6 +298,7 @@ func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjectio
 		contentChanged := false
 		normalized := make([]json.RawMessage, 0, len(content))
 		for _, rawBlock := range content {
+			blockChanged := false
 			var block map[string]json.RawMessage
 			if err := json.Unmarshal(rawBlock, &block); err != nil {
 				normalized = append(normalized, rawBlock)
@@ -202,6 +313,7 @@ func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjectio
 					blockType = "text"
 					openAIBlocksNormalized++
 					contentChanged = true
+					blockChanged = true
 				case "encrypted_content":
 					// OpenAI encrypted reasoning has no Anthropic Messages
 					// request-block equivalent. The delivery response already
@@ -220,6 +332,7 @@ func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjectio
 					block[idField] = mustJSON(newID)
 					toolIDsNormalized++
 					contentChanged = true
+					blockChanged = true
 				}
 			}
 
@@ -227,13 +340,26 @@ func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjectio
 				if textChanged, stripped := sanitizeAssistantTextBlock(block); textChanged {
 					trackingStripped += stripped
 					contentChanged = true
+					blockChanged = true
 				}
 			}
 
-			if contentChanged {
+			if isAssistant && (blockType == "tool_use" || blockType == "server_tool_use") {
+				inputChanged, stripped, err := sanitizeAssistantToolInput(block)
+				if err != nil {
+					return false, 0, 0, 0, 0, err
+				}
+				if inputChanged {
+					toolTrackingStripped += stripped
+					contentChanged = true
+					blockChanged = true
+				}
+			}
+
+			if blockChanged {
 				reencoded, err := json.Marshal(block)
 				if err != nil {
-					return false, 0, 0, 0, fmt.Errorf("re-encode request content block: %w", err)
+					return false, 0, 0, 0, 0, fmt.Errorf("re-encode request content block: %w", err)
 				}
 				rawBlock = reencoded
 			}
@@ -249,7 +375,7 @@ func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjectio
 		message["content"] = mustJSON(normalized)
 		reencoded, err := json.Marshal(message)
 		if err != nil {
-			return false, 0, 0, 0, fmt.Errorf("re-encode request message: %w", err)
+			return false, 0, 0, 0, 0, fmt.Errorf("re-encode request message: %w", err)
 		}
 		messages[messageIndex] = reencoded
 		changed = true
@@ -257,16 +383,16 @@ func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjectio
 	if changed {
 		request["messages"] = mustJSON(messages)
 	}
-	return changed, toolIDsNormalized, openAIBlocksNormalized, trackingStripped, nil
+	return changed, toolIDsNormalized, openAIBlocksNormalized, trackingStripped, toolTrackingStripped, nil
 }
 
 func normalizeResponseFidelity(
 	request, response map[string]json.RawMessage,
 	removeSignedWhenDisabled bool,
-) (bool, int64, int64, int64, error) {
+) (bool, int64, int64, int64, int64, error) {
 	var content []json.RawMessage
 	if err := json.Unmarshal(response["content"], &content); err != nil {
-		return false, 0, 0, 0, fmt.Errorf("decode response content for fidelity normalization: %w", err)
+		return false, 0, 0, 0, 0, fmt.Errorf("decode response content for fidelity normalization: %w", err)
 	}
 
 	thinkingEnabled := requestThinkingEnabled(request)
@@ -274,6 +400,7 @@ func normalizeResponseFidelity(
 	var toolIDsNormalized int64
 	var thinkingRemoved int64
 	var trackingStripped int64
+	var toolTrackingStripped int64
 	normalized := make([]json.RawMessage, 0, len(content))
 	leadingThinking := make([]json.RawMessage, 0, len(content))
 	trailingContent := make([]json.RawMessage, 0, len(content))
@@ -290,6 +417,7 @@ func normalizeResponseFidelity(
 			continue
 		}
 		blockType := rawString(block["type"])
+		blockChanged := false
 		if !thinkingEnabled && (blockType == "thinking" || blockType == "redacted_thinking") {
 			authField := "signature"
 			if blockType == "redacted_thinking" {
@@ -308,23 +436,31 @@ func normalizeResponseFidelity(
 				block["id"] = mustJSON(newID)
 				toolIDsNormalized++
 				changed = true
-				reencoded, err := json.Marshal(block)
-				if err != nil {
-					return false, 0, 0, 0, fmt.Errorf("re-encode response tool block: %w", err)
-				}
-				rawBlock = reencoded
+				blockChanged = true
+			}
+			inputChanged, stripped, err := sanitizeAssistantToolInput(block)
+			if err != nil {
+				return false, 0, 0, 0, 0, err
+			}
+			if inputChanged {
+				toolTrackingStripped += stripped
+				changed = true
+				blockChanged = true
 			}
 		}
 		if blockType == "text" {
 			if textChanged, stripped := sanitizeAssistantTextBlock(block); textChanged {
 				trackingStripped += stripped
 				changed = true
-				reencoded, err := json.Marshal(block)
-				if err != nil {
-					return false, 0, 0, 0, fmt.Errorf("re-encode response text block: %w", err)
-				}
-				rawBlock = reencoded
+				blockChanged = true
 			}
+		}
+		if blockChanged {
+			reencoded, err := json.Marshal(block)
+			if err != nil {
+				return false, 0, 0, 0, 0, fmt.Errorf("re-encode response content block: %w", err)
+			}
+			rawBlock = reencoded
 		}
 		if thinkingEnabled {
 			if blockType == "thinking" || blockType == "redacted_thinking" {
@@ -347,7 +483,7 @@ func normalizeResponseFidelity(
 	if changed {
 		response["content"] = mustJSON(normalized)
 	}
-	return changed, toolIDsNormalized, thinkingRemoved, trackingStripped, nil
+	return changed, toolIDsNormalized, thinkingRemoved, trackingStripped, toolTrackingStripped, nil
 }
 
 func requestBlockToolIDField(blockType string) (field string, serverTool bool) {

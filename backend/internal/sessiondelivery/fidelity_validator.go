@@ -84,14 +84,36 @@ func validateRequestHistoryFidelity(messagesRaw json.RawMessage, publicModel str
 		return errors.New("request.messages must be an array of objects")
 	}
 	for messageIndex, message := range messages {
+		isAssistant := rawString(message["role"]) == "assistant"
 		var content []map[string]json.RawMessage
 		if err := json.Unmarshal(message["content"], &content); err != nil {
-			continue // string message content is valid
+			// string message content is valid
+			if isAssistant {
+				var textContent string
+				if serr := json.Unmarshal(message["content"], &textContent); serr == nil {
+					if _, stripped := stripOpenAISearchTracking(textContent); stripped > 0 {
+						return fmt.Errorf("request.messages[%d] assistant text contains OpenAI search tracking parameter", messageIndex)
+					}
+				}
+			}
+			continue
 		}
 		for blockIndex, block := range content {
 			blockType := rawString(block["type"])
 			if _, forbidden := forbiddenOpenAIContentBlockTypes[blockType]; forbidden {
 				return fmt.Errorf("request.messages[%d].content[%d] contains OpenAI block type %q", messageIndex, blockIndex, blockType)
+			}
+			if isAssistant {
+				switch blockType {
+				case "text":
+					if textBlockTrackingViolation(block) {
+						return fmt.Errorf("request.messages[%d].content[%d] assistant text contains OpenAI search tracking parameter", messageIndex, blockIndex)
+					}
+				case "tool_use", "server_tool_use":
+					if jsonStringsContainTracking(block["input"]) {
+						return fmt.Errorf("request.messages[%d].content[%d] assistant tool input contains OpenAI search tracking parameter", messageIndex, blockIndex)
+					}
+				}
 			}
 			switch blockType {
 			case "thinking":
@@ -147,17 +169,72 @@ func validateResponseContentFidelity(contentRaw json.RawMessage, publicModel str
 			if rawString(block["data"]) == "" {
 				return 0, 0, fmt.Errorf("response content[%d] redacted thinking data is empty", index)
 			}
+		case "text":
+			if textBlockTrackingViolation(block) {
+				return 0, 0, fmt.Errorf("response content[%d] assistant text contains OpenAI search tracking parameter", index)
+			}
 		case "tool_use":
 			if !strings.HasPrefix(rawString(block["id"]), "toolu_") {
 				return 0, 0, fmt.Errorf("response content[%d] tool_use id must use toolu_", index)
+			}
+			if jsonStringsContainTracking(block["input"]) {
+				return 0, 0, fmt.Errorf("response content[%d] tool_use input contains OpenAI search tracking parameter", index)
 			}
 		case "server_tool_use":
 			if !strings.HasPrefix(rawString(block["id"]), "srvtoolu_") {
 				return 0, 0, fmt.Errorf("response content[%d] server_tool_use id must use srvtoolu_", index)
 			}
+			if jsonStringsContainTracking(block["input"]) {
+				return 0, 0, fmt.Errorf("response content[%d] server_tool_use input contains OpenAI search tracking parameter", index)
+			}
 		}
 	}
 	return thinkingBlocks, redactedBlocks, nil
+}
+
+// textBlockTrackingViolation reports whether an assistant text block still
+// carries the OpenAI search tracking parameter in its text or in the URLs of
+// its web search citations.
+func textBlockTrackingViolation(block map[string]json.RawMessage) bool {
+	if _, stripped := stripOpenAISearchTracking(rawString(block["text"])); stripped > 0 {
+		return true
+	}
+	return jsonStringsContainTracking(block["citations"])
+}
+
+// jsonStringsContainTracking reports whether any string value inside a JSON
+// document carries the OpenAI web search tracking parameter on a query
+// boundary. Decoding first keeps the check correct under JSON escaping.
+func jsonStringsContainTracking(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false
+	}
+	return jsonValueContainsTracking(value)
+}
+
+func jsonValueContainsTracking(value any) bool {
+	switch typed := value.(type) {
+	case string:
+		_, stripped := stripOpenAISearchTracking(typed)
+		return stripped > 0
+	case []any:
+		for _, item := range typed {
+			if jsonValueContainsTracking(item) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, item := range typed {
+			if jsonValueContainsTracking(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validateUsageFidelity(usageRaw, responseContent json.RawMessage) error {

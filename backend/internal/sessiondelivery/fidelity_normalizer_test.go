@@ -3,6 +3,7 @@ package sessiondelivery
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"sort"
 	"testing"
@@ -315,8 +316,13 @@ func TestStripOpenAISearchTracking(t *testing.T) {
 		{"first of several", "https://example.com?utm_source=openai&acc=GSE1", "https://example.com?acc=GSE1", 1},
 		{"middle param", "https://example.com?a=1&utm_source=openai&b=2", "https://example.com?a=1&b=2", 1},
 		{"multiple urls", "a ?x=1&utm_source=openai b ?y=2&utm_source=openai c", "a ?x=1 b ?y=2 c", 2},
+		{"adjacent duplicates", "https://example.com?utm_source=openai&utm_source=openai", "https://example.com", 2},
+		{"adjacent middle duplicates", "https://example.com?a=1&utm_source=openai&utm_source=openai&b=2", "https://example.com?a=1&b=2", 2},
+		{"before fragment", "https://example.com?utm_source=openai#section", "https://example.com#section", 1},
 		{"uppercase", "https://example.com?a=1&UTM_SOURCE=OPENAI", "https://example.com?a=1", 1},
 		{"longer value preserved", "https://example.com?utm_source=openai2", "https://example.com?utm_source=openai2", 0},
+		{"encoded suffix preserved", "https://example.com?utm_source=openai%20preview", "https://example.com?utm_source=openai%20preview", 0},
+		{"plus suffix preserved", "https://example.com?utm_source=openai+preview", "https://example.com?utm_source=openai+preview", 0},
 		{"not a query param preserved", "see xutm_source=openai here", "see xutm_source=openai here", 0},
 		{"plain mention preserved", "the utm_source=openai parameter", "the utm_source=openai parameter", 0},
 		{"no match", "https://example.com?acc=GSE1", "https://example.com?acc=GSE1", 0},
@@ -328,6 +334,47 @@ func TestStripOpenAISearchTracking(t *testing.T) {
 			require.Equal(t, tc.stripped, stripped)
 		})
 	}
+}
+
+func TestNormalizeProjectionFidelityStripsAssistantToolTracking(t *testing.T) {
+	trackedURL := "https://example.com/path?a=1&utm_source=openai"
+	request := mustJSON(map[string]any{
+		"model": DefaultPublicModel, "max_tokens": 1024,
+		"messages": []any{
+			map[string]any{"role": "assistant", "content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_history", "name": "WebFetch", "input": map[string]any{
+					"url": trackedURL, "nested": []any{map[string]any{"source": trackedURL}},
+				}},
+			}},
+			map[string]any{"role": "user", "content": []any{
+				map[string]any{"type": "tool_result", "tool_use_id": "toolu_history", "content": trackedURL},
+			}},
+		},
+	})
+	response := mustJSON(map[string]any{
+		"id": "msg_tool_tracking", "type": "message", "role": "assistant", "model": DefaultPublicModel,
+		"content": []any{map[string]any{
+			"type": "tool_use", "id": "toolu_response", "name": "WebFetch",
+			"input": map[string]any{"url": trackedURL},
+		}},
+		"stop_reason": "tool_use", "usage": map[string]any{"input_tokens": 1, "output_tokens": 1},
+	})
+
+	normalizedRequest, normalizedResponse, stats, err := normalizeProjectionFidelity(
+		request, response, fidelityNormalizationOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), stats.AssistantToolTrackingStripped)
+	require.NotContains(t, string(normalizedResponse), "utm_source=openai")
+
+	var normalizedRequestObject map[string]any
+	require.NoError(t, json.Unmarshal(normalizedRequest, &normalizedRequestObject))
+	messages := normalizedRequestObject["messages"].([]any)
+	assistantInput := messages[0].(map[string]any)["content"].([]any)[0].(map[string]any)["input"]
+	require.NotContains(t, fmt.Sprint(assistantInput), "utm_source=openai")
+	// Tool results are authentic external input and must stay unchanged.
+	toolResult := messages[1].(map[string]any)["content"].([]any)[0].(map[string]any)["content"]
+	require.Equal(t, trackedURL, toolResult)
 }
 
 func TestNormalizeProjectionFidelityStripsAssistantTracking(t *testing.T) {
@@ -346,7 +393,10 @@ func TestNormalizeProjectionFidelityStripsAssistantTracking(t *testing.T) {
 		"id": "msg_utm", "type": "message", "role": "assistant", "model": DefaultPublicModel,
 		"content": []any{
 			map[string]any{"type": "thinking", "thinking": "", "signature": thinkingsig.Generate(DefaultPublicModel, 900)},
-			map[string]any{"type": "text", "text": assistantText},
+			map[string]any{"type": "text", "text": assistantText, "citations": []any{
+				map[string]any{"type": "web_search_result_location", "title": "GEO", "url": "https://ncbi.nlm.nih.gov/geo?acc=GSE1&utm_source=openai"},
+				map[string]any{"type": "web_search_result_location", "title": "clean", "url": "https://example.com?a=1"},
+			}},
 		},
 		"stop_reason": "end_turn",
 		"usage":       map[string]any{"input_tokens": 10, "output_tokens": 5},
@@ -358,8 +408,9 @@ func TestNormalizeProjectionFidelityStripsAssistantTracking(t *testing.T) {
 		fidelityNormalizationOptions{},
 	)
 	require.NoError(t, err)
-	require.Equal(t, int64(4), stats.AssistantTextTrackingStripped)
+	require.Equal(t, int64(5), stats.AssistantTextTrackingStripped)
 	require.NotContains(t, string(normalizedResponse), "utm_source=openai")
+	require.Contains(t, string(normalizedResponse), "acc=GSE1")
 	// User-authored text is authentic client input and must stay untouched.
 	require.Contains(t, string(normalizedRequest), "utm_source=openai")
 	require.Contains(t, string(normalizedRequest), "chatgpt.example.com")
@@ -426,6 +477,25 @@ func TestValidateDeliveryFidelityRejectsOpenAISearchTracking(t *testing.T) {
 			json.RawMessage(`{"model":"claude-opus-5","max_tokens":1024,"thinking":{"type":"adaptive","display":"omitted"},"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_abc","name":"WebFetch","input":{"url":"https://example.com?utm_source=openai"}}]},{"role":"user","content":"next"}]}`),
 			"clean",
 		)
+		require.ErrorContains(t, ValidateDeliveryFidelity(record, DefaultPublicModel), "OpenAI search tracking parameter")
+	})
+
+	t.Run("response citations", func(t *testing.T) {
+		record := buildRecord(
+			json.RawMessage(`{"model":"claude-opus-5","max_tokens":1024,"thinking":{"type":"adaptive","display":"omitted"},"messages":[{"role":"user","content":"hello"}]}`),
+			"clean",
+		)
+		var response map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(record.Response.ResponseData, &response))
+		var content []map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(response["content"], &content))
+		textBlock := content[1]
+		textBlock["citations"] = mustJSON([]any{
+			map[string]any{"type": "web_search_result_location", "title": "GEO", "url": "https://example.com?utm_source=openai"},
+		})
+		content[1] = textBlock
+		response["content"] = mustJSON(content)
+		record.Response.ResponseData = mustJSON(response)
 		require.ErrorContains(t, ValidateDeliveryFidelity(record, DefaultPublicModel), "OpenAI search tracking parameter")
 	})
 

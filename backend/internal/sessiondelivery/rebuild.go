@@ -39,6 +39,8 @@ type RebuildChangeStats struct {
 	RequestThinkingEchoRepaired     int64 `json:"request_thinking_echo_repaired"`
 	RequestHistoryThinkingCompleted int64 `json:"request_history_thinking_completed"`
 	UsageReprojected                int64 `json:"usage_reprojected"`
+	AssistantTextTrackingStripped   int64 `json:"assistant_text_tracking_stripped"`
+	AssistantToolTrackingStripped   int64 `json:"assistant_tool_tracking_stripped"`
 }
 
 // RebuildArchiveResult describes one validated input and its independently
@@ -419,6 +421,8 @@ func buildReprojectedArchive(
 			changes.ToolIDsNormalized += fidelityStats.ToolIDsNormalized
 			changes.OpenAIContentBlocksNormalized += fidelityStats.OpenAIContentBlocksNormalized
 			changes.ResponseThinkingRemoved += fidelityStats.ResponseThinkingRemoved
+			changes.AssistantTextTrackingStripped += fidelityStats.AssistantTextTrackingStripped
+			changes.AssistantToolTrackingStripped += fidelityStats.AssistantToolTrackingStripped
 			if responseCompleted {
 				changes.ResponseThinkingCompleted++
 			}
@@ -812,4 +816,6 @@ func addRebuildStats(total *RebuildChangeStats, value RebuildChangeStats) {
 	total.RequestThinkingEchoRepaired += value.RequestThinkingEchoRepaired
 	total.RequestHistoryThinkingCompleted += value.RequestHistoryThinkingCompleted
 	total.UsageReprojected += value.UsageReprojected
+	total.AssistantTextTrackingStripped += value.AssistantTextTrackingStripped
+	total.AssistantToolTrackingStripped += value.AssistantToolTrackingStripped
 }

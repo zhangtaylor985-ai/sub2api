@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/thinkingsig"
 	"github.com/stretchr/testify/require"
 )
 
@@ -107,6 +108,26 @@ func TestEchoRepairReplacesUnsignedThinkingWithPriorResponseEcho(t *testing.T) {
 	}`)
 	require.NoError(t, repair.process(turn2))
 	require.Equal(t, "sig-prior-exact", requestAssistantThinkingSignature(t, turn2))
+}
+
+func TestEchoRepairReplacesOpaqueThinkingWithPriorOpus5Echo(t *testing.T) {
+	repair := &echoRepair{}
+	priorSignature := thinkingsig.Generate(DefaultPublicModel, 900)
+	turn1 := echoTestRecord("session_opaque", "first question", "", true, "answer one", priorSignature)
+	require.NoError(t, repair.process(turn1))
+
+	turn2 := echoTestRecord("session_opaque", "second question", "answer one", true, "answer two", thinkingsig.Generate(DefaultPublicModel, 900))
+	turn2.Request = json.RawMessage(`{
+		"model":"claude-opus-5",
+		"thinking":{"type":"adaptive","display":"omitted"},
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"first"}]},
+			{"role":"assistant","content":[{"type":"thinking","thinking":"legacy","signature":"opaque-client-history-signature"},{"type":"text","text":"answer one"}]},
+			{"role":"user","content":[{"type":"text","text":"second question"}]}
+		]
+	}`)
+	require.NoError(t, repair.process(turn2))
+	require.Equal(t, priorSignature, requestAssistantThinkingSignature(t, turn2))
 }
 
 func TestEchoRepairSkipsWhenThinkingNotEnabled(t *testing.T) {

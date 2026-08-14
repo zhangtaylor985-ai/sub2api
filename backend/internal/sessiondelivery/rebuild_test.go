@@ -173,6 +173,42 @@ func TestEnsureRequestHistoryThinkingSignaturesIsIdempotent(t *testing.T) {
 	require.Equal(t, signature, requestAssistantThinkingSignature(t, record))
 }
 
+func TestEnsureRequestHistoryThinkingSignaturesUpgradesOpaqueSignatureDeterministically(t *testing.T) {
+	request := json.RawMessage(`{
+		"model":"claude-opus-5",
+		"thinking":{"type":"adaptive","display":"omitted"},
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"first"}]},
+			{"role":"assistant","content":[{"type":"thinking","thinking":"legacy visible reasoning","signature":"opaque-client-history-signature"},{"type":"text","text":"answer"}]},
+			{"role":"user","content":[{"type":"text","text":"second"}]}
+		]
+	}`)
+	first := historicalRebuildRecord(time.Now().UTC(), 2, 130)
+	first.SessionID = "session_opaque_history"
+	first.Request = append(json.RawMessage(nil), request...)
+	second := historicalRebuildRecord(time.Now().UTC(), 2, 130)
+	second.SessionID = first.SessionID
+	second.Request = append(json.RawMessage(nil), request...)
+
+	completed, err := ensureRequestHistoryThinkingSignatures(first)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), completed)
+	completed, err = ensureRequestHistoryThinkingSignatures(second)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), completed)
+
+	firstSignature := requestAssistantThinkingSignature(t, first)
+	require.NotEqual(t, "opaque-client-history-signature", firstSignature)
+	require.Equal(t, firstSignature, requestAssistantThinkingSignature(t, second))
+	require.NoError(t, validateOpus5SignatureShape(firstSignature, DefaultPublicModel))
+	require.NotContains(t, string(first.Request), "legacy visible reasoning")
+
+	completed, err = ensureRequestHistoryThinkingSignatures(first)
+	require.NoError(t, err)
+	require.Zero(t, completed)
+	require.Equal(t, firstSignature, requestAssistantThinkingSignature(t, first))
+}
+
 func TestStripHistoricalCodexBootstrapRewritesEmbeddedOnlyBlock(t *testing.T) {
 	request := map[string]json.RawMessage{
 		"messages": json.RawMessage(`[{

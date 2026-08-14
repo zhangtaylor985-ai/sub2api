@@ -737,30 +737,56 @@ func ensureRequestHistoryThinkingSignatures(record *DeliveryRecord) (int64, erro
 			continue
 		}
 		var unsigned int64
-		for _, rawBlock := range content {
+		messageChanged := false
+		for blockIndex, rawBlock := range content {
 			var block map[string]json.RawMessage
-			if json.Unmarshal(rawBlock, &block) == nil && rawString(block["type"]) == "thinking" &&
-				rawString(block["signature"]) == "" {
-				unsigned++
+			if json.Unmarshal(rawBlock, &block) != nil || rawString(block["type"]) != "thinking" {
+				continue
 			}
+			signature := rawString(block["signature"])
+			if signature == "" {
+				unsigned++
+				continue
+			}
+			if validateOpus5SignatureShape(signature, DefaultPublicModel) == nil {
+				continue
+			}
+			thinkingBytes := len(rawString(block["thinking"]))
+			block["thinking"] = mustJSON("")
+			block["signature"] = mustJSON(deterministicRequestHistorySignature(
+				record.SessionID,
+				signature,
+				DefaultPublicModel,
+				thinkingBytes,
+			))
+			reencoded, err := json.Marshal(block)
+			if err != nil {
+				return 0, fmt.Errorf("re-encode request history thinking block: %w", err)
+			}
+			content[blockIndex] = reencoded
+			messageChanged = true
+			completed++
 		}
-		if unsigned == 0 {
+		if unsigned == 0 && !messageChanged {
 			continue
 		}
-		responseShape := map[string]json.RawMessage{
-			"model":   request["model"],
-			"content": message["content"],
+		message["content"] = mustJSON(content)
+		if unsigned > 0 {
+			responseShape := map[string]json.RawMessage{
+				"model":   request["model"],
+				"content": message["content"],
+			}
+			if err := ensureThinkingSignatures(responseShape, false, false, 0); err != nil {
+				return 0, err
+			}
+			message["content"] = responseShape["content"]
+			completed += unsigned
 		}
-		if err := ensureThinkingSignatures(responseShape, false, false, 0); err != nil {
-			return 0, err
-		}
-		message["content"] = responseShape["content"]
 		reencoded, err := json.Marshal(message)
 		if err != nil {
 			return 0, fmt.Errorf("re-encode request assistant message: %w", err)
 		}
 		messages[index] = reencoded
-		completed += unsigned
 	}
 	if completed == 0 {
 		return 0, nil

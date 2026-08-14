@@ -231,6 +231,51 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 	require.Zero(t, storeStatus.DatabaseTokenVolume.UncountedDeliveries)
 }
 
+func TestExportUpgradesOpaqueRequestHistorySignature(t *testing.T) {
+	ctx := context.Background()
+	store := startSessionDeliveryPostgres(t, ctx)
+	require.NoError(t, store.Migrate(ctx))
+
+	hour := time.Date(2026, 8, 14, 1, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return hour.Add(30 * time.Minute) }
+	envelope := buildCrossHourEnvelope(t, hour.Add(10*time.Minute), 2, 130)
+	envelope.SessionID = "session_opaque_export"
+	envelope.Delivery.SessionID = envelope.SessionID
+	envelope.Delivery.Request = json.RawMessage(`{
+		"model":"claude-opus-5",
+		"max_tokens":1024,
+		"thinking":{"type":"adaptive"},
+		"output_config":{"effort":"low"},
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"first question"}]},
+			{"role":"assistant","content":[{"type":"thinking","thinking":"legacy visible reasoning","signature":"opaque-client-history-signature"},{"type":"text","text":"answer one"}]},
+			{"role":"user","content":[{"type":"text","text":"second question"}]}
+		]
+	}`)
+	inserted, err := store.Insert(ctx, envelope)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	archiveBackend, err := NewLocalArchiveBackend(filepath.Join(t.TempDir(), "opaque-history-archive"))
+	require.NoError(t, err)
+	exporter, err := NewExporter(store, archiveBackend, ExporterConfig{
+		PublicModel: DefaultPublicModel,
+		TempDir:     filepath.Join(t.TempDir(), "opaque-history-export"),
+	})
+	require.NoError(t, err)
+	result, err := exporter.ExportHour(ctx, hour)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), result.Manifest.DeliveryCount)
+
+	records := readDeliveryRecordsFromArchive(t, result.Archive.Name)
+	require.Len(t, records, 1)
+	require.NoError(t, ValidateDeliveryFidelity(&records[0], DefaultPublicModel))
+	signature := requestAssistantThinkingSignature(t, &records[0])
+	require.NotEqual(t, "opaque-client-history-signature", signature)
+	require.NoError(t, validateOpus5SignatureShape(signature, DefaultPublicModel))
+	require.NotContains(t, string(records[0].Request), "legacy visible reasoning")
+}
+
 func TestHourlyExportPreservesProjectionStateAfterPurge(t *testing.T) {
 	ctx := context.Background()
 	store := startSessionDeliveryPostgres(t, ctx)

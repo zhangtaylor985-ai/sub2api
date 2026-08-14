@@ -22,6 +22,8 @@
 - 历史回填命令默认 dry-run：Drive 正式对象必须逐条验证、并以 batch SHA/size/hour/count 四重匹配后才能写批次；数据库 pending 记录按上限顺序流式解压，幂等更新且跳过 exporting/archived/verified/purged 小时。
 - 管理台对完全未知旧数据显示“待回填”，部分 coverage 显示 `≥ 已统计值` 和剩余条数；不会把未知量展示成 0。顶部已归档 Token 为 accent 主指标，字节降为次级信息。
 - 22 UTC 根因回归已通过：thinking-enabled 投影会稳定地把所有 thinking/redacted thinking 前置，server tool/result 和其他块保持相对顺序，严格 validator 通过；修改仅在 Session fidelity normalizer，`signature.go` 与实时响应均未改变。
+- 22Z 修复后追赶到 01Z 时发现另一类历史输入：Claude Code 的 request history 可携带长度约 360 字符的 opaque signature，不是 Opus 5 protobuf 外壳；仅检查非空会错误跳过归一。
+- 最保真的处置顺序应为：能匹配已捕获前序响应时使用其 thinking 块逐字节回声；会话从中途开始时，按稳定 Session 与原 opaque signature 做确定性 Opus 5 外壳映射，避免同一历史 turn 跨记录/跨小时出现不同签名字节。
 
 ## 2026-08-14 最终 Claude Code × Opus 5 保真审计
 

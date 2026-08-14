@@ -204,7 +204,8 @@ func thinkingBlockSignatureState(content []json.RawMessage) (hasThinking, hasSig
 			continue
 		}
 		hasThinking = true
-		if rawString(parsed["signature"]) != "" {
+		signature := rawString(parsed["signature"])
+		if signature != "" && validateOpus5SignatureShape(signature, DefaultPublicModel) == nil {
 			hasSignedThinking = true
 		}
 	}

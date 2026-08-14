@@ -17,6 +17,9 @@
 - 管理后台已将待归档/累计归档 Token 提升为顶部主指标，支持 K/M/B、自适应小数、悬停精确整数、输入/输出分项、批次 Token 与 unknown/partial coverage 语义；归档字节保留为辅助信息。
 - 前端 ESLint、2 个 Session 专项 Vitest（6 tests）与 `vue-tsc --noEmit` 通过；Go Session/sessionctl 单元测试通过。
 - 全量后端 `go test ./... -count=1`、`go vet ./...`、Session race、前端全量 lint/typecheck/build 均通过；生产候选开始进入双机发布窗口。
+- 生产首轮追赶已完成 22Z/23Z/00Z 的 Drive 回读与 purge；01Z 暴露 Claude Code 中途会话携带短 opaque 历史 signature，旧逻辑因“非空即保留”被严格 Opus 5 外壳门禁拦截，数据未上传且完整保留。
+- 已新增 Session-only 历史 signature 归一：优先复用已捕获前序响应的逐字节 thinking 回声；无法匹配时按稳定 Session + 原 signature 确定性生成 Opus 5 外壳并清空 display=omitted thinking。`signature.go` 与实时响应未修改。
+- 第二轮门禁已通过 targeted unit、race、PostgreSQL 18 实际导出生命周期、全后端 `go test ./... -count=1` 与 `go vet ./...`；同一历史块跨记录回声逐字节稳定。
 - PostgreSQL 18 生命周期集成测试通过，覆盖迁移幂等、入库、导出、manifest Token 自校验、Drive 形态 durable verify、status 聚合、archive/record dry-run+apply 回填和 purge。
 - 集成测试首次未显式传 OrbStack Docker socket，testcontainers 报 `rootless Docker not found`；确认 Docker 正常后以可信本机 socket 重跑通过，未修改业务数据或生产环境。
 - 后端全量 `go test ./... -count=1`、`go vet ./...`、Session/sessionctl/sessiond Race Detector 全部通过；五项 PostgreSQL 18 integration 全量重跑通过。

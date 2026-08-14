@@ -12,8 +12,8 @@
 | 指标模型与迁移设计 | complete | 记录层总输入/输出+coverage，批次层最终四字段+coverage，新增 manifest 自校验与 dry-run-first 回填 |
 | sessiond/status API 实现 | complete | 入库提取、批次持久化、无 payload 状态聚合、最近批次 Token 与 API 测试已完成 |
 | 管理后台实现 | complete | 待归档/已归档 Token 升为主指标，K/M/B、自适应精度、精确值提示与未知 coverage 已完成 |
-| 全量回归与历史回填 | in_progress | 本地全量 Go/vet/race/PG18 与前端 lint/typecheck/test/build 已通过；待生产正式归档 dry-run/apply 与口径对账 |
-| 生产发布与观察 | in_progress | 远端分支已同步；正在执行备份、迁移、双架构二进制发布、页面实数验收与回滚点确认 |
+| 全量回归与历史回填 | in_progress | 两轮本地全量 Go/vet/race/PG18 与前端 lint/typecheck/test/build 已通过；待生产正式归档 dry-run/apply 与口径对账 |
+| 生产发布与观察 | in_progress | Token 主版本已发布；22Z/23Z/00Z 已归档，正在发布 opaque history signature 补丁并追赶 01Z 后续小时 |
 
 ### 约束
 

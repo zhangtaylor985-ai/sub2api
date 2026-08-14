@@ -18,7 +18,10 @@ import (
 
 var ErrSpoolFull = errors.New("session delivery spool is full")
 
-const defaultDecodedEnvelopeMaxBytes int64 = 544 << 20
+const (
+	defaultDecodedEnvelopeMaxBytes int64 = 544 << 20
+	spoolUsageRefreshInterval            = 5 * time.Second
+)
 
 type Spool struct {
 	dir           string
@@ -27,8 +30,9 @@ type Spool struct {
 	tmpDir        string
 	maxBytes      int64
 
-	mu        sync.Mutex
-	usedBytes int64
+	mu               sync.Mutex
+	usedBytes        int64
+	lastUsageRefresh time.Time
 }
 
 type SpoolStats struct {
@@ -225,6 +229,19 @@ func (s *Spool) Write(envelope *Envelope) (string, error) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if time.Since(s.lastUsageRefresh) >= spoolUsageRefreshInterval {
+		// The forwarder normally runs in a separate process and can remove
+		// acknowledged files behind this recorder's in-memory counter.
+		_ = s.recountLocked()
+	}
+	if stat.Size() <= s.maxBytes && s.usedBytes > s.maxBytes-stat.Size() {
+		// Never reject a write using a potentially stale high-water mark.
+		// This forced refresh also recovers immediately when the recorder
+		// believed the shared spool was full.
+		if err := s.recountLocked(); err != nil {
+			return "", fmt.Errorf("refresh spool usage before quota check: %w", err)
+		}
+	}
 	if existing, err := os.Stat(destination); err == nil {
 		return destination, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -245,15 +262,19 @@ func (s *Spool) Write(envelope *Envelope) (string, error) {
 	return destination, nil
 }
 
-// HasCapacity checks the in-memory spool budget before an expensive request or
-// response capture starts. Write remains the authoritative final guard because
-// concurrent requests may consume the remaining budget after this snapshot.
+// HasCapacity checks the spool budget before an expensive request or response
+// capture starts. The recorder and forwarder may be separate processes, so the
+// in-memory counter is periodically refreshed and refreshed immediately at the
+// high-water mark. Write remains the authoritative final guard.
 func (s *Spool) HasCapacity() bool {
 	if s == nil {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.usedBytes >= s.maxBytes || time.Since(s.lastUsageRefresh) >= spoolUsageRefreshInterval {
+		_ = s.recountLocked()
+	}
 	return s.usedBytes < s.maxBytes
 }
 
@@ -499,6 +520,12 @@ func (s *Spool) openPending(path string) (*os.File, error) {
 }
 
 func (s *Spool) recount() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.recountLocked()
+}
+
+func (s *Spool) recountLocked() error {
 	var total int64
 	for _, directory := range []string{s.pendingDir, s.quarantineDir} {
 		entries, err := os.ReadDir(directory)
@@ -511,12 +538,16 @@ func (s *Spool) recount() error {
 			}
 			stat, err := entry.Info()
 			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					continue
+				}
 				return fmt.Errorf("stat spool record: %w", err)
 			}
 			total += stat.Size()
 		}
 	}
 	s.usedBytes = total
+	s.lastUsageRefresh = time.Now()
 	return nil
 }
 

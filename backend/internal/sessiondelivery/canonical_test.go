@@ -1069,6 +1069,70 @@ func TestSpoolRoundTripIdempotencyAndQuota(t *testing.T) {
 	require.True(t, errors.Is(err, ErrSpoolFull))
 }
 
+func TestSpoolRefreshesUsageAfterExternalForwarderRemoval(t *testing.T) {
+	newEnvelope := func(recordID string) *Envelope {
+		return &Envelope{
+			SchemaVersion: SchemaVersion,
+			RecordID:      recordID,
+			CapturedAt:    time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC),
+			Original:      OriginalPayload{Request: []byte(`{"model":"x"}`)},
+		}
+	}
+
+	t.Run("high water mark refresh", func(t *testing.T) {
+		spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 1<<20)
+		require.NoError(t, err)
+		path, err := spool.Write(newEnvelope("rec_one"))
+		require.NoError(t, err)
+		used, _ := spool.Usage()
+		require.Greater(t, used, int64(0))
+
+		spool.mu.Lock()
+		spool.maxBytes = used
+		spool.mu.Unlock()
+		// Simulate the independent forwarder acknowledging the file. Its own
+		// Spool instance cannot decrement this recorder's in-memory counter.
+		require.NoError(t, os.Remove(path))
+		require.True(t, spool.HasCapacity())
+		refreshed, _ := spool.Usage()
+		require.Zero(t, refreshed)
+	})
+
+	t.Run("authoritative write guard refresh", func(t *testing.T) {
+		spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 1<<20)
+		require.NoError(t, err)
+		path, err := spool.Write(newEnvelope("rec_one"))
+		require.NoError(t, err)
+		used, _ := spool.Usage()
+
+		spool.mu.Lock()
+		spool.maxBytes = used + 1
+		spool.mu.Unlock()
+		require.NoError(t, os.Remove(path))
+		// The stale counter is still below max, so the preflight passes. Write
+		// must force a disk recount before its final quota rejection.
+		require.True(t, spool.HasCapacity())
+		secondPath, err := spool.Write(newEnvelope("rec_two"))
+		require.NoError(t, err)
+		require.FileExists(t, secondPath)
+	})
+
+	t.Run("periodic refresh below high water mark", func(t *testing.T) {
+		spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 1<<20)
+		require.NoError(t, err)
+		path, err := spool.Write(newEnvelope("rec_one"))
+		require.NoError(t, err)
+		require.NoError(t, os.Remove(path))
+
+		spool.mu.Lock()
+		spool.lastUsageRefresh = time.Now().Add(-2 * spoolUsageRefreshInterval)
+		spool.mu.Unlock()
+		require.True(t, spool.HasCapacity())
+		refreshed, _ := spool.Usage()
+		require.Zero(t, refreshed)
+	})
+}
+
 func TestRepairMissingSessionIDQuarantine(t *testing.T) {
 	spool, err := NewSpool(filepath.Join(t.TempDir(), "spool"), 16<<20)
 	require.NoError(t, err)

@@ -48,6 +48,33 @@ func TestNormalizeProjectionFidelityRemovesCodexArtifactsAndNormalizesToolIDs(t 
 	require.Contains(t, string(normalizedResponse), `"id":"toolu_xyz789"`)
 }
 
+func TestNormalizeProjectionFidelityNormalizesLegacyTooluseIDs(t *testing.T) {
+	request := json.RawMessage(`{
+		"model":"claude-opus-5",
+		"max_tokens":1024,
+		"messages":[
+			{"role":"assistant","content":[{"type":"tool_use","id":"tooluse_F4dwodeQ","name":"Read","input":{}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"tooluse_F4dwodeQ","content":"ok"}]}
+		]
+	}`)
+	response := json.RawMessage(`{
+		"id":"msg_legacy_tool","type":"message","role":"assistant","model":"claude-opus-5",
+		"content":[{"type":"text","text":"done"}],
+		"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5}
+	}`)
+
+	normalizedRequest, _, stats, err := normalizeProjectionFidelity(
+		request,
+		response,
+		fidelityNormalizationOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), stats.ToolIDsNormalized)
+	require.NotContains(t, string(normalizedRequest), "tooluse_")
+	require.Contains(t, string(normalizedRequest), `"id":"toolu_F4dwodeQ"`)
+	require.Contains(t, string(normalizedRequest), `"tool_use_id":"toolu_F4dwodeQ"`)
+}
+
 func TestNormalizeProjectionFidelityDropsHistoricalThinkingWhenDisabled(t *testing.T) {
 	signature := thinkingsig.Generate(DefaultPublicModel, 900)
 	request := json.RawMessage(`{
@@ -273,6 +300,142 @@ func TestRealClientSpoolProjectsToOpus5Fidelity(t *testing.T) {
 		report.CacheContinuations,
 		report.CacheRestarts,
 	)
+}
+
+func TestStripOpenAISearchTracking(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		want     string
+		stripped int64
+	}{
+		{"trailing param", "see [geo](https://ncbi.nlm.nih.gov/geo?acc=GSE1&utm_source=openai)", "see [geo](https://ncbi.nlm.nih.gov/geo?acc=GSE1)", 1},
+		{"sole param drops question mark", "https://example.com?utm_source=openai", "https://example.com", 1},
+		{"sole param before paren", "[x](https://example.com?utm_source=openai)", "[x](https://example.com)", 1},
+		{"first of several", "https://example.com?utm_source=openai&acc=GSE1", "https://example.com?acc=GSE1", 1},
+		{"middle param", "https://example.com?a=1&utm_source=openai&b=2", "https://example.com?a=1&b=2", 1},
+		{"multiple urls", "a ?x=1&utm_source=openai b ?y=2&utm_source=openai c", "a ?x=1 b ?y=2 c", 2},
+		{"uppercase", "https://example.com?a=1&UTM_SOURCE=OPENAI", "https://example.com?a=1", 1},
+		{"longer value preserved", "https://example.com?utm_source=openai2", "https://example.com?utm_source=openai2", 0},
+		{"not a query param preserved", "see xutm_source=openai here", "see xutm_source=openai here", 0},
+		{"plain mention preserved", "the utm_source=openai parameter", "the utm_source=openai parameter", 0},
+		{"no match", "https://example.com?acc=GSE1", "https://example.com?acc=GSE1", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, stripped := stripOpenAISearchTracking(tc.input)
+			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.stripped, stripped)
+		})
+	}
+}
+
+func TestNormalizeProjectionFidelityStripsAssistantTracking(t *testing.T) {
+	assistantText := "sources: [a](https://ncbi.nlm.nih.gov/geo?acc=GSE1&utm_source=openai) and [b](https://example.com?utm_source=openai)"
+	userText := "I found this link https://chatgpt.example.com/?utm_source=openai myself"
+	request := json.RawMessage(`{
+		"model":"claude-opus-5","max_tokens":1024,
+		"thinking":{"type":"adaptive","display":"omitted"},
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":` + string(mustJSON(userText)) + `}]},
+			{"role":"assistant","content":[{"type":"text","text":` + string(mustJSON(assistantText)) + `}]},
+			{"role":"user","content":[{"type":"text","text":"next"}]}
+		]
+	}`)
+	response := mustJSON(map[string]any{
+		"id": "msg_utm", "type": "message", "role": "assistant", "model": DefaultPublicModel,
+		"content": []any{
+			map[string]any{"type": "thinking", "thinking": "", "signature": thinkingsig.Generate(DefaultPublicModel, 900)},
+			map[string]any{"type": "text", "text": assistantText},
+		},
+		"stop_reason": "end_turn",
+		"usage":       map[string]any{"input_tokens": 10, "output_tokens": 5},
+	})
+
+	normalizedRequest, normalizedResponse, stats, err := normalizeProjectionFidelity(
+		request,
+		response,
+		fidelityNormalizationOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(4), stats.AssistantTextTrackingStripped)
+	require.NotContains(t, string(normalizedResponse), "utm_source=openai")
+	// User-authored text is authentic client input and must stay untouched.
+	require.Contains(t, string(normalizedRequest), "utm_source=openai")
+	require.Contains(t, string(normalizedRequest), "chatgpt.example.com")
+
+	// The sanitized response text and its echo in later request history must
+	// stay byte-identical, like real Claude Code multi-turn traffic.
+	var req struct {
+		Messages []struct {
+			Role    string                   `json:"role"`
+			Content []map[string]interface{} `json:"content"`
+		} `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal(normalizedRequest, &req))
+	var resp struct {
+		Content []map[string]interface{} `json:"content"`
+	}
+	require.NoError(t, json.Unmarshal(normalizedResponse, &resp))
+	require.Equal(t, req.Messages[1].Content[0]["text"], resp.Content[1]["text"])
+	require.Contains(t, resp.Content[1]["text"], "acc=GSE1")
+}
+
+func TestValidateDeliveryFidelityRejectsOpenAISearchTracking(t *testing.T) {
+	signature := thinkingsig.Generate(DefaultPublicModel, 900)
+	validUsage := map[string]any{
+		"input_tokens": 2, "output_tokens": 1,
+		"cache_creation_input_tokens": 10, "cache_read_input_tokens": 0,
+		"cache_creation":  map[string]any{"ephemeral_5m_input_tokens": 10, "ephemeral_1h_input_tokens": 0},
+		"server_tool_use": map[string]any{"web_search_requests": 0, "web_fetch_requests": 0},
+		"service_tier":    "standard", "inference_geo": "global", "iterations": []any{}, "speed": "standard",
+	}
+	buildRecord := func(request json.RawMessage, responseText string) *DeliveryRecord {
+		record := usageTestRecord("session_utm_gate", fixedTestTime(), 100, 10, "hello")
+		record.Request = request
+		record.Response.ResponseData = mustJSON(map[string]any{
+			"id": "msg_utm_gate", "type": "message", "role": "assistant", "model": DefaultPublicModel,
+			"content": []any{
+				map[string]any{"type": "thinking", "thinking": "", "signature": signature},
+				map[string]any{"type": "text", "text": responseText},
+			},
+			"stop_reason": "end_turn",
+			"usage":       validUsage,
+		})
+		return record
+	}
+
+	t.Run("response text", func(t *testing.T) {
+		record := buildRecord(
+			json.RawMessage(`{"model":"claude-opus-5","max_tokens":1024,"thinking":{"type":"adaptive","display":"omitted"},"messages":[{"role":"user","content":"hello"}]}`),
+			"see https://example.com?a=1&utm_source=openai",
+		)
+		require.ErrorContains(t, ValidateDeliveryFidelity(record, DefaultPublicModel), "OpenAI search tracking parameter")
+	})
+
+	t.Run("assistant history text", func(t *testing.T) {
+		record := buildRecord(
+			json.RawMessage(`{"model":"claude-opus-5","max_tokens":1024,"thinking":{"type":"adaptive","display":"omitted"},"messages":[{"role":"assistant","content":[{"type":"text","text":"see https://example.com?utm_source=openai"}]},{"role":"user","content":"next"}]}`),
+			"clean",
+		)
+		require.ErrorContains(t, ValidateDeliveryFidelity(record, DefaultPublicModel), "OpenAI search tracking parameter")
+	})
+
+	t.Run("assistant tool input", func(t *testing.T) {
+		record := buildRecord(
+			json.RawMessage(`{"model":"claude-opus-5","max_tokens":1024,"thinking":{"type":"adaptive","display":"omitted"},"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_abc","name":"WebFetch","input":{"url":"https://example.com?utm_source=openai"}}]},{"role":"user","content":"next"}]}`),
+			"clean",
+		)
+		require.ErrorContains(t, ValidateDeliveryFidelity(record, DefaultPublicModel), "OpenAI search tracking parameter")
+	})
+
+	t.Run("user text passes", func(t *testing.T) {
+		record := buildRecord(
+			json.RawMessage(`{"model":"claude-opus-5","max_tokens":1024,"thinking":{"type":"adaptive","display":"omitted"},"messages":[{"role":"user","content":"look at https://example.com?utm_source=openai"}]}`),
+			"clean",
+		)
+		require.NoError(t, ValidateDeliveryFidelity(record, DefaultPublicModel))
+	})
 }
 
 func fixedTestTime() (value time.Time) {

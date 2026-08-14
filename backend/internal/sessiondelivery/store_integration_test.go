@@ -248,8 +248,8 @@ func TestExportUpgradesOpaqueRequestHistorySignature(t *testing.T) {
 		"output_config":{"effort":"low"},
 		"messages":[
 			{"role":"user","content":[{"type":"text","text":"first question"}]},
-			{"role":"assistant","content":[{"type":"thinking","thinking":"legacy visible reasoning","signature":"opaque-client-history-signature"},{"type":"text","text":"answer one"}]},
-			{"role":"user","content":[{"type":"text","text":"second question"}]}
+			{"role":"assistant","content":[{"type":"thinking","thinking":"legacy visible reasoning","signature":"opaque-client-history-signature"},{"type":"text","text":"answer one"},{"type":"tool_use","id":"tooluse_F4dwodeQ","name":"Read","input":{}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"tooluse_F4dwodeQ","content":"ok"},{"type":"text","text":"second question"}]}
 		]
 	}`)
 	inserted, err := store.Insert(ctx, envelope)
@@ -274,6 +274,8 @@ func TestExportUpgradesOpaqueRequestHistorySignature(t *testing.T) {
 	require.NotEqual(t, "opaque-client-history-signature", signature)
 	require.NoError(t, validateOpus5SignatureShape(signature, DefaultPublicModel))
 	require.NotContains(t, string(records[0].Request), "legacy visible reasoning")
+	require.NotContains(t, string(records[0].Request), "tooluse_")
+	require.Contains(t, string(records[0].Request), "toolu_F4dwodeQ")
 }
 
 func TestHourlyExportPreservesProjectionStateAfterPurge(t *testing.T) {

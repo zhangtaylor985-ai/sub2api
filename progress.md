@@ -20,6 +20,8 @@
 - 生产首轮追赶已完成 22Z/23Z/00Z 的 Drive 回读与 purge；01Z 暴露 Claude Code 中途会话携带短 opaque 历史 signature，旧逻辑因“非空即保留”被严格 Opus 5 外壳门禁拦截，数据未上传且完整保留。
 - 已新增 Session-only 历史 signature 归一：优先复用已捕获前序响应的逐字节 thinking 回声；无法匹配时按稳定 Session + 原 signature 确定性生成 Opus 5 外壳并清空 display=omitted thinking。`signature.go` 与实时响应未修改。
 - 第二轮门禁已通过 targeted unit、race、PostgreSQL 18 实际导出生命周期、全后端 `go test ./... -count=1` 与 `go vet ./...`；同一历史块跨记录回声逐字节稳定。
+- 02Z 已完成 1,319 条记录、750 条交付与 73,873,187 Token 的 Drive 回读/purge；03Z 随后发现旧 Claude Code history 使用 `tooluse_*` ID，严格门禁在上传前拦截且数据完整保留。
+- 已将 `tooluse_*` 在 request tool_use/tool_result 与 response 对称、确定性归一为 `toolu_*`；定向单元、race、vet 与 PostgreSQL 18 exporter 回归均通过。
 - PostgreSQL 18 生命周期集成测试通过，覆盖迁移幂等、入库、导出、manifest Token 自校验、Drive 形态 durable verify、status 聚合、archive/record dry-run+apply 回填和 purge。
 - 集成测试首次未显式传 OrbStack Docker socket，testcontainers 报 `rootless Docker not found`；确认 Docker 正常后以可信本机 socket 重跑通过，未修改业务数据或生产环境。
 - 后端全量 `go test ./... -count=1`、`go vet ./...`、Session/sessionctl/sessiond Race Detector 全部通过；五项 PostgreSQL 18 integration 全量重跑通过。

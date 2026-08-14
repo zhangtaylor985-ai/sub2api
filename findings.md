@@ -24,6 +24,7 @@
 - 22 UTC 根因回归已通过：thinking-enabled 投影会稳定地把所有 thinking/redacted thinking 前置，server tool/result 和其他块保持相对顺序，严格 validator 通过；修改仅在 Session fidelity normalizer，`signature.go` 与实时响应均未改变。
 - 22Z 修复后追赶到 01Z 时发现另一类历史输入：Claude Code 的 request history 可携带长度约 360 字符的 opaque signature，不是 Opus 5 protobuf 外壳；仅检查非空会错误跳过归一。
 - 最保真的处置顺序应为：能匹配已捕获前序响应时使用其 thinking 块逐字节回声；会话从中途开始时，按稳定 Session 与原 opaque signature 做确定性 Opus 5 外壳映射，避免同一历史 turn 跨记录/跨小时出现不同签名字节。
+- 03Z 的长 Claude Code history 同时混有旧 `tooluse_*` 与较新的 `toolu_*`；旧前缀必须在 tool_use 和配对 tool_result 上使用同一后缀映射为 `toolu_*`，不能只改单边，也不能按随机 ID 重建。
 
 ## 2026-08-14 最终 Claude Code × Opus 5 保真审计
 

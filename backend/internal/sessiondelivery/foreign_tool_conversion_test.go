@@ -376,20 +376,38 @@ func TestConvertForeignClientToolsFailsOnArgumentWithNoTargetField(t *testing.T)
 	_, err = convertForeignClientTools(request, nil)
 	require.ErrorContains(t, err, `multiple arguments for Claude Code field "command"`)
 
-	// Only the measured gateway routing label is a client-only execution hint.
-	// Any other host could change where the command ran and may not be erased.
+	// OpenClaw's default auto routing label is a client-only execution hint, just
+	// like the measured gateway label, and has no Claude Code Bash field.
 	request = map[string]json.RawMessage{
 		"tools": mustJSON([]any{map[string]any{"name": "exec"}}),
 		"messages": mustJSON([]any{
 			map[string]any{"role": "assistant", "content": []any{
 				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec", "input": map[string]any{
-					"command": "pwd", "host": "remote-worker",
+					"command": "pwd", "host": "auto", "yieldMs": 1000,
 				}},
 			}},
 		}),
 	}
 	_, err = convertForeignClientTools(request, nil)
-	require.ErrorContains(t, err, "unsupported host routing label")
+	require.NoError(t, err)
+	require.JSONEq(t, `{"command":"pwd"}`, string(historyToolCallInputs(t, request)["Bash"]))
+
+	// A concrete execution target could change where the command ran and may
+	// not be erased merely to make the call look like Claude Code Bash.
+	for _, host := range []string{"sandbox", "node", "remote-worker"} {
+		request = map[string]json.RawMessage{
+			"tools": mustJSON([]any{map[string]any{"name": "exec"}}),
+			"messages": mustJSON([]any{
+				map[string]any{"role": "assistant", "content": []any{
+					map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec", "input": map[string]any{
+						"command": "pwd", "host": host,
+					}},
+				}},
+			}),
+		}
+		_, err = convertForeignClientTools(request, nil)
+		require.ErrorContains(t, err, "unsupported host routing label", host)
+	}
 }
 
 // A patch cannot be mechanically turned into Claude Code's file_path/old_string/

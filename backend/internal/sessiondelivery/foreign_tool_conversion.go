@@ -103,7 +103,8 @@ var foreignArgumentDroppable = map[string]map[string]bool{
 		"shell":               true,
 		"tty":                 true,
 		"workdir":             true, // folded into the command first.
-		// Observed only as "gateway", a routing label rather than a host.
+		// OpenClaw's observed "auto" and "gateway" values are routing labels,
+		// not hostnames. validateBashRoutingLabel keeps concrete targets closed.
 		"host": true,
 	},
 }
@@ -680,10 +681,15 @@ func validateBashRoutingLabel(rawHost json.RawMessage) error {
 		return nil
 	}
 	var host string
-	if err := json.Unmarshal(rawHost, &host); err != nil || host != "gateway" {
+	if err := json.Unmarshal(rawHost, &host); err != nil {
 		return fmt.Errorf("converted Bash call carries unsupported host routing label")
 	}
-	return nil
+	switch host {
+	case "auto", "gateway":
+		return nil
+	default:
+		return fmt.Errorf("converted Bash call carries unsupported host routing label")
+	}
 }
 
 // shellQuote renders a path as a single POSIX shell word.

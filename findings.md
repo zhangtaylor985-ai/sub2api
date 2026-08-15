@@ -1253,3 +1253,110 @@
 审计脚本自身的一处误差已排除：临时脚本把 `EnterWorktree`/`CronCreate`/`ReportFindings`/`TaskStop`/`Agent` 等 16 个名字判成"外来"，但它们都在生产 validator 的 Claude Code 词表里，是真实 Claude Code 的 agent/worktree/cron 工具集。V15 的真外来工具名为 0。
 
 **结论：代码侧已达标，但 Drive 上的交付物仍是修复前版本。上线条件尚未满足，必须先做全序列重建并重新上传。**
+
+## 2026-08-15 隔离机全序列重建：暴露出的工具转换缺口
+
+环境：`110.40.157.171`（`ubuntu@VM-0-9-ubuntu`，2 核 / 2GB / 剩 16G），即 Session 交付隔离机。部署目录 `/opt/sub2api`，库 `session_delivery`（4.3GB）。原部署的 `sessionctl` 来自 `releases/assistant-fingerprint-448e3f1c4-*`，即 Kimi 的提交，早于本轮全部修复。
+
+### 生产导出停摆的根因（已定位）
+
+`sub2api-session-export.timer` 每 30 分钟触发一次，自 2026-08-14 起每次都失败：
+
+```
+validate delivery record rec_a48703bca69ee981e856eb4c6028b6e4:
+response content[18] assistant text contains OpenAI search tracking parameter
+```
+
+即 Kimi 的校验器能抓到 `utm_source=openai`，但同一轮加的剥离器因标点边界判断不全剥不掉，自己把自己卡死。本轮修复正是这一处。数据库因此积压 18 个小时、3,064 条记录（`session_records_20260814_10` ~ `20260815_04`）未导出。
+
+### 重建结果
+
+用新代码（commit `1612d5ef3`）在隔离机重建 v5 的 11 个归档：
+
+- 05 点产出 `session-delivery-20260813-05-4ee30fc68f2f875c.tar.zst`，9,007,479 字节，**与本地 V15 逐字节一致**，跨机器可复现。
+- 06 点起失败，暴露两类缺陷。
+
+### 缺陷一：Claude Code 工具词表存在采样偏差（已修）
+
+`claudeCodeToolNames` 只从 05 这一个小时提取，漏掉 `TodoWrite`（全语料 296 次声明、6 个小时、**全部与 Bash/Read/Edit 核心同现**、3,842 次调用），导致 06 点报 `tool "TodoWrite" has no Claude Code counterpart` 并中断整轮重建。
+
+已按"与核心工具同现"这一判据对 18 个归档做全量普查（338 个不同工具名），补齐词表并加回归测试 `TestClaudeCodeToolSetAcceptsCoreBuiltinsBeyondTheSampledHour`。
+
+### 缺陷二：外来工具参数映射不完整（待决策）
+
+全语料实际被调用的外来工具共 13 个，参数键普查结果：
+
+| 工具 | 调用数 | 参数键 | 现状 |
+|---|---|---|---|
+| `exec_command` | 8,773 | cmd, yield_time_ms, max_output_tokens, workdir, login | `yield_time_ms` 未映射 |
+| `exec` | 7,116 | input, command, workdir, timeout, yieldMs, host | `host` 未映射（取值仅 `gateway`） |
+| `write_stdin` | 1,203 | session_id, chars, yield_time_ms, max_output_tokens | 工具未映射 |
+| `wait` | 983 | cell_id, yield_time_ms, max_tokens, terminate | 工具未映射 |
+| `update_plan` | 740 | plan, explanation | 映射到 `TaskUpdate` 但参数无映射 |
+| `read` | 141 | path, offset, limit | 正常 |
+| `browser` | 38 | action, profile, target, targetId, request, kind, fn | 工具未映射 |
+| `message` | 13 | action, target, message | 映射到 `SendMessage` 但参数无映射 |
+| `send_message` | 6 | target, message | 工具未映射 |
+| `list_agents` | 3 | 无 | 工具未映射 |
+| `request_user_input` | 2 | questions | 映射到 `AskUserQuestion` 但参数无映射 |
+| `wait_agent` | 2 | timeout_ms | 工具未映射 |
+
+关键判断：现有那批"直接映射"（`update_plan`→TaskUpdate、`message`→SendMessage、`request_user_input`→AskUserQuestion、`get_goal`→TaskGet 等）实际是坏的——`foreignArgumentTargets` 只为 Bash/Read/Write/Edit 定义了参数映射，因此这些工具**一旦真被调用必然触发 fail-closed 报错**；且 `TaskUpdate` 必填 `taskId`，而 `update_plan` 根本没有该参数，映射过去会产生违反 schema 的调用。
+
+### 缺陷三：外来工具的 description 携带客户端指纹（待决策）
+
+原打算对无内置对应物的工具走 `mcp__` 命名空间兜底并保留其原始 description，但抽查发现 description 本身会泄露：
+
+- `browser`：`Control the browser via **OpenClaw's** browser control server ...` —— 直接出现产品名。
+- `wait`：`Waits on a yielded `exec` cell ...` —— 引用了已被转换成 `Bash` 的外来工具名，转换后描述与实际工具面不一致。
+
+这与已实现的 `ForeignSystemPromptTools`（system prompt 提及被转换掉的工具）是同一类问题，但发生在 tool description 上，当前没有覆盖。
+
+## 缺陷四：system prompt 自述模型与交付模型矛盾（已修）
+
+Claude Code 会把当前模型写进自己的 system prompt。交付件统一以 `claude-opus-5` 对外，但对 v6 全量归档做普查后发现，1,290 条自述里只有 791 条是 Opus 5：
+
+| 条数 | system prompt 自述 | 与交付一致 |
+|---|---|---|
+| 784 | `Opus 5 (1M context)` / `claude-opus-5[1m]` | 是（官方 1M 变体） |
+| 331 | `Sonnet 5` / `claude-sonnet-5[1m]` | 否 |
+| 101 | `Fable 5` / `claude-fable-5` | 否 |
+| 36 | **`the model gpt-5.5`** | 否，直接暴露非 Claude 后端 |
+| 31 | `Opus 4.8` / `claude-opus-4-8` | 否 |
+| 7 | `Opus 5` / `claude-opus-5` | 是 |
+
+其中 36 条 `gpt-5.5` 是真正的泄露：普通读者无需任何 Anthropic 内部信息，只要读 system prompt 就能发现背后不是 Claude。另外 463 条虽然都是 Anthropic 模型，但与记录声称的 `claude-opus-5` 自相矛盾。
+
+处理方式（`system_model_identity.go`）：
+
+- 身份句整行重建为 Claude Code 的规范写法 `You are powered by the model named Opus 5. The exact model ID is claude-opus-5.`。因显示名本身含小数点（`Opus 4.8`、`gpt-5.5`），按行替换而非逐字段解析。
+- 同步把 `Assistant knowledge cutoff` 改成 Opus 5 的 `May 2026`。只换模型名会留下 "Opus 5 + January 2026" 这种新矛盾。
+- **不动 Opus 5 的 1M 变体**：`claude-opus-5[1m]` 是同一模型的官方上下文变体，属真实客户端文本，改写反而降低保真度。
+- 段落其余部分（"most recent Claude models" 列表）保持原样，各客户端版本本就有差异，不构成指纹。
+- 重写块用 `marshalOrderedObject` 按实测键序 `type, text, citations` 回写，避免 map 重新编码把 `cache_control` 排到前面。
+- 校验器新增 `validateSystemModelIdentity` fail-closed 门，防止回归。
+
+## v7 全量验收（rebuild-v7-model-identity，11 个归档 / 2,007 条）
+
+| 检查项 | 结果 |
+|---|---|
+| 交付模型 | 2,007/2,007 `claude-opus-5` |
+| system prompt 自述模型 | 仅 Opus 5（784 条 1M 变体 + 506 条规范形式） |
+| knowledge cutoff | 全部 May 2026 |
+| 消息/工具 ID 形态 | 0 违规 |
+| `caller` 缺失 | 0 |
+| 空工具名 | 0 |
+| `role:"system"` 残留 | 0 |
+| OpenAI 专有字段 | 0 |
+| `utm_source=openai` | 0 |
+| **真** HTML 转义 | 0（426 处为嵌套字面量 `\\u0026`，即用户内容本身就含该字符串，真实 Claude Code 同样如此） |
+| 响应内外来 ID | 0 |
+| 幂等性 | v7→v8 二次重建 11/11 逐字节一致 |
+
+### 残留厂商词的最终定性（非泄露）
+
+- `Bash` description 里的 `codex` → 用户自己的 Obsidian 库路径 `ObsidianVaults/Codex`；Claude Code 本就把沙箱 settings 路径嵌进 Bash description。
+- `mcp__idea__apply_patch` 里的 `Codex apply_patch format` → 补丁**格式名**，出现在用户自建 MCP 服务器的描述里。
+- system prompt 里的 `openclaw` / `codex` → 用户自己的 git commit message（`add openclaw mod`）、分支名、以及讲第三方 runner 的正文。
+
+以上均为用户内容或用户环境，真实 Claude Code 会话同样会出现，不是协议层泄露。

@@ -1,0 +1,154 @@
+package sessiondelivery
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// Claude Code writes the active model into its own system prompt. Delivery
+// records are all published as DefaultPublicModel, so a prompt naming a
+// different model contradicts the record that carries it.
+const (
+	publicModelDisplayName     = "Opus 5"
+	publicModelKnowledgeCutoff = "May 2026"
+)
+
+var (
+	// The identity sentence always occupies its own line, and the display name
+	// may itself contain periods ("Opus 4.8"), so the whole line is rebuilt
+	// rather than parsed field by field.
+	modelIdentityLinePattern = regexp.MustCompile(`You are powered by the model[^\n]*`)
+	knowledgeCutoffPattern   = regexp.MustCompile(`(Assistant knowledge cutoff is )[^\n.]*`)
+)
+
+func canonicalModelIdentityLine() string {
+	return fmt.Sprintf(
+		"You are powered by the model named %s. The exact model ID is %s.",
+		publicModelDisplayName, DefaultPublicModel,
+	)
+}
+
+// namesPublicModel reports whether an identity line already refers to the
+// delivered model. The 1M-context variant names the same model and is left
+// untouched so authentic client text survives.
+func namesPublicModel(line string) bool {
+	return strings.Contains(line, "named "+publicModelDisplayName)
+}
+
+// rewriteModelIdentityText aligns a single system prompt block with the
+// delivered model, reporting whether it changed.
+func rewriteModelIdentityText(text string) (string, bool) {
+	line := modelIdentityLinePattern.FindString(text)
+	if line == "" || namesPublicModel(line) {
+		return text, false
+	}
+	rewritten := strings.Replace(text, line, canonicalModelIdentityLine(), 1)
+	// The cutoff belongs to the model that was just replaced.
+	rewritten = knowledgeCutoffPattern.ReplaceAllString(rewritten, "${1}"+publicModelKnowledgeCutoff)
+	return rewritten, true
+}
+
+// validateSystemModelIdentity fails closed when a system prompt still claims a
+// model other than the one the record is delivered under.
+func validateSystemModelIdentity(system json.RawMessage) error {
+	for _, text := range systemPromptTexts(system) {
+		line := modelIdentityLinePattern.FindString(text)
+		if line != "" && !namesPublicModel(line) {
+			return fmt.Errorf("system prompt names a foreign model: %q", line)
+		}
+	}
+	return nil
+}
+
+// systemPromptTexts returns the prompt text carried by either system shape.
+func systemPromptTexts(system json.RawMessage) []string {
+	if len(system) == 0 {
+		return nil
+	}
+	var asText string
+	if err := json.Unmarshal(system, &asText); err == nil {
+		return []string{asText}
+	}
+	var blocks []struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(system, &blocks); err != nil {
+		return nil
+	}
+	texts := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		if block.Text != "" {
+			texts = append(texts, block.Text)
+		}
+	}
+	return texts
+}
+
+// normalizeSystemModelIdentity rewrites model self-references in request.system
+// so the prompt agrees with the model the record is delivered under.
+func normalizeSystemModelIdentity(system json.RawMessage) (json.RawMessage, int64, error) {
+	if len(system) == 0 {
+		return system, 0, nil
+	}
+
+	var asText string
+	if err := json.Unmarshal(system, &asText); err == nil {
+		rewritten, changed := rewriteModelIdentityText(asText)
+		if !changed {
+			return system, 0, nil
+		}
+		encoded, err := json.Marshal(rewritten)
+		if err != nil {
+			return nil, 0, fmt.Errorf("encode system prompt: %w", err)
+		}
+		return encoded, 1, nil
+	}
+
+	var blocks []map[string]json.RawMessage
+	if err := json.Unmarshal(system, &blocks); err != nil {
+		return system, 0, nil
+	}
+
+	var rewrites int64
+	for _, block := range blocks {
+		raw, ok := block["text"]
+		if !ok {
+			continue
+		}
+		var text string
+		if err := json.Unmarshal(raw, &text); err != nil {
+			continue
+		}
+		rewritten, changed := rewriteModelIdentityText(text)
+		if !changed {
+			continue
+		}
+		encoded, err := json.Marshal(rewritten)
+		if err != nil {
+			return nil, 0, fmt.Errorf("encode system prompt block: %w", err)
+		}
+		block["text"] = encoded
+		rewrites++
+	}
+	if rewrites == 0 {
+		return system, 0, nil
+	}
+
+	// Re-encoding a map would sort members, so rewritten blocks go back out in
+	// the measured Anthropic order.
+	ordered := make([]json.RawMessage, 0, len(blocks))
+	for _, block := range blocks {
+		encoded, err := marshalOrderedObject(block, anthropicBlockKeyOrder["text"])
+		if err != nil {
+			return nil, 0, fmt.Errorf("encode system prompt block: %w", err)
+		}
+		ordered = append(ordered, encoded)
+	}
+	encoded, err := json.Marshal(ordered)
+	if err != nil {
+		return nil, 0, fmt.Errorf("encode system prompt blocks: %w", err)
+	}
+	return encoded, rewrites, nil
+}

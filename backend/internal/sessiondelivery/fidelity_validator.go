@@ -47,6 +47,9 @@ func ValidateDeliveryFidelity(record *DeliveryRecord, publicModel string) error 
 		return errors.New("adaptive request thinking must use display=omitted")
 	}
 
+	if err := validateSystemModelIdentity(request["system"]); err != nil {
+		return err
+	}
 	if err := validateRequestHistoryFidelity(request["messages"], publicModel); err != nil {
 		return err
 	}
@@ -127,20 +130,27 @@ func validateAnthropicWireShape(request, response map[string]json.RawMessage) er
 // mcpToolPrefix is how Claude Code namespaces an externally provided tool.
 const mcpToolPrefix = "mcp__"
 
-// claudeCodeToolNames is the tool vocabulary observed across the Claude Code
-// cohort of this corpus. MCP tools are excluded from the list because Claude
-// Code namespaces them with an "mcp__" prefix and their leaf names are
-// arbitrary by design.
+// claudeCodeToolNames is the tool vocabulary of the Claude Code cohort. A name
+// earns a place here by being declared alongside the Bash/Read/Edit core across
+// the corpus: every client that ships that core ships its own built-ins with it,
+// while a foreign client's surface never appears next to it. Deriving the list
+// from a single hour is what let TodoWrite fall through as "foreign" once, so it
+// is worth re-running that census over new hours before trusting the list.
+//
+// MCP tools are excluded because Claude Code namespaces them with an "mcp__"
+// prefix and their leaf names are arbitrary by design.
 var claudeCodeToolNames = map[string]struct{}{
-	"Agent": {}, "Artifact": {}, "AskUserQuestion": {}, "Bash": {}, "CronCreate": {},
-	"CronDelete": {}, "CronList": {}, "DesignSync": {}, "Edit": {}, "EndConversation": {},
-	"EnterPlanMode": {}, "EnterWorktree": {}, "ExitPlanMode": {}, "ExitWorktree": {},
-	"Glob": {}, "Grep": {}, "LSP": {}, "ListAgents": {}, "ListMcpResourcesTool": {},
-	"Monitor": {}, "NotebookEdit": {}, "PushNotification": {}, "Read": {},
+	"Agent": {}, "Artifact": {}, "AskUserQuestion": {}, "Bash": {}, "BashOutput": {},
+	"CronCreate": {}, "CronDelete": {}, "CronList": {}, "DesignSync": {}, "Edit": {},
+	"EndConversation": {}, "EnterPlanMode": {}, "EnterWorktree": {}, "ExitPlanMode": {},
+	"ExitWorktree": {}, "Glob": {}, "Grep": {}, "KillShell": {}, "LS": {}, "LSP": {},
+	"ListAgents": {}, "ListMcpResourcesTool": {}, "Monitor": {}, "MultiEdit": {},
+	"NotebookEdit": {}, "NotebookRead": {}, "PushNotification": {}, "Read": {},
 	"ReadMcpResourceDirTool": {}, "ReadMcpResourceTool": {}, "ReportFindings": {},
 	"ScheduleWakeup": {}, "SendMessage": {}, "SendUserFile": {}, "Skill": {},
-	"TaskCreate": {}, "TaskGet": {}, "TaskList": {}, "TaskOutput": {}, "TaskStop": {},
-	"TaskUpdate": {}, "WebFetch": {}, "WebSearch": {}, "Workflow": {}, "Write": {},
+	"SlashCommand": {}, "Task": {}, "TaskCreate": {}, "TaskGet": {}, "TaskList": {},
+	"TaskOutput": {}, "TaskStop": {}, "TaskUpdate": {}, "TodoRead": {}, "TodoWrite": {},
+	"WebFetch": {}, "WebSearch": {}, "Workflow": {}, "Write": {},
 	// Server-side tools are declared by name without a prefix.
 	"web_search": {}, "web_fetch": {},
 }

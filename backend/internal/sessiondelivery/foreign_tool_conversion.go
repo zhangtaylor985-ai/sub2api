@@ -32,27 +32,33 @@ var loadClaudeCodeTools = sync.OnceValues(func() (map[string]json.RawMessage, er
 // foreignToolTargets maps a tool declared by another client onto the Claude Code
 // tool that does the same job. The pairing is by function, read from each
 // foreign tool's own description, not by name similarity.
+// A tool earns a place here only when its arguments can also land on the
+// target's schema. A mapping without one is worse than no mapping: the call
+// either loses arguments or lands on a schema it violates, and the MCP fallback
+// below carries such a tool faithfully instead. update_plan is the example —
+// TaskUpdate requires a taskId that a plan update simply does not have.
 var foreignToolTargets = map[string]string{
 	"exec":          "Bash",
 	"exec_command":  "Bash",
 	"shell_command": "Bash",
+	// Writing to a live shell session is a command run against that shell.
+	"write_stdin": "Bash",
 	// Claude Code's Read covers image files, which is all view_image does.
 	"read":        "Read",
 	"view_image":  "Read",
 	"write":       "Write",
 	"edit":        "Edit",
 	"apply_patch": "Edit",
-	"update_plan": "TaskUpdate",
 	"get_goal":    "TaskGet",
 	"create_goal": "TaskCreate",
 	"update_goal": "TaskUpdate",
 	// Direct counterparts.
-	"request_user_input":          "AskUserQuestion",
 	"list_mcp_resources":          "ListMcpResourcesTool",
 	"read_mcp_resource":           "ReadMcpResourceTool",
 	"list_mcp_resource_templates": "ReadMcpResourceDirTool",
 	"agents_list":                 "ListAgents",
-	"message":                     "SendMessage",
+	"list_agents":                 "ListAgents",
+	"send_message":                "SendMessage",
 	"sessions_send":               "SendMessage",
 }
 
@@ -75,12 +81,19 @@ var foreignArgumentTargets = map[string]map[string]string{
 	},
 	"Edit": {"path": "file_path"},
 	"Bash": {
-		"cmd":        "command",
-		"command":    "command",
-		"input":      "command",
-		"timeout":    "timeout",
-		"timeout_ms": "timeout",
-		"yieldMs":    "timeout",
+		"cmd":     "command",
+		"command": "command",
+		"input":   "command",
+		// write_stdin sends these characters to a shell, which is the command.
+		"chars":         "command",
+		"timeout":       "timeout",
+		"timeout_ms":    "timeout",
+		"yieldMs":       "timeout",
+		"yield_time_ms": "timeout",
+	},
+	"SendMessage": {
+		"target":  "to",
+		"message": "message",
 	},
 }
 
@@ -104,6 +117,12 @@ var foreignArgumentDroppable = map[string]map[string]bool{
 		"shell":               true,
 		"tty":                 true,
 		"workdir":             true, // folded into the command first.
+		// Which shell a command went to is the foreign client's bookkeeping;
+		// Claude Code addresses a background shell by its own identifier and a
+		// foreground one not at all.
+		"session_id": true,
+		// Observed only as "gateway", a routing label rather than a host.
+		"host": true,
 	},
 }
 
@@ -175,7 +194,7 @@ func convertForeignClientTools(
 		return stats, err
 	}
 	renames := make(map[string]string, len(declared))
-	converted := make([]json.RawMessage, 0, len(declared))
+	converted := make([]map[string]json.RawMessage, 0, len(declared))
 	emitted := make(map[string]bool, len(declared))
 	handled := make([]string, 0, len(declared))
 	for _, tool := range declared {
@@ -183,24 +202,23 @@ func convertForeignClientTools(
 		if isClaudeCodeToolName(name) {
 			if !emitted[name] {
 				emitted[name] = true
-				encoded, marshalErr := json.Marshal(tool)
-				if marshalErr != nil {
-					return stats, fmt.Errorf("re-encode declared tool %q: %w", name, marshalErr)
-				}
-				converted = append(converted, encoded)
+				converted = append(converted, tool)
 			}
+			continue
+		}
+		// A foreign tool with no counterpart that the exchange never called is
+		// dropped rather than carried as an MCP tool. It advertised a capability
+		// the assistant never used, so removing it takes a client fingerprint out
+		// of the delivery at no cost; carrying it would put the whole foreign
+		// platform surface — music_generate, tts, canvas — into the request.
+		if _, direct := foreignToolTargets[name]; !direct && !called[name] {
+			stats.ToolsDropped++
+			handled = append(handled, name)
 			continue
 		}
 		target, definition, resolveErr := resolveForeignTool(name, tool)
 		if resolveErr != nil {
-			// Dropping is only safe for a capability the exchange never
-			// exercised; otherwise a call would be left pointing at nothing.
-			if called[name] {
-				return stats, resolveErr
-			}
-			stats.ToolsDropped++
-			handled = append(handled, name)
-			continue
+			return stats, resolveErr
 		}
 		renames[name] = target
 		stats.ToolsConverted++
@@ -212,10 +230,17 @@ func convertForeignClientTools(
 			continue
 		}
 		emitted[target] = true
-		converted = append(converted, definition)
+		var decoded map[string]json.RawMessage
+		if err := json.Unmarshal(definition, &decoded); err != nil {
+			return stats, fmt.Errorf("decode converted tool %q: %w", target, err)
+		}
+		converted = append(converted, decoded)
 	}
 	if !stats.changed() {
 		return stats, nil
+	}
+	if err := rewriteDescriptionToolReferences(converted, renames); err != nil {
+		return stats, err
 	}
 	encoded, err := json.Marshal(converted)
 	if err != nil {
@@ -287,9 +312,10 @@ func resolveForeignTool(name string, tool map[string]json.RawMessage) (string, j
 		}
 		return target, definition, nil
 	}
-	// A namespaced tool is already shaped like an MCP tool, so it only needs the
-	// prefix that marks it as externally provided. Its own description and
-	// schema stay, because they describe the tool truthfully.
+	// Anything else is carried as an MCP tool, which is how Claude Code presents
+	// a tool it did not implement itself. Its schema stays untouched so the call
+	// and its arguments survive exactly, and only the vendor naming in its
+	// description is rewritten.
 	namespaced, ok := mcpNamespacedToolName(name)
 	if !ok {
 		return "", nil, fmt.Errorf("tool %q has no Claude Code counterpart", name)
@@ -299,6 +325,9 @@ func resolveForeignTool(name string, tool map[string]json.RawMessage) (string, j
 		renamed[key] = value
 	}
 	renamed["name"] = mustJSON(namespaced)
+	if description := rawString(tool["description"]); description != "" {
+		renamed["description"] = mustJSON(sanitizeToolDescription(description))
+	}
 	definition, err := json.Marshal(renamed)
 	if err != nil {
 		return "", nil, fmt.Errorf("re-encode namespaced tool %q: %w", name, err)
@@ -306,13 +335,158 @@ func resolveForeignTool(name string, tool map[string]json.RawMessage) (string, j
 	return namespaced, definition, nil
 }
 
-// mcpNamespacedToolName converts ns__tool into Claude Code's mcp__ns__tool.
+// rewriteDescriptionToolReferences updates the tool names a description points
+// at, so a converted surface stays self-consistent.
+//
+// A description that still names a tool the conversion renamed away instructs
+// the model to reach for something the request no longer declares — wait's own
+// text points at "a yielded `exec` cell" while exec is now Bash. Only names
+// carrying an underscore or a known shell verb are rewritten; matching a bare
+// English word like "read" in prose would corrupt unrelated sentences.
+func rewriteDescriptionToolReferences(tools []map[string]json.RawMessage, renames map[string]string) error {
+	if len(renames) == 0 {
+		return nil
+	}
+	for _, tool := range tools {
+		description := rawString(tool["description"])
+		if description == "" {
+			continue
+		}
+		updated := description
+		for old, target := range renames {
+			if !isRewritableToolReference(old) {
+				continue
+			}
+			updated = strings.ReplaceAll(updated, "`"+old+"`", "`"+target+"`")
+			updated = replaceWord(updated, old, target)
+		}
+		if updated == description {
+			continue
+		}
+		tool["description"] = mustJSON(updated)
+	}
+	return nil
+}
+
+// shellVerbToolNames are the flat foreign names common enough in prose that they
+// still have to be rewritten when a description points at them as a tool.
+var shellVerbToolNames = map[string]bool{"exec": true, "apply_patch": true}
+
+func isRewritableToolReference(name string) bool {
+	return strings.Contains(name, "_") || shellVerbToolNames[name]
+}
+
+// replaceWord replaces whole-word occurrences only, so exec does not match
+// execute and read does not match already.
+func replaceWord(text, old, value string) string {
+	if old == "" {
+		return text
+	}
+	var builder strings.Builder
+	for offset := 0; ; {
+		index := strings.Index(text[offset:], old)
+		if index < 0 {
+			builder.WriteString(text[offset:])
+			return builder.String()
+		}
+		index += offset
+		before := index == 0 || !isWordByte(text[index-1])
+		afterAt := index + len(old)
+		after := afterAt == len(text) || !isWordByte(text[afterAt])
+		builder.WriteString(text[offset:index])
+		if before && after {
+			builder.WriteString(value)
+		} else {
+			builder.WriteString(old)
+		}
+		offset = afterAt
+	}
+}
+
+func isWordByte(b byte) bool {
+	return b == '_' ||
+		(b >= 'a' && b <= 'z') ||
+		(b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9')
+}
+
+// syntheticMCPNamespace carries a foreign tool that has no Claude Code
+// counterpart. Claude Code names an MCP tool after the server that provides it,
+// and the corpus already carries servers named for what they do — filesystem,
+// tmux-bridge, Claude_Browser. A workspace server is the same kind of name and
+// collides with none of them.
+const syntheticMCPNamespace = "workspace"
+
+// mcpNamespacedToolName converts a foreign tool name into Claude Code's MCP
+// form. A name that already carries its own namespace keeps it; a flat one is
+// placed under the synthetic workspace server.
 func mcpNamespacedToolName(name string) (string, bool) {
-	namespace, tool, ok := strings.Cut(name, "__")
-	if !ok || namespace == "" || tool == "" {
+	if name == "" {
 		return "", false
 	}
-	return mcpToolPrefix + name, true
+	if namespace, tool, ok := strings.Cut(name, "__"); ok {
+		if namespace == "" || tool == "" {
+			return "", false
+		}
+		return mcpToolPrefix + name, true
+	}
+	return mcpToolPrefix + syntheticMCPNamespace + "__" + name, true
+}
+
+// vendorDescriptionTerms are the product and vendor names a foreign tool's own
+// description carries. The description travels with the tool through the MCP
+// fallback, so a term left in it identifies the originating client just as
+// plainly as the tool name did.
+//
+// Each term maps to what it is replaced with rather than being cut, so the
+// sentence still reads: "OpenClaw's browser control server" has to become "the
+// browser control server", not "'s browser control server".
+var vendorDescriptionTerms = []struct {
+	possessive  string
+	replacement string
+	bare        string
+	bareReplace string
+}{
+	{"OpenClaw's", "the", "OpenClaw", "the workspace"},
+	{"Codex's", "the", "Codex", "the workspace"},
+	{"OpenAI's", "the", "OpenAI", "the workspace"},
+	{"ChatGPT's", "the", "ChatGPT", "the workspace"},
+}
+
+// sanitizeToolDescription strips the vendor naming from a description that is
+// about to be delivered as a Claude Code MCP tool.
+func sanitizeToolDescription(description string) string {
+	for _, term := range vendorDescriptionTerms {
+		description = replaceFold(description, term.possessive, term.replacement)
+		description = replaceFold(description, term.bare, term.bareReplace)
+	}
+	return collapseSpaces(description)
+}
+
+// replaceFold replaces every case-insensitive occurrence of old with value.
+func replaceFold(text, old, value string) string {
+	if old == "" {
+		return text
+	}
+	lowerText, lowerOld := strings.ToLower(text), strings.ToLower(old)
+	var builder strings.Builder
+	for {
+		index := strings.Index(lowerText, lowerOld)
+		if index < 0 {
+			builder.WriteString(text)
+			return builder.String()
+		}
+		builder.WriteString(text[:index])
+		builder.WriteString(value)
+		text, lowerText = text[index+len(old):], lowerText[index+len(old):]
+	}
+}
+
+func collapseSpaces(text string) string {
+	for strings.Contains(text, "  ") {
+		text = strings.ReplaceAll(text, "  ", " ")
+	}
+	return strings.TrimSpace(text)
 }
 
 // collectCalledToolNames reports which tools the exchange actually called, in

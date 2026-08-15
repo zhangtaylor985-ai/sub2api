@@ -25,6 +25,7 @@ type fidelityNormalizationStats struct {
 	StopFieldsCompleted           int64
 	SearchResultIDsReshaped       int64
 	SystemRoleMessagesFolded      int64
+	SystemModelIdentityRewritten  int64
 	ForeignToolsConverted         int64
 	ForeignToolsDropped           int64
 	// ForeignSystemPromptTools is non-zero when the system prompt still names a
@@ -274,6 +275,15 @@ func normalizeProjectionFidelity(
 	stats.ForeignToolsConverted += int64(toolConversion.ToolsConverted)
 	stats.ForeignToolsDropped += int64(toolConversion.ToolsDropped)
 	stats.ForeignSystemPromptTools += int64(toolConversion.SystemPromptTools)
+
+	system, systemRewrites, err := normalizeSystemModelIdentity(request["system"])
+	if err != nil {
+		return nil, nil, fidelityNormalizationStats{}, err
+	}
+	if systemRewrites > 0 {
+		request["system"] = system
+	}
+	stats.SystemModelIdentityRewritten += systemRewrites
 
 	_, toolIDs, openAIBlocks, requestTrackingStripped, requestToolTrackingStripped, err := normalizeRequestFidelity(request, options.CodexProjection)
 	if err != nil {

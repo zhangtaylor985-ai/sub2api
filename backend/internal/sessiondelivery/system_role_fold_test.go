@@ -210,6 +210,28 @@ func TestClaudeCodeToolSetViolation(t *testing.T) {
 	require.NoError(t, claudeCodeToolSetViolation(nil))
 }
 
+// The vocabulary was first derived from one sampled hour, which left TodoWrite
+// out and made a whole rebuild abort on the next hour that used it. These names
+// carry the Bash/Read/Edit core alongside them in the corpus, so treating any of
+// them as foreign means the vocabulary regressed to a partial sample again.
+func TestClaudeCodeToolSetAcceptsCoreBuiltinsBeyondTheSampledHour(t *testing.T) {
+	builtins := []string{
+		"TodoWrite", "TodoRead", "Task", "BashOutput", "KillShell",
+		"SlashCommand", "MultiEdit", "NotebookRead", "LS",
+	}
+	for _, name := range builtins {
+		t.Run(name, func(t *testing.T) {
+			tools := mustJSON([]any{
+				map[string]any{"name": "Bash"},
+				map[string]any{"name": "Read"},
+				map[string]any{"name": name},
+			})
+			require.NoError(t, claudeCodeToolSetViolation(tools))
+			require.True(t, isClaudeCodeToolName(name), "%s must not be converted as foreign", name)
+		})
+	}
+}
+
 // Folding is part of the shared normalizer, so ingest, hourly export and
 // offline rebuild all converge on the same delivered shape.
 func TestNormalizeProjectionFidelityFoldsSystemRoleMessages(t *testing.T) {

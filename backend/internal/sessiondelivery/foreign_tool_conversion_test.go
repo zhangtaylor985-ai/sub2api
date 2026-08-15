@@ -118,8 +118,10 @@ func TestConvertForeignClientToolsReplacesDeclarationsWithClaudeCodeDefinitions(
 	}
 	stats, err := convertForeignClientTools(request, nil)
 	require.NoError(t, err)
-	require.Equal(t, 4, stats.ToolsConverted)
-	require.Zero(t, stats.ToolsDropped)
+	require.Equal(t, 3, stats.ToolsConverted)
+	// update_plan has no counterpart whose schema its arguments fit, and this
+	// exchange never called it, so it is dropped rather than carried.
+	require.Equal(t, 1, stats.ToolsDropped)
 
 	names, definitions := declaredTools(t, request["tools"])
 	require.Equal(t, []string{"Bash", "Edit", "TaskUpdate", "web_search"}, names)
@@ -136,7 +138,7 @@ func TestConvertForeignClientToolsDropsUncalledToolsWithoutCounterpart(t *testin
 	request := map[string]json.RawMessage{
 		"tools": mustJSON([]any{
 			map[string]any{"name": "codex_app", "description": "Tools provided by the Codex app."},
-			map[string]any{"name": "write_stdin"},
+			map[string]any{"name": "canvas"},
 			map[string]any{"name": "music_generate"},
 			map[string]any{"name": "read"},
 		}),
@@ -220,18 +222,74 @@ func TestConvertForeignClientToolsMapsCallArgumentsOntoTargetSchema(t *testing.T
 }
 
 // Dropping a declaration the model actually called would leave the call
-// pointing at nothing, so an unmapped called tool has to surface instead.
-func TestConvertForeignClientToolsFailsOnCalledToolWithoutCounterpart(t *testing.T) {
+// pointing at nothing, so a called tool with no counterpart is carried as an MCP
+// tool instead: the call and its arguments survive untouched, and only the
+// vendor naming in the description is rewritten.
+func TestConvertForeignClientToolsCarriesCalledToolWithoutCounterpartAsMCP(t *testing.T) {
 	request := map[string]json.RawMessage{
-		"tools": mustJSON([]any{map[string]any{"name": "music_generate"}}),
+		"tools": mustJSON([]any{map[string]any{
+			"name":         "browser",
+			"description":  "Control the browser via OpenClaw's browser control server.",
+			"input_schema": map[string]any{"type": "object"},
+		}}),
 		"messages": mustJSON([]any{
 			map[string]any{"role": "assistant", "content": []any{
-				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "music_generate", "input": map[string]any{}},
+				map[string]any{
+					"type": "tool_use", "id": "toolu_01aaaaaaaaaaaaaaaaaaaaaa", "name": "browser",
+					"input": map[string]any{"action": "open", "target": "https://example.com"},
+				},
+			}},
+		}),
+	}
+	stats, err := convertForeignClientTools(request, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, stats.ToolsConverted)
+	require.Zero(t, stats.ToolsDropped)
+
+	names, definitions := declaredTools(t, request["tools"])
+	require.Equal(t, []string{"mcp__workspace__browser"}, names)
+	require.NoError(t, claudeCodeToolSetViolation(request["tools"]))
+	require.NotContains(t, string(definitions["mcp__workspace__browser"]), "OpenClaw")
+	require.Contains(t, string(definitions["mcp__workspace__browser"]), "the browser control server")
+
+	// The call is renamed onto it with its arguments intact, because an MCP tool
+	// keeps its own schema.
+	var messages []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(request["messages"], &messages))
+	var blocks []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(messages[0]["content"], &blocks))
+	require.Equal(t, "mcp__workspace__browser", rawString(blocks[0]["name"]))
+	require.JSONEq(t, `{"action":"open","target":"https://example.com"}`, string(blocks[0]["input"]))
+}
+
+// A description that points at a tool the conversion renamed away would send the
+// model after something the request no longer declares.
+func TestConvertForeignClientToolsRewritesDescriptionToolReferences(t *testing.T) {
+	request := map[string]json.RawMessage{
+		"tools": mustJSON([]any{
+			map[string]any{"name": "exec", "description": "Runs a shell command."},
+			map[string]any{
+				"name":         "wait",
+				"description":  "Waits on a yielded `exec` cell and returns new output.",
+				"input_schema": map[string]any{"type": "object"},
+			},
+		}),
+		"messages": mustJSON([]any{
+			map[string]any{"role": "assistant", "content": []any{
+				map[string]any{
+					"type": "tool_use", "id": "toolu_01aaaaaaaaaaaaaaaaaaaaaa", "name": "wait",
+					"input": map[string]any{"cell_id": "c1"},
+				},
 			}},
 		}),
 	}
 	_, err := convertForeignClientTools(request, nil)
-	require.ErrorContains(t, err, "no Claude Code counterpart")
+	require.NoError(t, err)
+
+	_, definitions := declaredTools(t, request["tools"])
+	waited := string(definitions["mcp__workspace__wait"])
+	require.NotContains(t, waited, "exec")
+	require.Contains(t, waited, "`Bash`")
 }
 
 // An argument that changes what the call did may not be dropped silently: the

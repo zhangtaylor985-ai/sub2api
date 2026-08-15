@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"testing"
 	"time"
@@ -44,9 +45,28 @@ func TestNormalizeProjectionFidelityRemovesCodexArtifactsAndNormalizesToolIDs(t 
 	require.NotContains(t, string(normalizedRequest), "input_text")
 	require.NotContains(t, string(normalizedRequest), "encrypted_content")
 	require.Contains(t, string(normalizedRequest), `"type":"text"`)
-	require.Contains(t, string(normalizedRequest), `"id":"toolu_abc123"`)
-	require.Contains(t, string(normalizedRequest), `"tool_use_id":"toolu_abc123"`)
-	require.Contains(t, string(normalizedResponse), `"id":"toolu_xyz789"`)
+	// The OpenAI identifier body must not survive the prefix swap, and the
+	// tool_result back-reference has to follow the reshaped tool_use id.
+	require.NotContains(t, string(normalizedRequest), "abc123")
+	require.NotContains(t, string(normalizedResponse), "xyz789")
+	requestToolID := onlyToolID(t, normalizedRequest, "id")
+	require.True(t, hasAnthropicIDShape("toolu_", requestToolID), requestToolID)
+	require.Equal(t, requestToolID, onlyToolID(t, normalizedRequest, "tool_use_id"))
+	responseToolID := onlyToolID(t, normalizedResponse, "id")
+	require.True(t, hasAnthropicIDShape("toolu_", responseToolID), responseToolID)
+}
+
+// onlyToolID returns the single value of the named member across the payload,
+// asserting that every occurrence agrees so linkage regressions surface.
+func onlyToolID(t *testing.T, payload json.RawMessage, member string) string {
+	t.Helper()
+	pattern := regexp.MustCompile(`"` + member + `":"(toolu_[^"]+|srvtoolu_[^"]+)"`)
+	matches := pattern.FindAllStringSubmatch(string(payload), -1)
+	require.NotEmpty(t, matches, "no %q tool identifier found", member)
+	for _, match := range matches[1:] {
+		require.Equal(t, matches[0][1], match[1], "inconsistent %q values", member)
+	}
+	return matches[0][1]
 }
 
 func TestNormalizeProjectionFidelityNormalizesLegacyTooluseIDs(t *testing.T) {
@@ -72,8 +92,10 @@ func TestNormalizeProjectionFidelityNormalizesLegacyTooluseIDs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(2), stats.ToolIDsNormalized)
 	require.NotContains(t, string(normalizedRequest), "tooluse_")
-	require.Contains(t, string(normalizedRequest), `"id":"toolu_F4dwodeQ"`)
-	require.Contains(t, string(normalizedRequest), `"tool_use_id":"toolu_F4dwodeQ"`)
+	require.NotContains(t, string(normalizedRequest), "F4dwodeQ")
+	toolID := onlyToolID(t, normalizedRequest, "id")
+	require.True(t, hasAnthropicIDShape("toolu_", toolID), toolID)
+	require.Equal(t, toolID, onlyToolID(t, normalizedRequest, "tool_use_id"))
 }
 
 func TestNormalizeProjectionFidelityDropsHistoricalThinkingWhenDisabled(t *testing.T) {
@@ -145,7 +167,12 @@ func TestNormalizeProjectionFidelityMovesThinkingBeforeServerTools(t *testing.T)
 		rawString(content[2]["type"]),
 		rawString(content[3]["type"]),
 	})
-	require.Equal(t, "srvtoolu_search", rawString(content[1]["id"]))
+	serverToolID := rawString(content[1]["id"])
+	require.True(t, hasAnthropicIDShape("srvtoolu_", serverToolID), serverToolID)
+	// The search result block back-references the server tool call, so both
+	// must be reshaped together or the response becomes self-inconsistent.
+	require.Equal(t, serverToolID, rawString(content[2]["tool_use_id"]))
+	require.NotContains(t, string(normalizedResponse), "call_search")
 
 	record := usageTestRecord("session_reorder", fixedTestTime(), 100, 10, "search")
 	record.Request = normalizedRequest
@@ -445,13 +472,16 @@ func TestValidateDeliveryFidelityRejectsOpenAISearchTracking(t *testing.T) {
 		record := usageTestRecord("session_utm_gate", fixedTestTime(), 100, 10, "hello")
 		record.Request = request
 		record.Response.ResponseData = mustJSON(map[string]any{
-			"id": "msg_utm_gate", "type": "message", "role": "assistant", "model": DefaultPublicModel,
+			"id": anthropicPublicID("msg_", "utm_gate"), "type": "message",
+			"role": "assistant", "model": DefaultPublicModel,
 			"content": []any{
 				map[string]any{"type": "thinking", "thinking": "", "signature": signature},
 				map[string]any{"type": "text", "text": responseText},
 			},
-			"stop_reason": "end_turn",
-			"usage":       validUsage,
+			"stop_reason":   "end_turn",
+			"stop_sequence": nil,
+			"stop_details":  nil,
+			"usage":         validUsage,
 		})
 		return record
 	}

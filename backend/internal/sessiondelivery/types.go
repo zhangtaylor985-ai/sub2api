@@ -2,6 +2,7 @@ package sessiondelivery
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -60,8 +61,42 @@ type Envelope struct {
 }
 
 type DeliveryMetadata struct {
-	HTTPStatus int   `json:"http_status"`
-	LatencyMS  int64 `json:"latency_ms"`
+	HTTPStatus int    `json:"http_status"`
+	LatencyMS  int64  `json:"latency_ms"`
+	UserAgent  string `json:"user_agent,omitempty"`
+}
+
+// deliveryTimestampLayout is ISO8601 UTC with fixed millisecond precision, as
+// in the vendor specification example. Go's default RFC3339Nano marshaling
+// drops trailing zeros in the fraction, which produces variable-width
+// timestamps that no API log emits.
+const deliveryTimestampLayout = "2006-01-02T15:04:05.000Z"
+
+// DeliveryTime marshals as a fixed-precision UTC instant while behaving as a
+// time.Time everywhere else.
+type DeliveryTime struct {
+	time.Time
+}
+
+func (t DeliveryTime) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + t.Time.UTC().Format(deliveryTimestampLayout) + `"`), nil
+}
+
+func (t *DeliveryTime) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if strings.TrimSpace(value) == "" {
+		t.Time = time.Time{}
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return err
+	}
+	t.Time = parsed.UTC()
+	return nil
 }
 
 type DeliveryResponse struct {
@@ -76,7 +111,7 @@ type DeliveryResponse struct {
 type DeliveryRecord struct {
 	SessionID string           `json:"session_id"`
 	RequestID string           `json:"request_id,omitempty"`
-	Timestamp time.Time        `json:"timestamp"`
+	Timestamp DeliveryTime     `json:"timestamp"`
 	Metadata  DeliveryMetadata `json:"metadata"`
 	Request   json.RawMessage  `json:"request"`
 	Response  DeliveryResponse `json:"response"`

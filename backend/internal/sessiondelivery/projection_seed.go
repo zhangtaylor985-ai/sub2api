@@ -288,7 +288,7 @@ func forEachArchiveSession(path string, fn func(string, []*DeliveryRecord) error
 			if !previous.IsZero() && record.Timestamp.Before(previous) {
 				return errors.New("projection seed session records are not time ordered")
 			}
-			previous = record.Timestamp
+			previous = record.Timestamp.Time
 			records = append(records, &record)
 		}
 		if err := scanner.Err(); err != nil {

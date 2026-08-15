@@ -58,7 +58,7 @@ func TestCanonicalizerAnthropicPreservesThinkingSignature(t *testing.T) {
 	require.Equal(t, "real-signature", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 0, "signature"))
 	require.True(t, strings.HasPrefix(envelope.Delivery.SessionID, "session_"))
 	require.True(t, strings.HasPrefix(envelope.Delivery.RequestID, "req_"))
-	require.Equal(t, started, envelope.Delivery.Timestamp)
+	require.Equal(t, started, envelope.Delivery.Timestamp.Time)
 	require.NoError(t, ValidateDelivery(envelope.Delivery, DefaultPublicModel))
 }
 
@@ -200,7 +200,7 @@ func TestValidateDeliveryRejectsUnsignedThinkingBlock(t *testing.T) {
 	record := &DeliveryRecord{
 		SessionID: "session_x",
 		RequestID: "req_x",
-		Timestamp: time.Now().UTC(),
+		Timestamp: DeliveryTime{time.Now().UTC()},
 		Metadata:  DeliveryMetadata{HTTPStatus: 200, LatencyMS: 10},
 		Request:   json.RawMessage(`{"model":"claude-opus-5","messages":[{"role":"user","content":"hi"}]}`),
 		Response: DeliveryResponse{
@@ -541,7 +541,8 @@ func TestCanonicalizerResponsesNormalizesCodexCustomToolHistory(t *testing.T) {
 			}
 		}
 	}
-	require.Equal(t, "toolu_custom123", toolUseID)
+	require.True(t, hasAnthropicIDShape("toolu_", toolUseID), toolUseID)
+	require.NotContains(t, toolUseID, "custom123")
 	require.Equal(t, toolUseID, toolResultID)
 	require.Equal(t, "ok\n\nProcess exited with code 0", toolResultText)
 }
@@ -576,7 +577,9 @@ func TestCanonicalizerResponsesNormalizesCodexCustomToolResponse(t *testing.T) {
 	require.NotContains(t, string(envelope.Delivery.Response.ResponseData), "custom_tool_call")
 	require.Equal(t, "thinking", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 0, "type"))
 	require.Equal(t, "tool_use", jsonArrayPath(t, envelope.Delivery.Response.ResponseData, "content", 1, "type"))
-	require.Equal(t, "toolu_custom456", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 1, "id"))
+	responseToolUseID := jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 1, "id")
+	require.True(t, hasAnthropicIDShape("toolu_", responseToolUseID), responseToolUseID)
+	require.NotContains(t, responseToolUseID, "custom456")
 	require.Equal(t, "exec", jsonArrayPathString(t, envelope.Delivery.Response.ResponseData, "content", 1, "name"))
 	var response struct {
 		Content []struct {
@@ -669,8 +672,12 @@ func TestCanonicalizerResponsesNormalizesCodexNamespacedToolsAndAgentMessages(t 
 	for _, tool := range request.Tools {
 		toolSchemas[tool.Name] = tool.InputSchema
 	}
-	require.JSONEq(t, `{"type":"object","properties":{"input":{"type":"string"}},"required":["input"],"additionalProperties":false}`, string(toolSchemas["exec"]))
-	require.JSONEq(t, `{"type":"object","properties":{}}`, string(toolSchemas["collaboration__send_message"]))
+	// The Codex tool surface is converted to Claude Code's: exec has a direct
+	// counterpart and takes Bash's schema, while a namespaced tool has none and
+	// is carried the way Claude Code carries an external tool, keeping its own
+	// schema behind the mcp__ prefix.
+	require.Contains(t, string(toolSchemas["Bash"]), `"command"`)
+	require.JSONEq(t, `{"type":"object","properties":{}}`, string(toolSchemas["mcp__collaboration__send_message"]))
 
 	toolUseNames := make([]string, 0, 2)
 	for _, message := range request.Messages {
@@ -680,7 +687,7 @@ func TestCanonicalizerResponsesNormalizesCodexNamespacedToolsAndAgentMessages(t 
 			}
 		}
 	}
-	require.ElementsMatch(t, []string{"exec", "collaboration__send_message"}, toolUseNames)
+	require.ElementsMatch(t, []string{"Bash", "mcp__collaboration__send_message"}, toolUseNames)
 
 	projected := *envelope.Delivery
 	usage := &usageProjector{}
@@ -745,10 +752,13 @@ func TestCanonicalizerResponsesNormalizesFlatAdditionalTools(t *testing.T) {
 		} `json:"tools"`
 	}
 	require.NoError(t, json.Unmarshal(envelope.Delivery.Request, &request))
-	require.Len(t, request.Tools, 2)
-	require.Equal(t, "exec", request.Tools[0].Name)
-	require.Equal(t, "wait", request.Tools[1].Name)
-	require.JSONEq(t, `{"type":"object","properties":{"input":{"type":"string"}},"required":["input"],"additionalProperties":false}`, string(request.Tools[0].InputSchema))
+	// exec becomes Claude Code's Bash, carrying Bash's own schema rather than
+	// the Codex custom-tool wrapper. wait has no Claude Code counterpart and
+	// the exchange never called it, so the declaration is dropped.
+	require.Len(t, request.Tools, 1)
+	require.Equal(t, "Bash", request.Tools[0].Name)
+	require.Contains(t, string(request.Tools[0].InputSchema), `"command"`)
+	require.NotContains(t, string(envelope.Delivery.Request), `"name":"exec"`)
 }
 
 func TestCanonicalizerResponsesStripsCodexBootstrapContextFromDeliveryOnly(t *testing.T) {
@@ -1011,7 +1021,7 @@ func TestValidateDeliveryRejectsInternalRootField(t *testing.T) {
 	record := &DeliveryRecord{
 		SessionID: "session_1",
 		RequestID: "req_1",
-		Timestamp: time.Now().UTC(),
+		Timestamp: DeliveryTime{time.Now().UTC()},
 		Metadata:  DeliveryMetadata{HTTPStatus: 200},
 		Request:   []byte(`{"model":"claude-opus-5","max_tokens":1,"messages":[{"role":"user","content":"x"}],"upstream_model":"gpt-5.6-sol"}`),
 		Response: DeliveryResponse{

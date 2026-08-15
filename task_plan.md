@@ -1,5 +1,58 @@
 # Session Delivery 可观测性实施计划
 
+## 2026-08-14 Anthropic wire shape 保真补齐（本地 V9）
+
+### 目标
+
+以本地真实 Claude Code transcript 为基准，补齐交付投影与真实 Claude Code × Claude Opus 5 之间剩余的可见形态差异；只改交付保存/导出链路，不改实时响应链路。
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 真实基准逐项对表 | complete | 从 `~/.claude/projects` 实测 ID 形态、成员顺序、stop 字段、caller 出现率，区分 MEASURED 与 DOCUMENTED |
+| ID 形态统一为 `01`+22 base58 | complete | `anthropic_wire_shape.go` 单一入口覆盖 `msg_`/`toolu_`/`srvtoolu_`、回声、tool_result 反向引用与搜索结果反向引用 |
+| 补齐 stop_sequence / stop_details / tool_use.caller | complete | 响应与请求历史 assistant 两侧一致 |
+| 成员顺序还原为真实顺序 | complete | `finalizeDeliveryRecord` 作为流水线最后一步，避免中间阶段重新字母序化 |
+| metadata.user_agent + 毫秒时间戳 | complete | 仅从客户端自报 `cc_version=` 提取；`DeliveryTime` 固定毫秒 |
+| fail-closed 门禁 | complete | `validateAnthropicWireShape` 覆盖 ID/stop/caller |
+| 剥离实现复查与缺陷修复 | complete | 修 `isTrackingParamEnd` 标点盲区；normalizer/validator 补齐 `web_search_tool_result` URL 覆盖 |
+| 本地 V9 重建与审计 | complete | 05 UTC 209 条：形态类 0 违规、上游 ID 前缀残留 0、`utm_source` 0；幂等 `changed_records=0`、SHA 不变 |
+| 全量回归 | complete | `go vet ./...`、`go test ./... -count=1` 通过 |
+| `role:"system"` 折叠 | complete | 606 条并入相邻 user turn 并按客户端实测形态包裹 `<system-reminder>` |
+| ~~外来客户端记录排除~~ | superseded | 用户否决整条排除，改为转换（见下一行） |
+| Go HTML 转义指纹还原 | complete | `writeJSON` 单一出口字节级还原，`\u003c/\u003e/\u0026` 归零，语义透明性经真实数据验证 |
+| 外来客户端工具集转换 | complete | 26 条全部保留并转换：89 声明替换为语料内真实 Claude Code 定义、69 未调用声明删除、5 次真实调用改写参数；`ns__tool`→`mcp__ns__tool`；validator 收紧为完整词表 fail-closed |
+| OpenClaw system 提示词处置 | complete | 用户拍板只排除这 2 条；判定为"转换后 system 仍点名被转换掉的工具"（记录自身矛盾），依据取自该记录实际处理过的工具名而非厂商黑名单 |
+| 本地 V15 重建与审计 | complete | 207 交付 / 417 排除 / 总数 624 守恒；外来工具名 0、system 残留 0、孤儿调用无新增（39，与 V9 同值）；幂等 `changed_records=0`、SHA 不变 |
+| 全序列重建 + Drive + reseed | pending | 需用户确认后获取 06–16 UTC 归档并执行完整仪式 |
+
+### 约束
+
+- ID 派生使用固定公开常量作为域分隔，确保离线重建可复现归档内已有标识；派生前循环剥离全部上游前缀。
+- 成员排序只允许出现在流水线最后一步，且变更判定必须比较同样排序后的结果，否则破坏幂等。
+- 未在真实数据中观测到的成员顺序标注 DOCUMENTED，未知 block 类型保持逐字节不动。
+- `signature.go`/`thinkingsig` 与实时客户端响应链路不修改。
+
+## 2026-08-14 OpenAI 搜索追踪参数交付修复（本地 V6）
+
+### 目标
+
+消除交付内容中助手生成文本携带的 `utm_source=openai` 联网搜索追踪参数（真实 Claude web search 不产生的上游指纹），只改交付保存/导出链路，不改实时响应，不改写 user/system/tool_result 真实内容。
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 指纹清点与定位 | complete | 05 UTC 归档 5 条记录 105 处（响应 text 48 + 历史回声 57），另有 citations url 残留首轮发现后补齐 |
+| sanitizer + 严格门禁实现 | complete | `stripOpenAISearchTracking` 接入三链路共用 normalizer；validator fail-closed；回归测试齐备 |
+| 本地 V6 重建与审计 | complete | 05 UTC：changed_records=5、stripped=105、其余计数全 0；V5 剥离后==V6 逐条相等；审计 0 违规；幂等字节不变 |
+| 全量回归 | complete | `go test ./... -count=1`、`go vet` 通过 |
+| 全序列 V6 + Drive + reseed | pending | 需用户确认后获取 06–16 UTC 归档并执行完整仪式 |
+
+### 约束
+
+- 只剥离精确 `utm_source=openai` 查询参数（含 citations URL），相似值与纯文本提及不动。
+- 响应与请求历史 assistant 内容应用同一确定性函数，保持多轮回声逐字节一致。
+- `signature.go`/`thinkingsig` 与实时客户端响应链路不修改。
+- Drive 上传、生产 checkpoint reseed 与归档替换必须经用户单独确认。
+
 ## 2026-08-14 Session Token 可观测性增强
 
 ### 目标

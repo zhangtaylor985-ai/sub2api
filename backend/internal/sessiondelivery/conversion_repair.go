@@ -211,7 +211,7 @@ func recanonicalizeRejectedEnvelope(canonicalizer *Canonicalizer, envelope *Enve
 	rebuilt.Rejection = nil
 	rebuilt.Delivery.SessionID = envelope.SessionID
 	rebuilt.Delivery.RequestID = envelope.RequestID
-	rebuilt.Delivery.Timestamp = envelope.OccurredAt
+	rebuilt.Delivery.Timestamp = DeliveryTime{envelope.OccurredAt}
 	rebuilt.Delivery.Metadata.HTTPStatus = envelope.HTTPStatus
 	rebuilt.Delivery.Metadata.LatencyMS = envelope.DurationMS
 	rebuilt.Delivery.Response.StatusCode = envelope.HTTPStatus

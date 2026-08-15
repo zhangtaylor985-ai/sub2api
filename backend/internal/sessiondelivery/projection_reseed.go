@@ -144,7 +144,7 @@ func buildProjectionReseedState(
 				if err := state.usage.process(record); err != nil {
 					return fmt.Errorf("reseed usage projection for %s: %w", record.RequestID, err)
 				}
-				state.lastTimestamp = record.Timestamp
+				state.lastTimestamp = record.Timestamp.Time
 				result.Records++
 			}
 			return nil

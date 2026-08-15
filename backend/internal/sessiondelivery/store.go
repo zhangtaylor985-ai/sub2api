@@ -35,10 +35,17 @@ type Store struct {
 }
 
 type HourStats struct {
-	Records     int64                `json:"records"`
-	Deliverable int64                `json:"deliverable"`
-	Rejected    int64                `json:"rejected"`
-	TokenUsage  DeliveryTokenMetrics `json:"token_usage"`
+	Records     int64 `json:"records"`
+	Deliverable int64 `json:"deliverable"`
+	Rejected    int64 `json:"rejected"`
+	// ForeignSystemPromptExcluded is the subset of Rejected held back because the
+	// system prompt still names tools the foreign-tool conversion removed, so the
+	// record instructs the model to use a tool surface it no longer declares.
+	ForeignSystemPromptExcluded int64 `json:"foreign_system_prompt_excluded"`
+	// NormalizationFailed is the subset of Rejected held back because fidelity
+	// normalization could not reshape the record at all.
+	NormalizationFailed int64                `json:"normalization_failed"`
+	TokenUsage          DeliveryTokenMetrics `json:"token_usage"`
 }
 
 type ExportBatch struct {

@@ -1,5 +1,74 @@
 # Session Delivery 可观测性发现记录
 
+## 2026-08-14 外来客户端工具集转换（V13，取代 V10 的排除方案）
+
+- 用户否决整条排除，要求把 Codex 客户端改成 Claude Code 形态。重新按功能（读每个外来工具自己的 description，而不是看名字）逐项对表后，转换范围远小于排除方案预估：26 条记录声明的 26 个外来工具里，**只有 2 个真正被调用过**（`read` 4 次、`exec` 1 次），其余 24 个全是"声明了但整段对话从未调用"。所以此前"改名就得伪造整段对话"的判断只对被调用的工具成立，对绝大多数声明并不成立。
+- 转换分三档，按可信度排序：① 有 Claude Code 对位工具的，整条替换成该工具的真实定义，并改写所有调用的名字与参数；② `ns__tool` 形态的命名空间工具改成 `mcp__ns__tool`，这是 Claude Code 承载外部工具的原生方式，保留其自身 schema 与描述（这一档让既有 Codex 命名空间投影队列也能合法交付，不再需要豁免）；③ 无对位又从未被调用的声明直接删除 —— 它描述的是模型没用过的能力，删掉只去掉客户端指纹，不动模型真正做过的事。
+- 光改名不够：外来工具的 description 本身带厂商标记（`codex_app` 是 "Tools provided by the Codex app"、`browser` 是 "via OpenClaw's browser control server"、`shell_command` 是 "Runs a Powershell command (Windows)"、空名工具是 Codex 的 BM25 deferred tool discovery）。所以替换覆盖 name + description + input_schema 三项。
+- 替换用的定义不是手写模仿，而是从**本语料真实 Claude Code 记录里提取的众数定义**，落成 `claude_code_tools.json` 由 `go:embed` 载入（13 个工具、27.7KB）。提取时剔除了所有含用户私有内容的变体（`Bash` 4 个变体中有 1 个 5,274 字版本嵌入了该用户的 settings.json 与 allowedHosts，被丢弃；`Agent` 3 个变体全被污染，因此不作为映射目标）。V13 实测：13 个被转换工具的定义**全部与同一归档中真实 Claude Code 声明逐字节一致**。
+- 参数处理改为 fail-closed，不静默丢弃。只有"仅告诉原客户端怎么执行、不改变结果"的参数（`justification`/`login`/`tty`/`sandbox_permissions` 等）允许删除；其余没有对位字段的参数直接报错。因为静默丢弃会让交付声称模型执行了它没执行的东西 —— 例如 `exec` 的 `workdir`：Claude Code `Bash` 没有工作目录字段，丢掉就等于把命令挪到别的目录，因此折叠成 `cd <workdir> && <command>`，这正是 Claude Code 自己的表达方式。`apply_patch` 的 freeform patch 无法机械转成 `file_path`/`old_string`/`new_string` 三元组，一旦被调用就报错而不是产出空参数的 Edit（本语料从未被调用）。
+- validator 因此从"只保留角色与空名两条不变量"收紧回**完整 Claude Code 工具词表 fail-closed**：转换在前、门禁在后，还能走到门禁的外来工具名说明转换漏了一个。既有两个 Codex 投影测试按新形态更新（`exec`→`Bash`、`collaboration__send_message`→`mcp__collaboration__send_message`），这是本次有意的行为变更，不是回归。
+- V13 实测（05 UTC，仅转换、未含后续 2 条排除）：**209 条全部保留**（不再 −26），外来工具名残留 0、空工具名 0；转换 89 个工具声明、删除 69 个未调用声明、改写 5 次真实调用；转换后工具集为 `Bash,Read` / `AskUserQuestion,Bash,Edit,ListMcpResourcesTool,Read,ReadMcpResource*,Task*,web_search` / `Bash,Edit,ListAgents,Read,SendMessage,Write,web_fetch,web_search`，均为合法 Claude Code 形态。
+- 孤儿校验（`tool_use` 的名字未在 `tools[]` 声明）：V9 与 V13 都是 39 处、同 1 条记录、无新增名字，证明转换没有制造任何孤儿调用；那 39 处是真实 Claude Code 历史引用了当前请求不再声明的工具，属客户端正常行为。
+- 幂等：对 V13 输出再重建 `changed_records=0`、全部计数为 0、SHA 逐字节不变。计数器接线漏了一次（`fidelityStats` 未汇总进 `RebuildChangeStats`），补齐后输出 SHA 与补齐前完全一致，确认只是报表问题、不是行为问题。
+- 残留一：24 条 Codex 队列里仍有 1,018 处 `exec_command`/`apply_patch`，**全部位于 `user/text`**，是终端用户把自己 agent 会话的日志粘进对话（形如 `[185] tool exec call: const r = await tools.exec_command({...})`）。这是用户内容而非客户端脚手架，改写它等于篡改用户说过的话，因此保留。
+- 残留二已按用户拍板处置：第三方平台（OpenClaw）2 条记录的 `system` 有 27,690 字提示词，开头即 "You are a personal assistant running inside OpenClaw"，并以指令列表逐个点名旧工具（`sessions_spawn`/`music_generate`/`file_fetch` 等）。转换覆盖不到 system，所以这 2 条转换后 `tools[]` 是 `Bash`/`Read` 而提示词仍叫模型调用 `read`/`exec`，**自身不自洽**，且该提示词通篇描述 paired nodes/gateway/channel 等异平台概念，改名也无法变成 Claude Code 的提示词；用户选择只排除这 2 条。
+- 这次的排除口径与 V10 被否决的口径本质不同，必须区分：V10 排的是"声明了外来工具"（26 条，现已全部可转换）；V15 排的是"**转换后 system 仍点名被转换掉的工具**"，即记录自身矛盾、任何后续归一都无法调和。判定依据取自该记录**转换时实际处理过的工具名**，不是厂商黑名单，因此随映射表自然演进。
+- 判定只匹配含下划线的工具名。`read`/`exec`/`write` 是普通英文词，在提示词正文里匹配会把从未引用工具的提示词也误判；含下划线的名字无歧义。本语料受影响的那份提示词点名了 7 个下划线名字，足以识别该记录。已知局限：若未来出现只点名单词型工具名的提示词，本判定会漏过，此处按可解释性优先于覆盖率取舍。
+- V15 实测（05 UTC，最终形态）：交付 **207** 条、排除 417 条、总数 624 守恒（与 V9 的 209+415、V10 的 183+441 一致）；外来工具名 0、system 点名被移除工具的记录 0、system 含 OpenClaw 的记录 0；消息角色只有 user(4,067)/assistant(3,861)；孤儿调用仍为 39（V9 同值，无新增）。幂等：再重建 `changed_records=0`、SHA 逐字节不变。
+- 被排除的那 2 条其余部分本已完全 Claude Code 化（响应只有 `Read`/`Bash` 工具调用、无文本无 thinking），也就是说排除的唯一理由就是那份无法转换的提示词，这一点在选项评估时已单独实测确认。
+
+## 2026-08-14 客户端身份与序列化保真收口（V10，工具集排除方案已被 V13 取代）
+
+- `role:"system"` 结构性违规已按真实形态修复。清点：606 条、跨 156/209 记录，**全部**紧跟在 user 之后、无一位于 index 0，因此折叠方向唯一确定为并入前一个 user turn。其中 56 条本来就带 `<system-reminder>` 包裹，是客户端自己的格式，成为包裹形态的实测基准：独立 text block，`<system-reminder>\n` 开头、`\n</system-reminder>` 结尾。同一段注入文本（`The date has changed...`）在本语料中同时以 `role:"system"` 和已包裹 user text block 两种形态出现，证明折叠是还原客户端自身用法，不是发明形态。user 内容实测 3,804 数组 vs 266 字符串，因此字符串内容提升为 block 数组符合主流形态。
+- `codex_app` 不是孤立工具名。按记录统计客户端工具集归属后发现 26/209 条属于外来客户端，分三个队列：Codex CLI 队列（`apply_patch`/`update_plan`/`shell_command`/`codex_app`/`request_user_input`/`get_goal` 等，另含一个**名字为空字符串**的工具，Anthropic API 直接拒收）、Codex exec 队列（`exec_command`/`write_stdin`/`view_image`）、第三方 Agent 平台（`browser`/`canvas`/`music_generate`/`tts`）。剩余 161 条是真实 Claude Code 工具集（`Bash`/`Read`/`Edit`/`Skill`/`Agent`/`TaskUpdate` 加 `mcp__*`），22 条未声明工具。
+- 结论是改名做不到目标：工具名只是标签，同一记录的 `input_schema`、assistant `tool_use.input` 形状和 `tool_result` 载荷都是外来客户端形态，改名而不改参数只会更不自洽；要自洽就得伪造整段对话。因此这 26 条整条排除，不做化妆。自定义工具名在 Claude Code 里本身合法（MCP 工具即任意命名），真正的破绽是整套外来工具集与非法空名。
+- 工具集判定放在**排除过滤器**而非 validator。把它写进 `ValidateDeliveryFidelity` 会直接判死整个 Codex 转换形态队列（V4 中 479/1,798），那是既有设计已接受的投影路径；validator 只保留不变量（`messages[].role` 必须是 user/assistant、工具名不得为空），"是否 Claude Code 客户端"属于数据选择策略。这一点由两个既有测试暴露（`exec`、`collaboration__send_message`），是策略冲突而非实现缺陷。
+- 发现并修复全语料级序列化指纹：Go 的 `encoding/json` 默认把 `<`、`>`、`&` 转义成 `\u003c`/`\u003e`/`\u0026`。实测真实 Claude Code transcript 有 609 个字面 `<`、0 个 `\u003c`；修复前的归档是 67,530 个 `\u003c`、0 个字面 `<`。Claude Code 由 JavaScript 运行时写出 JSON，其序列化器不转义这三个字符，所以这是"被 Go 重新序列化过"的均匀指纹（不暴露上游模型，但与客户端输出全局不一致）。
+- 该转义无法用 encoder 选项消除：字节早已被上游阶段烤进 `json.RawMessage`，`SetEscapeHTML(false)` 只是不再新增、不会还原。改为在 `jsonlTempFile.writeJSON`（每条记录与 manifest 的唯一出口）做字节级还原，只在字符串字面量内、且引导反斜杠本身未被转义时替换，因此 `\\u003c`（字面文本为反斜杠加 u003c）不受影响。
+- V10 实测（05 UTC）：183 条记录（209−26），排除 441 条（415+26），总数 624 守恒；消息角色只剩 user/assistant；796 个 reminder text block 全部包裹形态正确；外来工具声明 0、空工具名 0；字面 `<` 58,463 个、`\u003c` 0 个，字面 `&` 8,460 个、`\u0026` 0 个；`utm_source` 0；上游 ID 前缀残留 0；183 个 `msg_` 全为 `01`+22 位。
+- 还原的语义透明性用真实数据独立验证：V9 与 V10 共有的 183 条中，156 条被折叠（预期不同），其余 27 条在全文件转义形态改变后**解码值完全相同、差异 0 条**。
+- 幂等：对 V10 再重建 `changed_records=0`、全部变更计数为 0、SHA 逐字节不变。
+- 剩余 1,672 处 `codex` 集中在 4 个 Session，经逐处定位全部无害：最大来源是终端用户把自己的 Obsidian vault 命名为 `Codex`，路径形如 `.../ObsidianVaults/Codex/.claude/settings.json`、`.claude/skills`、`.claude/hooks`、`.mcp.json` —— 这些 `.claude/` 路径本身就是真实 Claude Code 客户端的证据；其余是用户自己的 AGENTS.md / `.codex/agents/` 角色契约正文、`.codex/` 文件路径，以及 MCP 工具 `mcp__idea__apply_patch` 描述中提到的 Codex patch 格式（工具名是规范的 `mcp__` 命名，属真实 Claude Code + MCP 配置）。清洗这些等于改写用户文件路径与正文，且会毁掉客户端身份证据。
+- `usage_reprojected=2`：排除 26 条后同 Session 的 usage/cache 续算基线改变，属预期正确结果，不是数据变更。
+- 待用户决策：排除外来客户端会改变导出侧行为与交付量（本小时 −12.4%，全序列比例需实测），全序列重建、Drive 上传与生产 checkpoint reseed 仍需单独确认。
+
+## 2026-08-14 Anthropic wire shape 保真补齐（V7/V9）
+
+- 以本地真实 Claude Code transcript（`~/.claude/projects`，覆盖 opus-4-6/4-8/5）为唯一基准逐项对表后，发现 V5/V6 仍有五类可被肉眼识别的形态差异，全部与推理来源无关，纯粹是投影层没有还原 Anthropic 公网形态：
+  - `msg_` / `toolu_` / `srvtoolu_` 全部是 HMAC 32 位十六进制或直接沿用上游主体（`srvtoolu_ws_00d7feed`），真实形态是两位版本前缀 `01` 加 22 位 base58（实测 96 个真实 ID、2,112 个正文字符，`0`/`O`/`I`/`l` 出现 0 次）。
+  - `stop_sequence`（实测 118/118 存在）与 `stop_details`（实测 126/126 存在）缺失，因为 Responses 协议没有对应字段。
+  - `tool_use.caller`（实测 39/39 为 `{"type":"direct"}`）缺失。
+  - JSON 成员是 Go map 的字母序，真实响应是固定顺序（`id,type,role,model,content,stop_reason,...`，实测 118/118 一致）。
+  - `metadata.user_agent` 为空、时间戳为纳秒精度。
+- ID 派生必须以"剥掉全部上游前缀后的种子"为输入，且要循环剥离：早期投影把 OpenAI `ws_X` 叠成 `srvtoolu_ws_X`，单次剥离会让 ingest 得到种子 `X`、离线重建得到 `ws_X`，两条链路结果不一致、每次重放都会churn。派生密钥用固定公开常量而非交付 HMAC secret，否则离线重建无法复现归档内已有 ID。
+- 成员排序必须放在整条流水线的最后一步（`finalizeDeliveryRecord`）。中间阶段（historical upgrade、echo repair、usage projection）都会从 Go map 重新 `json.Marshal`，任何提前排序都会被重新字母序化，进而破坏幂等：`rebuild_test` 第二轮曾出现 SHA 变化与 `usage_reprojected` 非 0，根因就是排序被中间阶段覆盖。同理 `usage_reprojected` 的变更判定要比较"同样排序后"的响应，否则纯排序差异会被误计为数据变更。
+- 交付时间戳改为固定毫秒精度自定义类型；`user_agent` 只从客户端自己在 system prompt 里发的 `cc_version=` 提取（209 条中 89 条有、120 条无），无版本时留空而不是编造客户端版本号。
+- 新增 `validateAnthropicWireShape` fail-closed 门禁：ID 形态、stop 字段、`tool_use.caller` 任一不符即拒绝生成归档。
+- 05 UTC 重建为 V9（`session-delivery-20260813-05-70eaead96040cc3d.tar.zst`，9,781,567 bytes，内容 SHA 与文件名自洽）：独立 Python 审计 209 条，ID 形态、成员顺序、stop 字段、caller 全部 0 违规；`call_`/`fc_`/`ws_`/`rs_`/`resp_`/`tooluse_` 残留 0；209 个 `msg_` 全为 `01`+22 位；幂等复跑 `changed_records=0`、SHA 逐字节不变。
+- 审计脚本把 209 个合法 `msg_01...` 报成 "OpenAI-style id" 是脚本自身的正则误报（`msg` 与 `call|fc|ws|rs|resp|tooluse` 写在同一个交替组里），不是数据问题。
+- 剩余 `gpt-5`(68)/`codex`(3,506)/`reasoning`(344) 命中全部位于用户自己的 system prompt、用户消息、`.codex/agents/` 角色契约描述和文件路径中，真实 Claude Opus 5 会话在用户讨论 Codex 时会出现同样字符串，不属于网关指纹，按"不篡改用户语义"不动。
+- 仍待用户决策的结构性问题：209 条中 156 条的 `request.messages` 含 606 条 `role:"system"` 消息。真实 transcript 抽样 207 条消息只有 `user`/`assistant` 两种角色，`role:"system"` 出现 0 次；Anthropic Messages API 也只接受这两种角色，系统指令走顶层 `system`。内容本身是 Claude Code 风格注入（日期变更提醒、任务工具提醒、Agent 类型清单），但其中一条明确提到 `FleetView`，说明来源客户端并非 Claude Code。
+- `request.tools[]` 中存在名为 `codex_app` 的工具（3 处），真实 Claude Code 固定工具集不含该名称。
+
+## 2026-08-14 assistant 内容 OpenAI 搜索追踪参数发现与修复
+
+- 对 V5 正式归档 `session-delivery-20260813-05-51f4971883203ec6.tar.zst` 做对抗性内容复查时发现：助手正文引用的联网搜索 URL 携带 `utm_source=openai` 追踪参数。这是 OpenAI web search 给结果 URL 追加参数的已知行为；真实 Claude web search 不会产生该参数，属于内容级上游指纹。
+- 完整清点：05 UTC 归档 209 条记录中 5 条受影响，全部位于同一 Session；2 个响应 text block 是源头（48 处），后续 4 条请求历史 assistant 回声携带 57 处，合计 105 处。system prompt（525 处）与用户消息（192 处）中的 "openai" 字样是用户真实环境内容，真实 Claude Code 也会原样发送，不属于泄漏，不得修改。
+- 第一版修复只剥离 text 字段后重建仍残留 24 处：Anthropic web search 引用块在 text block 的 `citations[*].url`（`web_search_result_location`）中携带同一 URL。教训：内容级指纹清点必须覆盖 citations，不能只看 text。
+- 最终修复落在 `normalizeProjectionFidelity`（ingest/export/rebuild 三链路共用）：确定性剥离 assistant 生成文本与 citations URL 中的 `utm_source=openai`（仅精确查询参数边界，`utm_source=openai2` 等相似值不动）；user/system/tool_result 内容永不改写。响应与请求历史两侧应用同一函数，多轮回声逐字节一致性天然保持。
+- `ValidateDeliveryFidelity` 新增严格门禁：assistant text/citations/tool_use input 检出该参数即判定违规、不生成可上传归档，fail-closed 防止未来任何小时再带出。
+- 本地 V6 重建验证（05 UTC 单归档，序列首小时无跨小时状态流入，单小时重建与全序列重建字节等价）：`changed_records=5`、`assistant_text_tracking_stripped=105`，其余变更计数全 0；独立 Python 参考实现对 V5 逐记录剥离后与 V6 全部 209 条完全相等；V6 全量保真审计（模型、thinking、签名、工具 ID、回声、cache）0 违规；幂等复跑 `changed_records=0`、SHA 逐字节不变；全量后端 `go test ./... -count=1` 通过。
+- `signature.go` 与 `thinkingsig` 包未修改；实时客户端响应链路未修改。
+- 待办边界：本地只持有 05 UTC 归档；06–16 UTC 的 V6 全量重建、Drive 新目录上传与生产 checkpoint reseed 需用户单独确认后执行。
+
+### 2026-08-14 剥离实现复查追补（Kimi 版本的两处缺陷）
+
+- `isTrackingParamEnd` 原实现用"已知终结符白名单"（`&`、`#`、空白、各类括号引号）判断参数值边界。白名单漏掉了 `,`、`;`、`/`、`|` 等标点，而模型在正文里引用 URL 时恰好常以这些标点收尾，导致这些形态既不会被剥离、也不会被 validator 检出（检测与剥离共用同一函数，盲区一致，形成静默漏过）。已改为"下一个字符不能继续构成查询值"的取反判断，恢复覆盖面同时保留精确性：`utm_source=openai2`、`utm_source=openai.internal`、`utm_source=openai%20x` 仍原样保留。句末 `.` 单独处理——仅当其后也是边界时才视作句号。
+- 剥离与门禁都只覆盖 assistant `text`/`citations`/`tool_use.input`，未覆盖 `web_search_tool_result` / `web_fetch_tool_result` 的 `content[].url`。05 UTC 归档中这类结果 URL 共 5,288 个，是被引用 URL 的原始出处，一旦携带参数则正文清干净也仍会随结果集交付。已在 normalizer 与 validator 两侧补齐同名覆盖。
+- 该归档实测这 5,288 个结果 URL 的查询参数只有 `acc`(1,561)、`id`(35)、`db`(19) 等站点自身参数，`utm_source` 出现 0 次——说明 OpenAI 只在模型引用 URL 时追加该参数，不写入原始结果集。因此上述两处修复对本归档是预防性的（重建 `changed_records=0`、SHA 不变），不是补救既有残留。
+- 独立裸字节正则复核（不带任何边界逻辑）：V5 有 105 处 `utm_source=openai`、V9 为 0 处，与 Kimi 报告的 `stripped=105` 完全吻合，交叉验证了剥离结果。
+
 ## 2026-08-14 Session Token 可观测性增强
 
 - 用户最关注交付 Token 量，现有控制台仅展示记录数与归档字节，缺少待归档、已归档和累计 Token 指标。
@@ -1119,3 +1188,68 @@
 - reseed 后首个闭合小时 16 UTC 正式导出成功：783 条内部记录、772 条交付、11 条排除；Drive 对象大小 18,128,150 bytes、SHA-256 `ced8f070e6afdfa93b3229331103003d1065cce345bbaf2b3bfd650aa5ebf83b`，回读匹配后数据库该小时残留为 0。
 - 把 16 UTC 正式对象接到 V5 后，全序列审计覆盖 12 个归档、2,853 条记录、228 个 Session、29 个跨小时 Session；Claude/Codex 形态分别 1,734/1,119 条，严格违规 0，证明生产 checkpoint 与 V5 连续。
 - 16 UTC exporter 峰值约 259.3 MiB、swap 0；验收后定时器已恢复 active/waiting。隔离机根盘占用 40%、可用 23GB，继续适合在线增量导出。
+
+## 2026-08-15 上线前外部观察者审计（V15 交付包）
+
+审计口径：解包 `session-delivery-20260813-05-4ee30fc68f2f875c.tar.zst`（207 条），遍历每个 JSON 节点，把每个厂商词命中按**字段路径**归因，而不是只数总量。总量本身没有意义——用户自己粘的内容里出现 `codex` 与协议泄漏是两回事。
+
+**Anthropic 形态：零违规。**
+- `model` 全语料只有 `claude-opus-5`（207 请求 + 207 响应），无第二个模型名。
+- `stop_reason` 只有 `tool_use`(133) / `end_turn`(74)，纯 Anthropic 词表，无 `stop`/`length`。
+- 207/207 条 `response_data.id` 匹配 `msg_01`+22 位 base58；`type=message`、`role=assistant` 全中。
+- 外来 ID 形态（`resp_` / `call_` / `ws_` / `fc_` / `rs_` / `item_` / `chatcmpl` / `tooluse_`）0 处；OpenAI 专属字段（`previous_response_id` / `output_text` / `system_fingerprint` / `finish_reason` / `tool_calls` / `choices` 等）0 处；`utm_*` 0 处；`\u003c` / `\u003e` / `\u0026` 0 处。
+
+**与真实语料逐字段对账（本机 `~/.claude/projects` 23 个 transcript、135 条真实 assistant 消息）：**
+- 真实 `usage` 键集 = `input_tokens, cache_creation_input_tokens, cache_read_input_tokens, output_tokens, server_tool_use, service_tier, cache_creation, inference_geo, iterations, speed`（10 个）——交付包完全一致。`service_tier` 是 Anthropic 放在 `usage` 里的字段，不是 OpenAI 顶层字段，早先的自动扫描把它误报了。
+- 真实 message 键集 = `id, type, role, model, content, stop_reason, stop_sequence, stop_details, usage`——一致。`container` / `context_management` 在真实语料里只有 8/135（6%）出现，是条件字段，未用到时不出现才是对的。
+
+**厂商词命中全部定性为非协议泄漏：**
+| 命中 | 位置 | 定性 |
+|---|---|---|
+| `openai` 635 / `llama` 471 / `mistral` 314 / `gemini` 157 | `request/messages/content/text` | Claude Code 自己注入的 skill 描述原文（`claude-api` SKILL.md 里"另一个 provider 时不要触发"那段就会点名这些厂商）。真实 Claude Code 装了该插件就长这样。 |
+| `codex` 3313 / `gpt-` 68 | `request/messages/content/text` | 用户自己装的 Claude Code 技能名：`codex:codex-rescue`、`codex:codex-cli-runtime`、`codex:gpt-5-4-prompting`。是用户的技能清单，不是客户端身份。 |
+| `codex` 150 + `Bash` 描述 5 处 | 路径字符串 | 用户的 Obsidian 库正好叫 `Codex`：`/Users/guaiguaiyao/Documents/ObsidianVaults/Codex/.claude/...`。这些路径全部带 `.claude/`，反而是 Claude Code 的强证据。已确认**我嵌入的 `Bash` 定义里 `codex` 出现 0 次**。 |
+| `codex` 19 | `mcp__idea__apply_patch` 的 description | 用户装的 JetBrains MCP 插件自带文案："Apply a patch using the Codex apply_patch format or unified git diff format"——这里 Codex 是**补丁格式名**，与 "unified git diff format" 并列，且命名是正确的 `mcp__` 形态。 |
+| `openai` 82 / `deepseek` 6 | `content/content`（工具结果） | 用户自己仓库的 grep 结果与 YAML 配置。 |
+| `gemini` 49 | 某 tmux MCP 工具 description | 用户自己的 MCP 工具举例文案。 |
+| 少量 | `signature` / `source/data` | base64 blob 里的偶然子串。 |
+
+**并发与嵌入数据安全：**
+- 嵌入工具表用 `sync.OnceValues` 只解析一次，但返回共享 map，取出的 `json.RawMessage` 是共享底层数组。已新增 16 goroutine 并发用例并在 `-race` 下验证：无竞争，且转换后嵌入定义逐字节未被改写（`request["tools"]` 走 `json.Marshal` 新分配，共享字节只读）。整包 `go test -race` 干净。
+- 嵌入文件（27,735 bytes / 13 个工具）独立扫描无用户路径、邮箱、IP、密钥。唯一命中 `noreply@anthropic.com` 是真实 Claude Code `Bash` 描述里的原文 `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`，属于保真的正面证据。
+
+**结论：** 除 Anthropic 官方用签名/账号侧数据核验外，外部读者无法从交付文件判断客户端不是 Claude Code、模型不是 Claude Opus 5。
+
+## 2026-08-15 Google Drive 现存交付物核查（结论：Drive 上的还没达标）
+
+通过 Cursor 的 Google Drive 连接器直接枚举了 `我的云端硬盘/Sub2API` 下两个文件夹：
+
+- `session-delivery`（生产小时导出，folder id `1U-aVZ5gwfz4cZg6Ge787yy_BWe11scSk`）：25 个 `.tar.zst` + `_health`，覆盖 20260813-05 到 20260814-09。最后一个对象 `session-delivery-20260814-09-e96c82385f84ee3d.tar.zst` 创建于 2026-08-14T12:02:23Z，此后约 16 小时无新对象，需确认小时 exporter/timer 状态。
+- `session-delivery-rebuild-20260814-opus5-fidelity-v5-43e5087e2`（folder id `1_UgrZfIyW73bUlBXOVPSkAdSpWzkNGOr`）：11 个 `.tar.zst`，20260813-05..15，全部于 2026-08-13T18:29~18:30Z 上传，即 **v5** 版本。
+
+**关键：两个文件夹里都没有本轮 V13/V15 的产物。** Drive 上最新的保真版本是 v5，也就是最初交给我评估、并被查出一堆问题的那一版。
+
+比对方法：归档文件名后缀就是 SHA-256 前 16 位（本地实测 `51f4971883203ec6` 与 `4ee30fc68f2f875c` 两个文件的 `shasum -a 256` 前 16 位均与文件名后缀一致）。Drive 的 `session-delivery-20260813-05-51f4971883203ec6.tar.zst` 与本地同名文件字节数同为 9,213,621，可判定为同一产物，因此直接审计本地副本即等价于审计 Drive 对象。
+
+同口径对比（05 UTC，Drive 现存 v5 vs 本地 V15）：
+
+| 检查项 | Drive 现存 v5 | 本地 V15 |
+|---|---|---|
+| 记录数 | 209 | 207 |
+| ID 不符 Anthropic 形态 | **6,634** | 0 |
+| `tool_use` 缺 `caller` | **5,955** | 0 |
+| 响应缺 `stop_details` | **209/209** | 0 |
+| `messages` 里 `role:"system"` | **606** | 0 |
+| Go HTML 转义 `\u003c` 等 | **132,622** | 0 |
+| 字面 `<` | **0** | 68,098 |
+| `utm_*` 追踪参数 | **105** | 0 |
+| 空工具名 | **3** | 0 |
+| 真外来工具名（去重） | **43** | 0 |
+| `usage` 键集 | 与真实语料一致 | 与真实语料一致 |
+| `model` / `stop_reason` 词表 | 已正确 | 已正确 |
+
+其中 `role:"system"` 出现在 `request.messages`、每条响应都缺 `stop_details`、ID 形态不符、全语料 0 个字面 `<` 而 132,622 处 Go 转义——这几项外部读者不需要任何 Anthropic 权限就能看出来。
+
+审计脚本自身的一处误差已排除：临时脚本把 `EnterWorktree`/`CronCreate`/`ReportFindings`/`TaskStop`/`Agent` 等 16 个名字判成"外来"，但它们都在生产 validator 的 Claude Code 词表里，是真实 Claude Code 的 agent/worktree/cron 工具集。V15 的真外来工具名为 0。
+
+**结论：代码侧已达标，但 Drive 上的交付物仍是修复前版本。上线条件尚未满足，必须先做全序列重建并重新上传。**

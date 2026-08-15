@@ -20,8 +20,10 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
+	"go.uber.org/zap"
 )
 
 const deliveryFormatVersion = "anthropic-messages-jsonl-v1"
@@ -322,7 +324,7 @@ func (e *Exporter) buildArchive(
 		if err != nil {
 			return fmt.Errorf("decode delivery request for record %s: %w", recordID, err)
 		}
-		normalizedRequest, normalizedResponse, _, err := normalizeProjectionFidelity(
+		normalizedRequest, normalizedResponse, fidelityStats, err := normalizeProjectionFidelity(
 			delivery.Request,
 			delivery.Response.ResponseData,
 			fidelityNormalizationOptions{
@@ -331,7 +333,29 @@ func (e *Exporter) buildArchive(
 			},
 		)
 		if err != nil {
-			return fmt.Errorf("normalize delivery fidelity for record %s: %w", recordID, err)
+			// The capture path quarantines a record it cannot normalize and
+			// carries on. Doing the same here keeps one unconvertible record —
+			// a queued record predating this normalizer, say — from costing the
+			// whole hour its delivery. The count is reported separately so a
+			// systematic conversion failure shows up instead of passing for
+			// ordinary rejections.
+			logger.FromContext(ctx).Warn(
+				"Session delivery record held back by fidelity normalization",
+				zap.String("record_id", recordID),
+				zap.Error(err),
+			)
+			stats.Rejected++
+			stats.NormalizationFailed++
+			return nil
+		}
+		// The tool surface was converted, but a system prompt naming the tools
+		// that conversion removed still instructs the model to call them. The
+		// record contradicts itself and no further normalization can reconcile
+		// it, so it is held back rather than delivered.
+		if fidelityStats.ForeignSystemPromptTools > 0 {
+			stats.Rejected++
+			stats.ForeignSystemPromptExcluded++
+			return nil
 		}
 		delivery.Request = normalizedRequest
 		delivery.Response.ResponseData = normalizedResponse
@@ -358,6 +382,11 @@ func (e *Exporter) buildArchive(
 		// shows per-turn cache creation; GPT upstreams never report it).
 		if err := usage.process(delivery); err != nil {
 			return fmt.Errorf("usage projection record %s: %w", recordID, err)
+		}
+		// Must be the last mutation: every stage above re-encodes from Go maps,
+		// which would re-alphabetize the members again.
+		if err := finalizeDeliveryRecord(delivery); err != nil {
+			return fmt.Errorf("finalize record %s: %w", recordID, err)
 		}
 		if err := ValidateDeliveryFidelity(delivery, e.publicModel); err != nil {
 			return fmt.Errorf("validate delivery record %s: %w", recordID, err)
@@ -480,6 +509,10 @@ func (f *jsonlTempFile) writeJSON(value any) error {
 	if err != nil {
 		return err
 	}
+	// Every record and manifest entry funnels through here, which makes it the
+	// one place where the Go serializer's HTML escaping can be undone for the
+	// whole archive at once.
+	line = unescapeJSONHTML(line)
 	if bytes.Contains(line, []byte{'\n'}) {
 		return errors.New("encoded JSONL record contains a literal newline")
 	}

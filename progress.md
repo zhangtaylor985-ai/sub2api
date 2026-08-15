@@ -1,5 +1,18 @@
 # Session Delivery 可观测性进度记录
 
+## 2026-08-14 OpenAI 搜索追踪参数交付修复（本地 V6）
+
+- 用户确认 `utm_source=openai` 指纹显眼、值得修复，并授权范围：只做代码 + 本地 V6 重建和审计；Drive 上传与生产 reseed 待 V6 审计结果后单独确认。
+- 已确认修复边界只在交付链路：`normalizeProjectionFidelity` 的三个调用点（ingest 存储 envelope、小时导出、离线重建）全部位于客户端响应发出之后；实时响应链路未改动。
+- 已在 `fidelity_normalizer.go` 实现 `stripOpenAISearchTracking`：仅处理精确查询参数边界（`?`/`&` 前导、值边界），assistant 响应 text、请求历史 assistant text（含字符串形态 content）与 text block `citations[*].url` 统一剥离；user/system/tool_result 内容不改写。
+- 已在 `fidelity_validator.go` 新增 fail-closed 门禁：assistant text/citations/tool input 检出该参数即违规，导出/重建不生成归档。
+- `RebuildChangeStats` 新增 `assistant_text_tracking_stripped` 计数，重建报告可直接核对。
+- 首轮本地重建暴露 text 已净但 citations 残留 24 处；补齐 citations 处理后，05 UTC V6 重建结果为 `changed_records=5`、`assistant_text_tracking_stripped=105`、其余计数全 0，与独立 Python 清点（48 响应 + 57 历史回声）完全一致。
+- 独立交叉验证：Python 参考实现按相同规则剥离 V5 全部 209 条记录后与 V6 逐条完全相等，证明除 URL 参数外无任何字节差异；V6 全量保真审计 0 违规、`utm_source=openai` 残留为 0；幂等复跑字节不变（SHA `9d1332f22569b3a5...`）。
+- 新增回归测试：URL 剥离位置矩阵（尾参/独参/首参/中间参/多 URL/大小写/相似值保留/非参数保留）、归一化后响应与历史回声字节一致、user 文本不改写、门禁对响应 text/历史 text/tool input/citations 四类场景拦截、user 文本放行；全量后端 `go test ./... -count=1` 与 `go vet` 通过。
+- `signature.go`、`thinkingsig` 与实时响应链路均未修改；改动未提交，保留在 worktree `codex/session-delivery-v2-rollout`。
+- 下一步（待用户确认）：获取 06–16 UTC 归档做全序列 V6 重建、Drive 新目录上传与回读、生产 checkpoint reseed。
+
 ## 2026-08-14 Session Token 可观测性增强
 
 - 已确认在隔离 worktree `codex/session-delivery-v2-rollout` 实施；主工作区存在其他业务任务的大量未提交改动，本任务不触碰。
@@ -1154,3 +1167,46 @@
 - 已完成 reseed 后首小时生产验证：16 UTC 批次 783/772/11，正式 Drive 对象 SHA-256 `ced8f070e6afdfa93b3229331103003d1065cce345bbaf2b3bfd650aa5ebf83b`，远端回读一致、批次 `purged`、数据库残留 0。
 - 已把 16 UTC 正式对象接到 V5 05–15 UTC 做最终连续审计：12 个归档、2,853 条记录、228 个 Session、29 个跨小时 Session、严格违规 0；Claude/Codex 两类均有抽样。
 - 已恢复 `sub2api-session-export.timer`；当前 active/waiting，最近 service result=success。最终健康复核：主应用和 sessiond 均 `NRestarts=0`，无 panic/fatal/OOM；隔离机磁盘 40%、可用 23GB。
+
+### 2026-08-14 Anthropic wire shape 补齐（本地 V9，未上传）
+
+- 已用本地真实 Claude Code transcript 建立基准，并把 `msg_`/`toolu_`/`srvtoolu_` 统一为 `01`+22 位 base58；补齐 `stop_sequence`、`stop_details`、`tool_use.caller`；把 JSON 成员顺序还原为实测真实顺序；时间戳改毫秒精度；`metadata.user_agent` 从客户端自报版本提取。
+- 已把成员排序收敛到 `finalizeDeliveryRecord` 单一末端步骤，修复中间阶段重新字母序化导致的幂等破坏，并把 `usage_reprojected` 判定改为比较同样排序后的响应。
+- 已新增 `validateAnthropicWireShape` fail-closed 门禁，覆盖 ID 形态、stop 字段与 caller。
+- 已复查 Kimi 的 `448e3f1c4` 并修两处缺陷：`isTrackingParamEnd` 白名单漏掉 `,`/`;`/`/`/`|` 等标点（检测与剥离共用同一函数，形成静默漏过），改为取反判断；normalizer 与 validator 补齐 `web_search_tool_result`/`web_fetch_tool_result` 的 `content[].url` 覆盖。本归档实测该处 5,288 个 URL 无 `utm_source`，两处修复为预防性。
+- 已在本机把 05 UTC 重建为 V9 `session-delivery-20260813-05-70eaead96040cc3d.tar.zst`（9,781,567 bytes，209 条，排除 415 条），文件已复制到 `~/Downloads`；V5 与 V6 原文件保留未动。
+- 已完成独立审计：形态类 0 违规；`call_`/`fc_`/`ws_`/`rs_`/`resp_`/`tooluse_` 残留 0；209 个 `msg_` 全为 `01`+22 位；裸字节复核 `utm_source=openai` 由 V5 的 105 处降到 0 处；幂等复跑 `changed_records=0`、SHA 逐字节不变；`go vet ./...` 与 `go test ./... -count=1` 全量通过。
+- `signature.go` 与 `thinkingsig` 未触碰；改动未提交，位于 worktree `codex/session-delivery-v2-rollout`。
+
+### 2026-08-14 客户端身份与序列化收口（本地 V10，未上传）
+
+- 已按用户决策把 606 条 `role:"system"` 折叠进相邻 user turn 并用 `<system-reminder>` 包裹，包裹形态取自客户端自己已带包裹的 56 条实测基准；折叠后消息角色只剩 user/assistant。
+- 已按拍板结论排除 26 条外来客户端记录（Codex CLI 队列、Codex exec 队列、第三方 Agent 平台，含一个非法空工具名），不做工具改名；工具集判定放在排除过滤器，validator 只保留角色与空工具名两条不变量，避免误杀既有 Codex 转换形态队列。
+- 已修复全语料级 Go HTML 转义指纹：真实 Claude Code transcript 为字面 `<`（609 个、0 个 `\u003c`），修复前归档为 67,530 个 `\u003c`、0 个字面 `<`；在 `writeJSON` 单一出口做字节级还原，`\\u003c` 形态不受影响。
+- 已生成 V10 `session-delivery-20260813-05-9f987ca1c44f2936.tar.zst`（7,185,025 bytes，183 条交付、441 条排除、总数 624 守恒），文件已复制到 `~/Downloads`；V5、V6、V9 原文件全部保留未动。
+- 已完成验收：角色、reminder 包裹（796/796）、外来工具 0、空工具名 0、`utm_source` 0、上游 ID 前缀 0、183 个 `msg_` 全为 `01`+22 位；字面 `<` 58,463、`\u003c` 0；转义还原的语义透明性用 V9/V10 共有未折叠的 27 条验证为解码值完全一致；对 V10 再重建 `changed_records=0`、SHA 不变；`go vet ./...` 与 `go test ./... -count=1` 全量通过。
+- 已逐处定位剩余 1,672 处 `codex`，确认全部为用户自身内容（Obsidian vault 名为 `Codex`、AGENTS.md/`.codex/agents/` 正文、`mcp__idea__apply_patch` 描述），不属网关指纹，按不篡改用户语义保留。
+
+### 2026-08-14 外来客户端工具集转换（本地 V13，取代 V10 排除方案，未上传）
+
+- 已按用户否决意见撤销整条排除：`export.go`、`rebuild.go` 的排除分支与 `ForeignClientExcluded` 计数全部移除，manifest 不变量回到"重建只原地改写、不得跨交付/排除边界移动记录"。
+- 已新增 `foreign_tool_conversion.go` + `claude_code_tools.json`（`go:embed`，13 个工具 27.7KB）把外来工具集转换成 Claude Code 形态：有对位的整条替换真实定义并改写调用名与参数，`ns__tool` 改成 `mcp__ns__tool` 保留自身 schema，无对位且从未被调用的声明删除；被调用却无对位、或参数无对位字段则报错而不静默丢弃（`exec` 的 `workdir` 折叠成 `cd ... && ...` 而非丢弃）。
+- 嵌入定义取自本语料真实 Claude Code 记录的众数变体，已剔除所有含用户 settings/路径的变体；V13 实测 13 个被转换工具的定义与同归档真实声明逐字节一致。
+- validator 由两条不变量收紧回完整 Claude Code 工具词表 fail-closed；两个既有 Codex 投影测试按新形态更新（`exec`→`Bash`、`collaboration__send_message`→`mcp__collaboration__send_message`）。
+- 已生成 V13 `session-delivery-20260813-05-360532444046000b.tar.zst`（209 条交付、415 条排除），转换 89 声明 / 删除 69 声明 / 改写 5 次调用；外来工具名 0、空工具名 0；孤儿调用 V9 与 V13 同为 39 处 1 条、无新增名字。
+- 已完成验收：幂等复跑 `changed_records=0` 且 SHA 逐字节不变；`go build ./...`、`go vet ./...`、`go test ./... -count=1` 全量通过。
+- 已定位残留：24 条 Codex 队列的 1,018 处 `exec_command`/`apply_patch` 全在 `user/text`，是用户粘贴自己 agent 会话日志，按不篡改用户内容保留。
+- 已按用户拍板只排除 OpenClaw 2 条：判定口径为"转换后 `system` 仍点名被转换掉的工具"（记录自身矛盾、后续归一无法调和），依据取自该记录转换时实际处理过的工具名，只匹配含下划线的名字以避免把 `read`/`exec` 等普通英文词误判；与 V10 被否决的"声明了外来工具即排除"本质不同。
+- 已生成最终 V15 `session-delivery-20260813-05-4ee30fc68f2f875c.tar.zst`（9,007,479 bytes，207 条交付、417 条排除、总数 624 守恒），已复制到 `~/Downloads`；V5/V6/V9/V10 原文件全部保留未动。
+- 已完成 V15 验收：外来工具名 0、`system` 点名被移除工具的记录 0、含 OpenClaw 的记录 0；消息角色只有 user(4,067)/assistant(3,861)；孤儿调用 39（与 V9 同值、无新增）；幂等复跑 `changed_records=0` 且 SHA 逐字节不变；`gofmt` 干净，`go vet ./...`、`go test ./... -count=1` 全量通过。
+- 待确认：全序列重建、Drive 上传与生产 checkpoint reseed 仍需单独确认后执行。
+
+### 2026-08-15 导出链路容错 + 集成测试补跑（未提交）
+
+- 已修导出链路的批次级失败风险：`export.go` 原先在 `normalizeProjectionFidelity` 报错时 `return err`，会让**整小时**导出失败；捕获链路（`canonical.go`）对同类错误是单条 `Rejection` 后继续。本轮改成与捕获链路一致的单条扣下，并新增 `HourStats.normalization_failed` 单独计数（不与普通 rejection 混同），错误进 warn 日志。动机：小时导出是自动任务，一条历史入库记录不该让整小时不发。
+- 保留 `rebuild.go` 的整批失败语义：重建是运维手动、可修可重跑的一次性动作，大声失败比静默扣下更合适。
+- 已新增集成测试 `TestHourlyExportHoldsBackUnconvertibleRecordWithoutFailingTheHour`：一条"被调用却无对位工具"的记录被扣下，同小时另一条正常交付，`Records=2 / Deliverable=1 / Rejected=1 / NormalizationFailed=1`。
+- 已修此前遗漏的集成测试 `TestExportUpgradesOpaqueRequestHistorySignature`：该用例断言 `toolu_F4dwodeQ` 字面存在，但 ID 归一化后整个 ID 会重新派生成 `01`+22 base58，不是仅换前缀。断言改为更强的不变量：`tool_use.id` 与 `tool_result.tool_use_id` 一致且符合 Anthropic 公开形态。
+- 说明：该用例带 `//go:build integration`，不在无 tag 的 `go test ./...` 里，此前"全量通过"的口径只覆盖了无 tag 套件，未覆盖集成套件。
+- 本轮回归口径（已全绿）：`gofmt -l internal/sessiondelivery/` 干净、`go build ./...`、`go vet ./...`、`go test ./... -count=1`、以及 `DOCKER_HOST=unix:///Users/taylor/.orbstack/run/docker.sock go test -tags integration ./internal/sessiondelivery/ -count=1`（testcontainers 需显式指定 OrbStack socket，否则报 `MustExtractDockerHost` panic）。
+- V15 交付包不受本轮改动影响：改的是 `export.go`，交付包由 `rebuild.go` 产出，未重建。

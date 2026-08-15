@@ -75,7 +75,140 @@ func ValidateDeliveryFidelity(record *DeliveryRecord, publicModel string) error 
 			return errors.New("thinking-enabled response must start with a thinking block")
 		}
 	}
+	if err := validateAnthropicWireShape(request, response); err != nil {
+		return err
+	}
 	return validateUsageFidelity(response["usage"], response["content"])
+}
+
+// validateAnthropicWireShape is fail-closed on the public wire shape: a record
+// whose identifiers still carry a provider body, or whose response is missing
+// the members real Opus always emits, cannot be archived at all. That prevents
+// a future hour from silently regaining the fingerprints this pass removes.
+func validateAnthropicWireShape(request, response map[string]json.RawMessage) error {
+	if id := rawString(response["id"]); !hasAnthropicIDShape("msg_", id) {
+		return fmt.Errorf("response.id %q is not an Anthropic message identifier", id)
+	}
+	for _, member := range []string{"stop_sequence", "stop_details"} {
+		if _, exists := response[member]; !exists {
+			return fmt.Errorf("response.%s is missing", member)
+		}
+	}
+	if err := validateContentToolIDShape(response["content"], "response.content"); err != nil {
+		return err
+	}
+
+	var messages []map[string]json.RawMessage
+	if err := json.Unmarshal(request["messages"], &messages); err != nil {
+		return errors.New("request.messages must be an array")
+	}
+	for index, message := range messages {
+		// The Messages API accepts only these two roles; anything else would be
+		// rejected outright, so it must never survive into a delivery.
+		if role := rawString(message["role"]); role != "user" && role != "assistant" {
+			return fmt.Errorf("request.messages[%d].role %q is not a Messages API role", index, role)
+		}
+		if err := validateContentToolIDShape(
+			message["content"],
+			fmt.Sprintf("request.messages[%d].content", index),
+		); err != nil {
+			return err
+		}
+	}
+	// convertForeignClientTools runs ahead of this gate and leaves every tool
+	// either a Claude Code built-in or an MCP tool, so anything else surviving
+	// here means a foreign tool reached the delivery unconverted.
+	if err := claudeCodeToolSetViolation(request["tools"]); err != nil {
+		return err
+	}
+	return nil
+}
+
+// mcpToolPrefix is how Claude Code namespaces an externally provided tool.
+const mcpToolPrefix = "mcp__"
+
+// claudeCodeToolNames is the tool vocabulary observed across the Claude Code
+// cohort of this corpus. MCP tools are excluded from the list because Claude
+// Code namespaces them with an "mcp__" prefix and their leaf names are
+// arbitrary by design.
+var claudeCodeToolNames = map[string]struct{}{
+	"Agent": {}, "Artifact": {}, "AskUserQuestion": {}, "Bash": {}, "CronCreate": {},
+	"CronDelete": {}, "CronList": {}, "DesignSync": {}, "Edit": {}, "EndConversation": {},
+	"EnterPlanMode": {}, "EnterWorktree": {}, "ExitPlanMode": {}, "ExitWorktree": {},
+	"Glob": {}, "Grep": {}, "LSP": {}, "ListAgents": {}, "ListMcpResourcesTool": {},
+	"Monitor": {}, "NotebookEdit": {}, "PushNotification": {}, "Read": {},
+	"ReadMcpResourceDirTool": {}, "ReadMcpResourceTool": {}, "ReportFindings": {},
+	"ScheduleWakeup": {}, "SendMessage": {}, "SendUserFile": {}, "Skill": {},
+	"TaskCreate": {}, "TaskGet": {}, "TaskList": {}, "TaskOutput": {}, "TaskStop": {},
+	"TaskUpdate": {}, "WebFetch": {}, "WebSearch": {}, "Workflow": {}, "Write": {},
+	// Server-side tools are declared by name without a prefix.
+	"web_search": {}, "web_fetch": {},
+}
+
+// claudeCodeToolSetViolation reports why a declared tool set does not belong to
+// a Claude Code client, or nil when it does.
+func claudeCodeToolSetViolation(raw json.RawMessage) error {
+	if !isJSONArray(raw) {
+		return nil
+	}
+	var tools []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		return errors.New("request.tools must be an array of objects")
+	}
+	for index, tool := range tools {
+		name := rawString(tool["name"])
+		if name == "" {
+			return fmt.Errorf("request.tools[%d] has no name", index)
+		}
+		if strings.HasPrefix(name, mcpToolPrefix) {
+			continue
+		}
+		if _, known := claudeCodeToolNames[name]; !known {
+			return fmt.Errorf("request.tools[%d] name %q is not a Claude Code tool", index, name)
+		}
+	}
+	return nil
+}
+
+// anthropicToolIDMembers maps a block type to the member holding a tool
+// identifier and the prefix that identifier must use.
+var anthropicToolIDMembers = map[string]struct {
+	member string
+	prefix string
+}{
+	"tool_use":               {"id", "toolu_"},
+	"tool_result":            {"tool_use_id", "toolu_"},
+	"server_tool_use":        {"id", "srvtoolu_"},
+	"web_search_tool_result": {"tool_use_id", "srvtoolu_"},
+	"web_fetch_tool_result":  {"tool_use_id", "srvtoolu_"},
+}
+
+func validateContentToolIDShape(contentRaw json.RawMessage, path string) error {
+	if !isJSONArray(contentRaw) {
+		return nil
+	}
+	var blocks []map[string]json.RawMessage
+	if err := json.Unmarshal(contentRaw, &blocks); err != nil {
+		return fmt.Errorf("%s must be an array of blocks", path)
+	}
+	for index, block := range blocks {
+		blockType := rawString(block["type"])
+		expected, tracked := anthropicToolIDMembers[blockType]
+		if !tracked {
+			continue
+		}
+		id := rawString(block[expected.member])
+		if !hasAnthropicIDShape(expected.prefix, id) {
+			return fmt.Errorf("%s[%d].%s %q is not an Anthropic %s identifier",
+				path, index, expected.member, id, blockType)
+		}
+		if blockType == "tool_use" {
+			if _, exists := block["caller"]; !exists {
+				return fmt.Errorf("%s[%d].caller is missing", path, index)
+			}
+		}
+	}
+	return nil
 }
 
 func validateRequestHistoryFidelity(messagesRaw json.RawMessage, publicModel string) error {
@@ -112,6 +245,10 @@ func validateRequestHistoryFidelity(messagesRaw json.RawMessage, publicModel str
 				case "tool_use", "server_tool_use":
 					if jsonStringsContainTracking(block["input"]) {
 						return fmt.Errorf("request.messages[%d].content[%d] assistant tool input contains OpenAI search tracking parameter", messageIndex, blockIndex)
+					}
+				case "web_search_tool_result", "web_fetch_tool_result":
+					if jsonStringsContainTracking(block["content"]) {
+						return fmt.Errorf("request.messages[%d].content[%d] server tool result contains OpenAI search tracking parameter", messageIndex, blockIndex)
 					}
 				}
 			}
@@ -186,6 +323,10 @@ func validateResponseContentFidelity(contentRaw json.RawMessage, publicModel str
 			}
 			if jsonStringsContainTracking(block["input"]) {
 				return 0, 0, fmt.Errorf("response content[%d] server_tool_use input contains OpenAI search tracking parameter", index)
+			}
+		case "web_search_tool_result", "web_fetch_tool_result":
+			if jsonStringsContainTracking(block["content"]) {
+				return 0, 0, fmt.Errorf("response content[%d] server tool result contains OpenAI search tracking parameter", index)
 			}
 		}
 	}

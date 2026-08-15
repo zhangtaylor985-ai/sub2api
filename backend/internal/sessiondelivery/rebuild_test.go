@@ -254,7 +254,7 @@ func historicalRebuildRecord(timestamp time.Time, turn, totalInput int) *Deliver
 	return &DeliveryRecord{
 		SessionID: "session_rebuild_cross_hour",
 		RequestID: fmt.Sprintf("req_rebuild_%d", turn),
-		Timestamp: timestamp,
+		Timestamp: DeliveryTime{timestamp},
 		Metadata:  DeliveryMetadata{HTTPStatus: 200, LatencyMS: 50},
 		Request:   json.RawMessage(request),
 		Response:  DeliveryResponse{StatusCode: 200, ResponseData: response},
@@ -280,7 +280,7 @@ func writeRebuildFixtureArchive(
 	writer := newSessionEntryWriter(workDir, tarWriter, hour.Add(time.Hour))
 	sort.Slice(records, func(i, j int) bool {
 		if records[i].SessionID == records[j].SessionID {
-			return records[i].Timestamp.Before(records[j].Timestamp)
+			return records[i].Timestamp.Before(records[j].Timestamp.Time)
 		}
 		return records[i].SessionID < records[j].SessionID
 	})

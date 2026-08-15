@@ -1,0 +1,477 @@
+{
+  "AskUserQuestion": {
+    "description": "Use this tool only when you are blocked on a decision that is genuinely the user's to make: one you cannot resolve from the request, the code, or sensible defaults.\n\nUsage notes:\n- Users will always be able to select \"Other\" to provide custom text input\n- Use multiSelect: true to allow multiple answers to be selected for a question\n- If you recommend a specific option, make that the first option in the list and add \"(Recommended)\" at the end of the label\n\nPlan mode note: To switch into plan mode, use EnterPlanMode (not this tool). Once in plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask \"Is my plan ready?\", \"Should I proceed?\", or otherwise reference \"the plan\" in questions — the user cannot see the plan until you call ExitPlanMode for approval.\n\nReserve this for decisions where the user's answer changes what you do next — not for choices with a conventional default or facts you can verify in the codebase yourself. In those cases pick the obvious option, mention it in your response, and proceed.\n\nPreview feature:\nUse the optional `preview` field on options when presenting concrete artifacts that users need to visually compare:\n- ASCII mockups of UI layouts or components\n- Code snippets showing different implementations\n- Diagram variations\n- Configuration examples\n\nPreview content is rendered as markdown in a monospace box. Multi-line text with newlines is supported. When any option has a preview, the UI switches to a side-by-side layout with a vertical option list on the left and preview on the right. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).\n",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "notes": {
+                "description": "Free-text notes the user added to their selection.",
+                "type": "string"
+              },
+              "preview": {
+                "description": "The preview content of the selected option, if the question used previews.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "description": "Optional per-question annotations from the user (e.g., notes on preview selections). Keyed by question text.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "answers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "User answers collected by the permission component",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "metadata": {
+          "additionalProperties": false,
+          "description": "Optional metadata for tracking and analytics purposes. Not displayed to user.",
+          "properties": {
+            "source": {
+              "description": "Optional identifier for the source of this question (e.g., \"remember\" for /remember command). Used for analytics tracking.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "questions": {
+          "description": "Questions to ask the user (1-4 questions)",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "header": {
+                "description": "Very short label displayed as a chip/tag (max 12 chars). Examples: \"Auth method\", \"Library\", \"Approach\".",
+                "type": "string"
+              },
+              "multiSelect": {
+                "default": false,
+                "description": "Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.",
+                "type": "boolean"
+              },
+              "options": {
+                "description": "The available choices for this question. Must have 2-4 options. Each option should be a distinct, mutually exclusive choice (unless multiSelect is enabled). There should be no 'Other' option, that will be provided automatically.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "description": {
+                      "description": "Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.",
+                      "type": "string"
+                    },
+                    "label": {
+                      "description": "The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice.",
+                      "type": "string"
+                    },
+                    "preview": {
+                      "description": "Optional preview content rendered when this option is focused. Use for mockups, code snippets, or visual comparisons that help users compare options. See the tool description for the expected content format.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "description"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 4,
+                "minItems": 2,
+                "type": "array"
+              },
+              "question": {
+                "description": "The complete question to ask the user. Should be clear, specific, and end with a question mark. Example: \"Which library should we use for date formatting?\" If multiSelect is true, phrase it accordingly, e.g. \"Which features do you want to enable?\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "question",
+              "header",
+              "options",
+              "multiSelect"
+            ],
+            "type": "object"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "questions"
+      ],
+      "type": "object"
+    },
+    "name": "AskUserQuestion"
+  },
+  "Bash": {
+    "description": "Executes a bash command and returns its output.\n\n- Working directory persists between calls, but prefer absolute paths — `cd` in a compound command can trigger a permission prompt. Shell state (env vars, functions) does not persist; the shell is initialized from the user's profile.\n- IMPORTANT: Avoid using this tool to run `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user.\n- Command output is displayed to you, not reliably to the user.\n- `timeout` is in milliseconds: default 120000, max 600000.\n- `run_in_background` runs the command detached: it keeps running across turns and re-invokes you when it exits. No `&` needed.\n\n# Git\n- Interactive flags (`-i`, e.g. `git rebase -i`, `git add -i`) are not supported in this environment.\n- Use the `gh` CLI for GitHub operations (PRs, issues, API).\n- Commit or push only when the user asks. If on the default branch, branch first.\n- End git commit messages with:\nCo-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>\n- End PR bodies with:\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "description": "The command to execute",
+          "type": "string"
+        },
+        "dangerouslyDisableSandbox": {
+          "description": "Set this to true to dangerously override sandbox mode and run commands without sandboxing.",
+          "type": "boolean"
+        },
+        "description": {
+          "description": "Clear, concise description of what this command does in active voice. Never use words like \"complex\" or \"risk\" in the description - just describe what it does.\n\nFor simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):\n- ls → \"List files in current directory\"\n- git status → \"Show working tree status\"\n- npm install → \"Install package dependencies\"\n\nFor commands that are harder to parse at a glance (piped commands, obscure flags, etc.), add enough context to clarify what it does:\n- find . -name \"*.tmp\" -exec rm {} \\; → \"Find and delete all .tmp files recursively\"\n- git reset --hard origin/main → \"Discard all local changes and match remote main\"\n- curl -s url | jq '.data[]' → \"Fetch JSON from URL and extract data array elements\"",
+          "type": "string"
+        },
+        "run_in_background": {
+          "description": "Set to true to run this command in the background.",
+          "type": "boolean"
+        },
+        "timeout": {
+          "description": "Optional timeout in milliseconds (max 600000)",
+          "type": "number"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "name": "Bash"
+  },
+  "Edit": {
+    "description": "Performs exact string replacement in a file.\n\n- You must Read the file in this conversation before editing, or the call will fail.\n- `old_string` must match the file exactly, including indentation, and be unique — the edit fails otherwise. Strip the Read line prefix (line number + tab) before matching.\n- `replace_all: true` replaces every occurrence instead.",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "file_path": {
+          "description": "The absolute path to the file to modify",
+          "type": "string"
+        },
+        "new_string": {
+          "description": "The text to replace it with (must be different from old_string)",
+          "type": "string"
+        },
+        "old_string": {
+          "description": "The text to replace",
+          "type": "string"
+        },
+        "replace_all": {
+          "default": false,
+          "description": "Replace all occurrences of old_string (default false)",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "file_path",
+        "old_string",
+        "new_string"
+      ],
+      "type": "object"
+    },
+    "name": "Edit"
+  },
+  "ListAgents": {
+    "description": "Lists agents you can SendMessage to — in-process subagents you spawned, other local Claude sessions on this machine, your Claude sessions running in the cloud (when this session has cloud access), and (when Remote Control is connected here) your account's other sessions — Remote Control sessions on other machines and cloud sessions, each row labeled by kind. Names are the address: send with `SendMessage({to: \"<name>\", message: \"...\"})`, copying the name exactly as a row prints it. Append a row's ` [ref]` only when the bare name is not enough — two rows share it, or an error asks you to disambiguate.",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "description": "Not available in this build; leave unset.",
+          "maxLength": 256,
+          "type": "string"
+        },
+        "q": {
+          "description": "Not available in this build; leave unset.",
+          "maxLength": 256,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "ListAgents"
+  },
+  "ListMcpResourcesTool": {
+    "description": "\nList available resources from configured MCP servers.\nEach returned resource will include all standard MCP resource fields plus a 'server' field \nindicating which server the resource belongs to.\n\nParameters:\n- server (optional): The name of a specific MCP server to get resources from. If not provided,\n  resources from all servers will be returned.\n",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "server": {
+          "description": "Optional server name to filter resources by",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "ListMcpResourcesTool"
+  },
+  "Read": {
+    "description": "Reads a file from the local filesystem.\n\n- `file_path` must be an absolute path.\n- Reads up to 2000 lines by default.\n- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters\n- Results are returned using cat -n format, with line numbers starting at 1\n- Reads images (PNG, JPG, …) and presents them visually. Reads PDFs via the `pages` parameter (e.g. \"1-5\", max 20 pages/request; required for PDFs over 10 pages). Reads Jupyter notebooks (.ipynb) as cells with outputs.\n- Reading a directory, a missing file, or an empty file returns an error or system reminder rather than content.\n- Do NOT re-read a file you just edited to verify — Edit/Write would have errored if the change failed, and the harness tracks file state for you.",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "file_path": {
+          "description": "The absolute path to the file to read",
+          "type": "string"
+        },
+        "limit": {
+          "description": "The number of lines to read. Only provide if the file is too large to read at once.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "The line number to start reading from. Only provide if the file is too large to read at once",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pages": {
+          "description": "Page range for PDF files (e.g., \"1-5\", \"3\", \"10-20\"). Only applicable to PDF files. Maximum 20 pages per request.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path"
+      ],
+      "type": "object"
+    },
+    "name": "Read"
+  },
+  "ReadMcpResourceDirTool": {
+    "description": "\nList the direct children of a directory resource on an MCP server (`resources/directory/read`).\n\nParameters:\n- server (required): The name of the MCP server to read from\n- uri (required): The URI of the directory resource\n\nThe listing is not recursive. Each entry carries its own `uri`; subdirectories appear with mimeType \"inode/directory\" — call this tool again on a subdirectory's `uri` to descend.\n\nOnly usable against a server that has declared support for directory listing; other servers return an error.\n",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "server": {
+          "description": "The MCP server name",
+          "type": "string"
+        },
+        "uri": {
+          "description": "The directory resource URI to list",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "uri"
+      ],
+      "type": "object"
+    },
+    "name": "ReadMcpResourceDirTool"
+  },
+  "ReadMcpResourceTool": {
+    "description": "\nReads a specific resource from an MCP server, identified by server name and resource URI.\n\nParameters:\n- server (required): The name of the MCP server from which to read the resource\n- uri (required): The URI of the resource to read\n",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "server": {
+          "description": "The MCP server name",
+          "type": "string"
+        },
+        "uri": {
+          "description": "The resource URI to read",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "uri"
+      ],
+      "type": "object"
+    },
+    "name": "ReadMcpResourceTool"
+  },
+  "SendMessage": {
+    "description": "# SendMessage\n\nSend a message to another agent.\n\n```json\n{\"to\": \"researcher\", \"summary\": \"assign task 1\", \"message\": \"start on task #1\"}\n```\n\n| `to` | |\n|---|---|\n| `\"researcher\"` | Teammate by name |\n| `\"main\"` | The main conversation (background subagents only) |\n\nYour plain text output is NOT visible to other agents — to communicate, you MUST call this tool. Messages from teammates are delivered automatically; you don't check an inbox. Refer to agents by name — names keep working after an agent completes (a send resumes it from its transcript). Use the raw `agentId` (format `a...-...`) from its spawn result only when the agent has no name, or when a newer agent took the name (latest wins). When relaying, don't quote the original — it's already rendered to the user.",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "description": "Plain text message content",
+          "type": "string"
+        },
+        "summary": {
+          "description": "A 5-10 word summary shown as a preview in the UI (required when message is a string)",
+          "maxLength": 200,
+          "type": "string"
+        },
+        "to": {
+          "description": "Recipient: teammate name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to",
+        "message"
+      ],
+      "type": "object"
+    },
+    "name": "SendMessage"
+  },
+  "TaskCreate": {
+    "description": "Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.\nIt also helps the user understand the progress of the task and overall progress of their requests.\n\n## When to Use This Tool\n\nUse this tool proactively in these scenarios:\n\n- Complex multi-step tasks - When a task requires 3 or more distinct steps or actions\n- Non-trivial and complex tasks - Tasks that require careful planning or multiple operations\n- Plan mode - When using plan mode, create a task list to track the work\n- User explicitly requests todo list - When the user directly asks you to use the todo list\n- User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)\n- After receiving new instructions - Immediately capture user requirements as tasks\n- When you start working on a task - Mark it as in_progress BEFORE beginning work\n- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation\n\n## When NOT to Use This Tool\n\nSkip using this tool when:\n- There is only a single, straightforward task\n- The task is trivial and tracking it provides no organizational benefit\n- The task can be completed in less than 3 trivial steps\n- The task is purely conversational or informational\n\nNOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.\n\n## Task Fields\n\n- **subject**: A brief, actionable title in imperative form (e.g., \"Fix authentication bug in login flow\")\n- **description**: What needs to be done\n- **activeForm** (optional): Present continuous form shown in the spinner when the task is in_progress (e.g., \"Fixing authentication bug\"). If omitted, the spinner shows the subject instead.\n\nAll tasks are created with status `pending`.\n\n## Tips\n\n- Create tasks with clear, specific subjects that describe the outcome\n- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed\n- Check TaskList first to avoid creating duplicate tasks\n",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "activeForm": {
+          "description": "Present continuous form shown in spinner when in_progress (e.g., \"Running tests\")",
+          "type": "string"
+        },
+        "description": {
+          "description": "What needs to be done",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {},
+          "description": "Arbitrary metadata to attach to the task",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "subject": {
+          "description": "A brief title for the task",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject",
+        "description"
+      ],
+      "type": "object"
+    },
+    "name": "TaskCreate"
+  },
+  "TaskGet": {
+    "description": "Use this tool to retrieve a task by its ID from the task list.\n\n## When to Use This Tool\n\n- When you need the full description and context before starting work on a task\n- To understand task dependencies (what it blocks, what blocks it)\n- After being assigned a task, to get complete requirements\n\n## Output\n\nReturns full task details:\n- **subject**: Task title\n- **description**: Detailed requirements and context\n- **status**: 'pending', 'in_progress', or 'completed'\n- **blocks**: Tasks waiting on this one to complete\n- **blockedBy**: Tasks that must complete before this one can start\n\n## Tips\n\n- After fetching a task, verify its blockedBy list is empty before beginning work.\n- Use TaskList to see all tasks in summary form.\n",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "taskId": {
+          "description": "The ID of the task to retrieve",
+          "type": "string"
+        }
+      },
+      "required": [
+        "taskId"
+      ],
+      "type": "object"
+    },
+    "name": "TaskGet"
+  },
+  "TaskUpdate": {
+    "description": "Use this tool to update a task in the task list.\n\n## When to Use This Tool\n\n**Mark tasks as resolved:**\n- When you have completed the work described in a task\n- When a task is no longer needed or has been superseded\n- IMPORTANT: Always mark your assigned tasks as resolved when you finish them\n- After resolving, call TaskList to find your next task\n\n- ONLY mark a task as completed when you have FULLY accomplished it\n- If you encounter errors, blockers, or cannot finish, keep the task as in_progress\n- When blocked, create a new task describing what needs to be resolved\n- Never mark a task as completed if:\n  - Tests are failing\n  - Implementation is partial\n  - You encountered unresolved errors\n  - You couldn't find necessary files or dependencies\n\n**Delete tasks:**\n- When a task is no longer relevant or was created in error\n- Setting status to `deleted` permanently removes the task\n\n**Update task details:**\n- When requirements change or become clearer\n- When establishing dependencies between tasks\n\n## Fields You Can Update\n\n- **status**: The task status (see Status Workflow below)\n- **subject**: Change the task title (imperative form, e.g., \"Run tests\")\n- **description**: Change the task description\n- **activeForm**: Present continuous form shown in spinner when in_progress (e.g., \"Running tests\")\n- **owner**: Change the task owner (agent name)\n- **metadata**: Merge metadata keys into the task (set a key to null to delete it)\n- **addBlocks**: Mark tasks that cannot start until this one completes\n- **addBlockedBy**: Mark tasks that must complete before this one can start\n\n## Status Workflow\n\nStatus progresses: `pending` → `in_progress` → `completed`\n\nUse `deleted` to permanently remove a task.\n\n## Staleness\n\nMake sure to read a task's latest state using `TaskGet` before updating it.\n\n## Examples\n\nMark task as in progress when starting work:\n```json\n{\"taskId\": \"1\", \"status\": \"in_progress\"}\n```\n\nMark task as completed after finishing work:\n```json\n{\"taskId\": \"1\", \"status\": \"completed\"}\n```\n\nDelete a task:\n```json\n{\"taskId\": \"1\", \"status\": \"deleted\"}\n```\n\nClaim a task by setting owner:\n```json\n{\"taskId\": \"1\", \"owner\": \"my-name\"}\n```\n\nSet up task dependencies:\n```json\n{\"taskId\": \"2\", \"addBlockedBy\": [\"1\"]}\n```\n",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "activeForm": {
+          "description": "Present continuous form shown in spinner when in_progress (e.g., \"Running tests\")",
+          "type": "string"
+        },
+        "addBlockedBy": {
+          "description": "Task IDs that block this task",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "addBlocks": {
+          "description": "Task IDs that this task blocks",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "description": "New description for the task",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {},
+          "description": "Metadata keys to merge into the task. Set a key to null to delete it.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "owner": {
+          "description": "New owner for the task",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "pending",
+                "in_progress",
+                "completed"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "deleted",
+              "type": "string"
+            }
+          ],
+          "description": "New status for the task"
+        },
+        "subject": {
+          "description": "New subject for the task",
+          "type": "string"
+        },
+        "taskId": {
+          "description": "The ID of the task to update",
+          "type": "string"
+        }
+      },
+      "required": [
+        "taskId"
+      ],
+      "type": "object"
+    },
+    "name": "TaskUpdate"
+  },
+  "Write": {
+    "description": "Writes a file to the local filesystem, overwriting if one exists.\n\nWhen to use: creating a new file, or fully replacing one you've already Read. Overwriting an existing file you haven't Read will fail. For partial changes, use Edit instead.",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "description": "The content to write to the file",
+          "type": "string"
+        },
+        "file_path": {
+          "description": "The absolute path to the file to write (must be absolute, not relative)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path",
+        "content"
+      ],
+      "type": "object"
+    },
+    "name": "Write"
+  }
+}

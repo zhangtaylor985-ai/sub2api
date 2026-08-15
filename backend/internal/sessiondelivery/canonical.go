@@ -145,7 +145,7 @@ func (c *Canonicalizer) Build(input CaptureInput) (*Envelope, error) {
 	delivery := &DeliveryRecord{
 		SessionID: sessionID,
 		RequestID: publicRequestID,
-		Timestamp: startedAt,
+		Timestamp: DeliveryTime{startedAt},
 		Metadata: DeliveryMetadata{
 			HTTPStatus: input.HTTPStatus,
 			LatencyMS:  durationMS,
@@ -155,6 +155,12 @@ func (c *Canonicalizer) Build(input CaptureInput) (*Envelope, error) {
 			StatusCode:   input.HTTPStatus,
 			ResponseData: canonicalResponse,
 		},
+	}
+	// Must be the last mutation: every stage above re-encodes from Go maps,
+	// which would re-alphabetize the members again.
+	if err := finalizeDeliveryRecord(delivery); err != nil {
+		envelope.Rejection = &Rejection{Code: "response_conversion_failed", Message: sanitizeRejectionMessage(err)}
+		return envelope, nil
 	}
 	if err := ValidateDelivery(delivery, c.publicModel); err != nil {
 		envelope.Rejection = &Rejection{Code: "delivery_validation_failed", Message: sanitizeRejectionMessage(err)}

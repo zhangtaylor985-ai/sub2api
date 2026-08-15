@@ -275,7 +275,47 @@ func TestExportUpgradesOpaqueRequestHistorySignature(t *testing.T) {
 	require.NoError(t, validateOpus5SignatureShape(signature, DefaultPublicModel))
 	require.NotContains(t, string(records[0].Request), "legacy visible reasoning")
 	require.NotContains(t, string(records[0].Request), "tooluse_")
-	require.Contains(t, string(records[0].Request), "toolu_F4dwodeQ")
+	// The legacy identifier is re-derived into Anthropic's public shape rather
+	// than merely re-prefixed, so the invariant is that the call and the result
+	// that refers back to it still carry the same valid identifier.
+	require.NotContains(t, string(records[0].Request), "F4dwodeQ")
+	callID, resultID := requestToolCallAndResultIDs(t, &records[0])
+	require.Equal(t, callID, resultID)
+	require.True(t, hasAnthropicIDShape("toolu_", callID), "upgraded tool id %q must match the Anthropic public shape", callID)
+}
+
+// requestToolCallAndResultIDs returns the first tool_use identifier in the
+// request history and the tool_use_id of the tool_result referring back to it.
+func requestToolCallAndResultIDs(t *testing.T, record *DeliveryRecord) (string, string) {
+	t.Helper()
+	var request struct {
+		Messages []struct {
+			Content []struct {
+				Type      string `json:"type"`
+				ID        string `json:"id"`
+				ToolUseID string `json:"tool_use_id"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal(record.Request, &request))
+	callID, resultID := "", ""
+	for _, message := range request.Messages {
+		for _, block := range message.Content {
+			switch block.Type {
+			case "tool_use":
+				if callID == "" {
+					callID = block.ID
+				}
+			case "tool_result":
+				if resultID == "" {
+					resultID = block.ToolUseID
+				}
+			}
+		}
+	}
+	require.NotEmpty(t, callID)
+	require.NotEmpty(t, resultID)
+	return callID, resultID
 }
 
 func TestHourlyExportPreservesProjectionStateAfterPurge(t *testing.T) {
@@ -606,6 +646,65 @@ func TestHourlyExportUpgradesPreDeploymentThinkingShape(t *testing.T) {
 	require.NotContains(t, string(records[0].Request), "legacy visible reasoning")
 }
 
+// A record the fidelity normalizer cannot reshape must cost only itself. The
+// capture path already quarantines such a record and carries on, and the hourly
+// export is automated, so letting one queued record abort the hour would hold
+// back every other delivery in it.
+func TestHourlyExportHoldsBackUnconvertibleRecordWithoutFailingTheHour(t *testing.T) {
+	ctx := context.Background()
+	store := startSessionDeliveryPostgres(t, ctx)
+	require.NoError(t, store.Migrate(ctx))
+
+	hour := time.Date(2026, 8, 9, 6, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return hour.Add(30 * time.Minute) }
+	canonicalizer := newTestCanonicalizer(t)
+
+	deliverable := buildIntegrationAnthropicEnvelope(t, canonicalizer, hour.Add(5*time.Minute), "convertible", 200)
+	inserted, err := store.Insert(ctx, deliverable)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	// A foreign tool with no Claude Code counterpart that the model actually
+	// called: conversion cannot drop the declaration without orphaning the call
+	// and cannot map the arguments, so normalization fails for this record.
+	unconvertible := buildIntegrationAnthropicEnvelope(t, canonicalizer, hour.Add(10*time.Minute), "unconvertible", 200)
+	var request map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(unconvertible.Delivery.Request, &request))
+	request["tools"] = json.RawMessage(`[{"name":"music_generate","input_schema":{"type":"object"}}]`)
+	request["messages"] = json.RawMessage(`[
+		{"role":"user","content":[{"type":"text","text":"make a jingle"}]},
+		{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01aaaaaaaaaaaaaaaaaaaaaa","name":"music_generate","input":{"prompt":"jingle"}}]},
+		{"role":"user","content":[{"type":"text","text":"thanks"}]}
+	]`)
+	unconvertible.Delivery.Request, err = json.Marshal(request)
+	require.NoError(t, err)
+	inserted, err = store.Insert(ctx, unconvertible)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	archiveBackend, err := NewLocalArchiveBackend(filepath.Join(t.TempDir(), "held-back-archive"))
+	require.NoError(t, err)
+	exporter, err := NewExporter(store, archiveBackend, ExporterConfig{
+		PublicModel: DefaultPublicModel,
+		TempDir:     filepath.Join(t.TempDir(), "held-back-export-tmp"),
+	})
+	require.NoError(t, err)
+
+	result, err := exporter.ExportHour(ctx, hour)
+	require.NoError(t, err, "one unconvertible record must not fail the hour")
+	require.Equal(t, int64(1), result.Manifest.DeliveryCount)
+	require.Equal(t, int64(2), result.Stats.Records)
+	require.Equal(t, int64(1), result.Stats.Deliverable)
+	require.Equal(t, int64(1), result.Stats.Rejected)
+	// Reported separately so a systematic conversion failure is visible instead
+	// of blending into ordinary rejections.
+	require.Equal(t, int64(1), result.Stats.NormalizationFailed)
+
+	records := readDeliveryRecordsFromArchive(t, result.Archive.Name)
+	require.Len(t, records, 1)
+	require.NotContains(t, string(records[0].Request), "music_generate")
+}
+
 type integrationDurableArchive struct {
 	*LocalArchiveBackend
 }
@@ -706,7 +805,7 @@ func buildCrossHourEnvelope(t *testing.T, started time.Time, turn, totalInput in
 	delivery := &DeliveryRecord{
 		SessionID: "session_cross_hour",
 		RequestID: requestID,
-		Timestamp: started,
+		Timestamp: DeliveryTime{started},
 		Metadata:  DeliveryMetadata{HTTPStatus: 200, LatencyMS: 100},
 		Request:   json.RawMessage(request),
 		Response:  DeliveryResponse{StatusCode: 200, ResponseData: response},

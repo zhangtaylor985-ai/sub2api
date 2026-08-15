@@ -41,6 +41,10 @@ type RebuildChangeStats struct {
 	UsageReprojected                int64 `json:"usage_reprojected"`
 	AssistantTextTrackingStripped   int64 `json:"assistant_text_tracking_stripped"`
 	AssistantToolTrackingStripped   int64 `json:"assistant_tool_tracking_stripped"`
+	SystemRoleMessagesFolded        int64 `json:"system_role_messages_folded"`
+	ForeignToolsConverted           int64 `json:"foreign_tools_converted"`
+	ForeignToolsDropped             int64 `json:"foreign_tools_dropped"`
+	ForeignSystemPromptExcluded     int64 `json:"foreign_system_prompt_excluded"`
 }
 
 // RebuildArchiveResult describes one validated input and its independently
@@ -263,8 +267,12 @@ func rebuildArchive(
 	if err != nil {
 		return RebuildArchiveResult{}, fmt.Errorf("validate rebuilt staged archive: %w", err)
 	}
-	if validation.Manifest.RecordCount != input.validation.Manifest.RecordCount ||
-		validation.Manifest.ExcludedCount != input.validation.Manifest.ExcludedCount {
+	// A rebuild may move a record from the delivered side to the excluded side,
+	// but it may never invent or lose one, so the total is the invariant and the
+	// shift has to be exactly the count the rebuild reported holding back.
+	if validation.Manifest.RecordCount+validation.Manifest.ExcludedCount !=
+		input.validation.Manifest.RecordCount+input.validation.Manifest.ExcludedCount ||
+		validation.Manifest.RecordCount != input.validation.Manifest.RecordCount-changes.ForeignSystemPromptExcluded {
 		return RebuildArchiveResult{}, errors.New("rebuilt archive counts differ from validated input manifest")
 	}
 	stagedSHA, _, err := fileSHA256(stagedPath)
@@ -381,6 +389,15 @@ func buildReprojectedArchive(
 			if err != nil {
 				return fmt.Errorf("fidelity-normalize record %s: %w", record.RequestID, err)
 			}
+			// The tool surface was converted, but a system prompt naming the
+			// tools conversion removed still instructs the model to call them.
+			// Held back here, before the echo and usage projections advance, so
+			// this turn cannot seed the continuation of the records that remain
+			// in the same session.
+			if fidelityStats.ForeignSystemPromptTools > 0 {
+				changes.ForeignSystemPromptExcluded++
+				continue
+			}
 			record.Request = normalizedRequest
 			record.Response.ResponseData = normalizedResponse
 			requestChanged, bootstrapFragmentsRemoved, responseCompleted, err := normalizeHistoricalDelivery(record)
@@ -396,9 +413,25 @@ func buildReprojectedArchive(
 			if err != nil {
 				return fmt.Errorf("complete request history thinking for record %s: %w", record.RequestID, err)
 			}
-			beforeUsage := append(json.RawMessage(nil), record.Response.ResponseData...)
+			beforeUsage, err := canonicalOrderedResponse(record.Response.ResponseData)
+			if err != nil {
+				return fmt.Errorf("canonicalize record %s before usage projection: %w", record.RequestID, err)
+			}
 			if err := usage.process(record); err != nil {
 				return fmt.Errorf("usage projection record %s: %w", record.RequestID, err)
+			}
+			// Both sides are compared in canonical member order, so the flag
+			// reports a real usage change and not the alphabetical re-encoding
+			// that the projection stage performs internally.
+			afterUsage, err := canonicalOrderedResponse(record.Response.ResponseData)
+			if err != nil {
+				return fmt.Errorf("canonicalize record %s after usage projection: %w", record.RequestID, err)
+			}
+			usageChanged := !bytes.Equal(beforeUsage, afterUsage)
+			// Must be the last mutation: every stage above re-encodes from Go
+			// maps, which would re-alphabetize the members again.
+			if err := finalizeDeliveryRecord(record); err != nil {
+				return fmt.Errorf("finalize record %s: %w", record.RequestID, err)
 			}
 			if err := ValidateDelivery(record, publicModel); err != nil {
 				return fmt.Errorf("validate rebuilt record %s: %w", record.RequestID, err)
@@ -423,6 +456,9 @@ func buildReprojectedArchive(
 			changes.ResponseThinkingRemoved += fidelityStats.ResponseThinkingRemoved
 			changes.AssistantTextTrackingStripped += fidelityStats.AssistantTextTrackingStripped
 			changes.AssistantToolTrackingStripped += fidelityStats.AssistantToolTrackingStripped
+			changes.SystemRoleMessagesFolded += fidelityStats.SystemRoleMessagesFolded
+			changes.ForeignToolsConverted += fidelityStats.ForeignToolsConverted
+			changes.ForeignToolsDropped += fidelityStats.ForeignToolsDropped
 			if responseCompleted {
 				changes.ResponseThinkingCompleted++
 			}
@@ -430,7 +466,7 @@ func buildReprojectedArchive(
 				changes.RequestThinkingEchoRepaired++
 			}
 			changes.RequestHistoryThinkingCompleted += historyThinkingCompleted
-			if !bytes.Equal(beforeUsage, record.Response.ResponseData) {
+			if usageChanged {
 				changes.UsageReprojected++
 			}
 			afterRecord, err := json.Marshal(record)
@@ -440,7 +476,7 @@ func buildReprojectedArchive(
 			if !bytes.Equal(beforeRecord, afterRecord) {
 				changes.ChangedRecords++
 			}
-			lastTimestamp[sessionID] = record.Timestamp
+			lastTimestamp[sessionID] = record.Timestamp.Time
 		}
 		return nil
 	})
@@ -454,6 +490,9 @@ func buildReprojectedArchive(
 	manifest.Files = append(manifest.Files, entries...)
 	manifest.RecordCount = changes.Records
 	manifest.DeliveryCount = changes.Records
+	// A held-back record moves from the delivered side to the excluded side; the
+	// total the input manifest accounted for is conserved.
+	manifest.ExcludedCount += changes.ForeignSystemPromptExcluded
 	manifest.TokenUsage = &tokenUsage
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
@@ -818,4 +857,8 @@ func addRebuildStats(total *RebuildChangeStats, value RebuildChangeStats) {
 	total.UsageReprojected += value.UsageReprojected
 	total.AssistantTextTrackingStripped += value.AssistantTextTrackingStripped
 	total.AssistantToolTrackingStripped += value.AssistantToolTrackingStripped
+	total.SystemRoleMessagesFolded += value.SystemRoleMessagesFolded
+	total.ForeignToolsConverted += value.ForeignToolsConverted
+	total.ForeignToolsDropped += value.ForeignToolsDropped
+	total.ForeignSystemPromptExcluded += value.ForeignSystemPromptExcluded
 }

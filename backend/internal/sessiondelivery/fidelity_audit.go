@@ -88,7 +88,7 @@ func AuditArchivesFidelity(ctx context.Context, inputDir, publicModel string) (*
 				if !state.lastTimestamp.IsZero() && record.Timestamp.Before(state.lastTimestamp) {
 					addFidelityViolation(report, record, "record timestamp regressed across archives")
 				}
-				state.lastTimestamp = record.Timestamp
+				state.lastTimestamp = record.Timestamp.Time
 
 				request, requestErr := decodeJSONObject(record.Request, "request")
 				if requestErr != nil {
@@ -291,7 +291,7 @@ func auditUsageChain(report *FidelityAuditReport, state *fidelityAuditSession, r
 	}
 	state.usage.prevPrefix = prefix
 	state.usage.firstMsgKey = messageKey
-	state.usage.prevOccurred = record.Timestamp
+	state.usage.prevOccurred = record.Timestamp.Time
 	state.usage.haveState = true
 }
 

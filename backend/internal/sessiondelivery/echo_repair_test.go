@@ -31,7 +31,9 @@ func echoTestRecord(sessionID, requestText, priorAssistantText string, thinkingE
 	return &DeliveryRecord{
 		SessionID: sessionID,
 		RequestID: "req_" + sessionID + requestText,
-		Timestamp: time.Now().UTC(),
+		// Delivery timestamps carry millisecond precision, so a fixture built at
+		// finer resolution would not survive a JSON round-trip unchanged.
+		Timestamp: DeliveryTime{time.Now().UTC().Truncate(time.Millisecond)},
 		Metadata:  DeliveryMetadata{HTTPStatus: 200, LatencyMS: 5},
 		Request:   request,
 		Response:  DeliveryResponse{StatusCode: 200, ResponseData: response},

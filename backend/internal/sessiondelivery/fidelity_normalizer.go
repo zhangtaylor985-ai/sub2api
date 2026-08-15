@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strings"
 )
 
 // fidelityNormalizationOptions controls delivery-only rewrites. These
@@ -21,6 +20,17 @@ type fidelityNormalizationStats struct {
 	ResponseThinkingRemoved       int64
 	AssistantTextTrackingStripped int64
 	AssistantToolTrackingStripped int64
+	ResponseIDsReshaped           int64
+	ToolCallersCompleted          int64
+	StopFieldsCompleted           int64
+	SearchResultIDsReshaped       int64
+	SystemRoleMessagesFolded      int64
+	ForeignToolsConverted         int64
+	ForeignToolsDropped           int64
+	// ForeignSystemPromptTools is non-zero when the system prompt still names a
+	// tool the conversion removed, which leaves the record unable to be
+	// delivered consistently.
+	ForeignSystemPromptTools int64
 }
 
 // openAISearchParamPattern matches the tracking parameter OpenAI web search
@@ -65,16 +75,27 @@ func stripOpenAISearchTracking(text string) (string, int64) {
 	}
 }
 
+// isTrackingParamEnd reports whether the parameter value ends at offset. The
+// test is "the next character cannot continue a query value" rather than a list
+// of known terminators, because an allow list silently keeps the parameter when
+// it is followed by punctuation that was not enumerated — a comma, semicolon or
+// slash, all of which occur when a model cites a URL inline in prose.
+//
+// A trailing '.' is treated as sentence punctuation only when it is itself at a
+// boundary, so a genuine dotted value such as "openai.foo" is preserved.
 func isTrackingParamEnd(text string, offset int) bool {
 	if offset >= len(text) {
 		return true
 	}
-	switch text[offset] {
-	case '&', '#', ' ', '\t', '\r', '\n', ')', ']', '}', '>', '<', '\'', '"', '`':
-		return true
-	default:
-		return false
+	if text[offset] == '.' {
+		return offset+1 >= len(text) || !isQueryValueChar(text[offset+1])
 	}
+	return !isQueryValueChar(text[offset])
+}
+
+func isQueryValueChar(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' ||
+		b == '_' || b == '-' || b == '.' || b == '%' || b == '+'
 }
 
 // sanitizeAssistantTextBlock rewrites the text field of an assistant text
@@ -197,6 +218,27 @@ func sanitizeAssistantToolInput(block map[string]json.RawMessage) (bool, int64, 
 	return true, stripped, nil
 }
 
+// sanitizeServerToolResult cleans the result payload of a server-side search or
+// fetch tool. These blocks live in the assistant turn and hold the cited URLs
+// themselves, so leaving them out means the tracking parameter survives in the
+// result set even when the prose citing it was cleaned. A user-supplied
+// tool_result is never passed here.
+func sanitizeServerToolResult(block map[string]json.RawMessage) (bool, int64, error) {
+	content, exists := block["content"]
+	if !exists {
+		return false, 0, nil
+	}
+	sanitized, stripped, err := sanitizeJSONStrings(content)
+	if err != nil {
+		return false, 0, fmt.Errorf("sanitize server tool result: %w", err)
+	}
+	if stripped == 0 {
+		return false, 0, nil
+	}
+	block["content"] = sanitized
+	return true, stripped, nil
+}
+
 // normalizeProjectionFidelity removes observable GPT/Codex wire artifacts
 // from an Anthropic delivery projection. The transformation is deterministic,
 // so tool IDs remain stable across response blocks, later request history and
@@ -215,7 +257,25 @@ func normalizeProjectionFidelity(
 	}
 
 	var stats fidelityNormalizationStats
-	requestChanged, toolIDs, openAIBlocks, requestTrackingStripped, requestToolTrackingStripped, err := normalizeRequestFidelity(request, options.CodexProjection)
+
+	// Folding runs first so the later passes see only user and assistant turns.
+	folded, err := foldSystemRoleMessages(request)
+	if err != nil {
+		return nil, nil, fidelityNormalizationStats{}, err
+	}
+	stats.SystemRoleMessagesFolded += folded
+
+	// Tool conversion runs before the tool-identifier and block passes so those
+	// see the Claude Code tool surface rather than the originating client's.
+	toolConversion, err := convertForeignClientTools(request, response)
+	if err != nil {
+		return nil, nil, fidelityNormalizationStats{}, err
+	}
+	stats.ForeignToolsConverted += int64(toolConversion.ToolsConverted)
+	stats.ForeignToolsDropped += int64(toolConversion.ToolsDropped)
+	stats.ForeignSystemPromptTools += int64(toolConversion.SystemPromptTools)
+
+	_, toolIDs, openAIBlocks, requestTrackingStripped, requestToolTrackingStripped, err := normalizeRequestFidelity(request, options.CodexProjection)
 	if err != nil {
 		return nil, nil, fidelityNormalizationStats{}, err
 	}
@@ -224,7 +284,7 @@ func normalizeProjectionFidelity(
 	stats.AssistantTextTrackingStripped += requestTrackingStripped
 	stats.AssistantToolTrackingStripped += requestToolTrackingStripped
 
-	responseChanged, responseToolIDs, thinkingRemoved, responseTrackingStripped, responseToolTrackingStripped, err := normalizeResponseFidelity(
+	_, responseToolIDs, thinkingRemoved, responseTrackingStripped, responseToolTrackingStripped, err := normalizeResponseFidelity(
 		request,
 		response,
 		options.RemoveSignedWhenDisabled,
@@ -237,20 +297,18 @@ func normalizeProjectionFidelity(
 	stats.AssistantTextTrackingStripped += responseTrackingStripped
 	stats.AssistantToolTrackingStripped += responseToolTrackingStripped
 
-	normalizedRequest := requestRaw
-	if requestChanged {
-		normalizedRequest, err = json.Marshal(request)
-		if err != nil {
-			return nil, nil, fidelityNormalizationStats{}, fmt.Errorf("re-encode fidelity-normalized request: %w", err)
-		}
+	// Completes public identifier shape, the stop members and tool_use.caller.
+	// Both bodies are always re-encoded here, so the earlier passes no longer
+	// need to report whether they mutated anything.
+	normalizedRequest, normalizedResponse, shapeStats, err := normalizeAnthropicWireShape(request, response)
+	if err != nil {
+		return nil, nil, fidelityNormalizationStats{}, err
 	}
-	normalizedResponse := responseRaw
-	if responseChanged {
-		normalizedResponse, err = json.Marshal(response)
-		if err != nil {
-			return nil, nil, fidelityNormalizationStats{}, fmt.Errorf("re-encode fidelity-normalized response: %w", err)
-		}
-	}
+	stats.ResponseIDsReshaped += shapeStats.ResponseIDsReshaped
+	stats.ToolCallersCompleted += shapeStats.ToolCallersCompleted
+	stats.StopFieldsCompleted += shapeStats.StopFieldsCompleted
+	stats.SearchResultIDsReshaped += shapeStats.SearchResultIDsReshaped
+
 	return normalizedRequest, normalizedResponse, stats, nil
 }
 
@@ -356,6 +414,18 @@ func normalizeRequestFidelity(request map[string]json.RawMessage, codexProjectio
 				}
 			}
 
+			if isAssistant && (blockType == "web_search_tool_result" || blockType == "web_fetch_tool_result") {
+				resultChanged, stripped, err := sanitizeServerToolResult(block)
+				if err != nil {
+					return false, 0, 0, 0, 0, err
+				}
+				if resultChanged {
+					toolTrackingStripped += stripped
+					contentChanged = true
+					blockChanged = true
+				}
+			}
+
 			if blockChanged {
 				reencoded, err := json.Marshal(block)
 				if err != nil {
@@ -448,6 +518,17 @@ func normalizeResponseFidelity(
 				blockChanged = true
 			}
 		}
+		if blockType == "web_search_tool_result" || blockType == "web_fetch_tool_result" {
+			resultChanged, stripped, err := sanitizeServerToolResult(block)
+			if err != nil {
+				return false, 0, 0, 0, 0, err
+			}
+			if resultChanged {
+				toolTrackingStripped += stripped
+				changed = true
+				blockChanged = true
+			}
+		}
 		if blockType == "text" {
 			if textChanged, stripped := sanitizeAssistantTextBlock(block); textChanged {
 				trackingStripped += stripped
@@ -501,34 +582,13 @@ func requestBlockToolIDField(blockType string) (field string, serverTool bool) {
 	}
 }
 
+// normalizeAnthropicToolID projects a tool identifier onto the public Anthropic
+// wire format. Swapping only the provider prefix is not enough: it left the
+// OpenAI identifier body in place, so the delivery carried "toolu_" values
+// without Anthropic's "01" version prefix and "srvtoolu_ws_<hex>" values that
+// name OpenAI's web-search call directly.
 func normalizeAnthropicToolID(id string, serverTool bool) string {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return id
-	}
-	if strings.HasPrefix(id, "srvtoolu_") || strings.HasPrefix(id, "toolu_") {
-		return id
-	}
-
-	suffix := ""
-	switch {
-	case strings.HasPrefix(id, "tooluse_"):
-		suffix = strings.TrimPrefix(id, "tooluse_")
-	case strings.HasPrefix(id, "call_"):
-		suffix = strings.TrimPrefix(id, "call_")
-	case strings.HasPrefix(id, "call"):
-		suffix = strings.TrimPrefix(id, "call")
-	case strings.HasPrefix(id, "fc_"):
-		suffix = strings.TrimPrefix(id, "fc_")
-	}
-	if strings.TrimSpace(suffix) == "" {
-		return id
-	}
-	prefix := "toolu_"
-	if serverTool {
-		prefix = "srvtoolu_"
-	}
-	return prefix + suffix
+	return anthropicToolID(id, serverTool)
 }
 
 func isLegacyCodexDeliveryRequest(request map[string]json.RawMessage) bool {

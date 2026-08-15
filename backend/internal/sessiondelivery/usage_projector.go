@@ -150,7 +150,7 @@ func (p *usageProjector) process(record *DeliveryRecord) error {
 
 	p.prevPrefix = prefix
 	p.firstMsgKey = msgKey
-	p.prevOccurred = record.Timestamp
+	p.prevOccurred = record.Timestamp.Time
 	p.haveState = true
 	return nil
 }

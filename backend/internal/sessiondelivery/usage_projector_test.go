@@ -20,7 +20,7 @@ func usageTestRecord(sessionID string, ts time.Time, totalInput, outputTokens in
 	return &DeliveryRecord{
 		SessionID: sessionID,
 		RequestID: "req_" + sessionID + ts.Format("150405.000"),
-		Timestamp: ts,
+		Timestamp: DeliveryTime{ts},
 		Metadata:  DeliveryMetadata{HTTPStatus: 200, LatencyMS: 5},
 		Request:   request,
 		Response:  DeliveryResponse{StatusCode: 200, ResponseData: response},

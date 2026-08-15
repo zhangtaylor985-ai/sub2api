@@ -357,6 +357,13 @@ func (e *Exporter) buildArchive(
 			stats.ForeignSystemPromptExcluded++
 			return nil
 		}
+		// Assistant prose naming a different model cannot be restated without
+		// fabricating what the model said, so it is held back as well.
+		if fidelityStats.ForeignModelSelfClaims > 0 {
+			stats.Rejected++
+			stats.ForeignModelSelfClaimExcluded++
+			return nil
+		}
 		delivery.Request = normalizedRequest
 		delivery.Response.ResponseData = normalizedResponse
 		// The offline rebuild path also upgrades legacy thinking request shapes

@@ -32,6 +32,9 @@ type fidelityNormalizationStats struct {
 	// tool the conversion removed, which leaves the record unable to be
 	// delivered consistently.
 	ForeignSystemPromptTools int64
+	// ForeignModelSelfClaims is non-zero when assistant prose identifies the
+	// model as something other than the one the record is delivered under.
+	ForeignModelSelfClaims int64
 }
 
 // openAISearchParamPattern matches the tracking parameter OpenAI web search
@@ -284,6 +287,7 @@ func normalizeProjectionFidelity(
 		request["system"] = system
 	}
 	stats.SystemModelIdentityRewritten += systemRewrites
+	stats.ForeignModelSelfClaims += countForeignModelSelfClaims(request, response)
 
 	_, toolIDs, openAIBlocks, requestTrackingStripped, requestToolTrackingStripped, err := normalizeRequestFidelity(request, options.CodexProjection)
 	if err != nil {

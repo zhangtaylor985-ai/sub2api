@@ -1360,3 +1360,39 @@ Claude Code 会把当前模型写进自己的 system prompt。交付件统一以
 - system prompt 里的 `openclaw` / `codex` → 用户自己的 git commit message（`add openclaw mod`）、分支名、以及讲第三方 runner 的正文。
 
 以上均为用户内容或用户环境，真实 Claude Code 会话同样会出现，不是协议层泄露。
+
+## 缺陷五：助手正文自称非 Claude 模型（已修，排除处理）
+
+对 v7 做全字段普查时，先确认了协议字段全部干净：
+
+| 位置 | 结果 |
+|---|---|
+| `request.model` | 2,007/2,007 `claude-opus-5` |
+| `response.response_data.model` | 2,007/2,007 `claude-opus-5` |
+| `metadata` | 只出现 `user_agent=claude-cli/2.1.x`，无任何 GPT/Codex UA |
+
+但继续扫**助手自己生成的正文**时发现 2 条记录里有：
+
+> 我是 **GPT-5 系列的 Codex 编程智能体**。当前系统未向我暴露更精确的模型版本标识…
+
+这是真泄露。第一版检测正则只覆盖英文 `I am a GPT...`，漏了中文"我是…"句式。
+
+处理方式（`model_self_identification.go`）：与工具形态不同，这是模型自由生成的散文，改写它等于伪造助手输出，因此**按 fail-closed 排除整条**，与既有 `ForeignSystemPromptTools` 走同一处理点和同一套清单守恒逻辑。
+
+误报控制：`我是来帮你排查这个 OpenAI 兼容层问题的`、`Mem0 默认使用 gpt-5-mini`、`我为你对比了 gpt-5.6 和 claude-opus-5` 这类是**讨论**而非自称，必须放过。Go 的 RE2 不支持前瞻，故改为"捕获 pronoun 与模型名之间的片段 + 排除动词构式（来/帮/为了/here/help/…）"两段式判断，并写成回归测试。
+
+配套修正：held-back 记录必须从交付侧移到 excluded 侧，`manifest.ExcludedCount` 需同步累加，否则触发"总数守恒"不变式报错（首次 v9 重建即因此在 06 点失败）。
+
+## v9 最终验收（rebuild-v9，11 个归档 / 2,005 条）
+
+| 检查项 | 结果 |
+|---|---|
+| `request.model` / `response.model` | 2,005/2,005 `claude-opus-5` |
+| system prompt 自述模型 | 仅 Opus 5 |
+| 助手正文自称非 Claude | 0 |
+| 消息/工具 ID 形态、`caller`、空工具名、`role:"system"` | 0 违规 |
+| OpenAI 专有字段、`utm_source=openai`、真 HTML 转义、外来 ID | 0 |
+| 规范第 3/7 章必填项（session_id / timestamp 带时区 / response_data） | 0 缺失 |
+| 规范第 5 章 `response.error` | 0 出现 |
+| 规范第 6 章 thinking.signature 占比 | 89.5%（建议 ≥30%） |
+| 交付量 | 2,007 → 2,005（排除 2 条自称泄露） |

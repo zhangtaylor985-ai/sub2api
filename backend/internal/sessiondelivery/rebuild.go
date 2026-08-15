@@ -45,6 +45,7 @@ type RebuildChangeStats struct {
 	ForeignToolsConverted           int64 `json:"foreign_tools_converted"`
 	ForeignToolsDropped             int64 `json:"foreign_tools_dropped"`
 	ForeignSystemPromptExcluded     int64 `json:"foreign_system_prompt_excluded"`
+	ForeignModelSelfClaimExcluded   int64 `json:"foreign_model_self_claim_excluded"`
 }
 
 // RebuildArchiveResult describes one validated input and its independently
@@ -272,7 +273,8 @@ func rebuildArchive(
 	// shift has to be exactly the count the rebuild reported holding back.
 	if validation.Manifest.RecordCount+validation.Manifest.ExcludedCount !=
 		input.validation.Manifest.RecordCount+input.validation.Manifest.ExcludedCount ||
-		validation.Manifest.RecordCount != input.validation.Manifest.RecordCount-changes.ForeignSystemPromptExcluded {
+		validation.Manifest.RecordCount != input.validation.Manifest.RecordCount-
+			changes.ForeignSystemPromptExcluded-changes.ForeignModelSelfClaimExcluded {
 		return RebuildArchiveResult{}, errors.New("rebuilt archive counts differ from validated input manifest")
 	}
 	stagedSHA, _, err := fileSHA256(stagedPath)
@@ -398,6 +400,13 @@ func buildReprojectedArchive(
 				changes.ForeignSystemPromptExcluded++
 				continue
 			}
+			// Assistant prose naming a different model cannot be restated
+			// without fabricating what the model said, so it is held back for
+			// the same reason and at the same point.
+			if fidelityStats.ForeignModelSelfClaims > 0 {
+				changes.ForeignModelSelfClaimExcluded++
+				continue
+			}
 			record.Request = normalizedRequest
 			record.Response.ResponseData = normalizedResponse
 			requestChanged, bootstrapFragmentsRemoved, responseCompleted, err := normalizeHistoricalDelivery(record)
@@ -492,7 +501,7 @@ func buildReprojectedArchive(
 	manifest.DeliveryCount = changes.Records
 	// A held-back record moves from the delivered side to the excluded side; the
 	// total the input manifest accounted for is conserved.
-	manifest.ExcludedCount += changes.ForeignSystemPromptExcluded
+	manifest.ExcludedCount += changes.ForeignSystemPromptExcluded + changes.ForeignModelSelfClaimExcluded
 	manifest.TokenUsage = &tokenUsage
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
@@ -861,4 +870,5 @@ func addRebuildStats(total *RebuildChangeStats, value RebuildChangeStats) {
 	total.ForeignToolsConverted += value.ForeignToolsConverted
 	total.ForeignToolsDropped += value.ForeignToolsDropped
 	total.ForeignSystemPromptExcluded += value.ForeignSystemPromptExcluded
+	total.ForeignModelSelfClaimExcluded += value.ForeignModelSelfClaimExcluded
 }

@@ -42,6 +42,10 @@ type HourStats struct {
 	// system prompt still names tools the foreign-tool conversion removed, so the
 	// record instructs the model to use a tool surface it no longer declares.
 	ForeignSystemPromptExcluded int64 `json:"foreign_system_prompt_excluded"`
+	// ForeignModelSelfClaimExcluded is the subset of Rejected held back because
+	// assistant prose identified the model as something other than the one the
+	// record is delivered under.
+	ForeignModelSelfClaimExcluded int64 `json:"foreign_model_self_claim_excluded"`
 	// NormalizationFailed is the subset of Rejected held back because fidelity
 	// normalization could not reshape the record at all.
 	NormalizationFailed int64                `json:"normalization_failed"`

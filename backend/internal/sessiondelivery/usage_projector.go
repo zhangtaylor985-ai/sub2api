@@ -1,6 +1,7 @@
 package sessiondelivery
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -182,7 +183,22 @@ func firstUserMessageKey(request json.RawMessage) [32]byte {
 	if err := json.Unmarshal(request, &parsed); err != nil || len(parsed.Messages) == 0 {
 		return [32]byte{}
 	}
-	return sha256.Sum256(parsed.Messages[0].Content)
+	// Projection stages legitimately reorder JSON object members before the
+	// final Claude Code wire-shape pass. Hash the decoded JSON value so those
+	// representation-only changes do not look like client-side compaction.
+	// UseNumber preserves numeric lexemes instead of routing them through
+	// float64 while encoding/json gives maps a deterministic key order.
+	decoder := json.NewDecoder(bytes.NewReader(parsed.Messages[0].Content))
+	decoder.UseNumber()
+	var content any
+	if err := decoder.Decode(&content); err != nil {
+		return [32]byte{}
+	}
+	canonical, err := json.Marshal(content)
+	if err != nil {
+		return [32]byte{}
+	}
+	return sha256.Sum256(canonical)
 }
 
 func countServerToolCalls(content json.RawMessage, name string) int {

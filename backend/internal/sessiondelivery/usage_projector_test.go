@@ -1,6 +1,7 @@
 package sessiondelivery
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -109,6 +110,27 @@ func TestUsageProjectorTimestampRegressionRestartsConcurrentBranch(t *testing.T)
 	require.Equal(t, 2, input)
 	require.Equal(t, 0, read)
 	require.Equal(t, 10098, creation)
+}
+
+func TestUsageProjectorIgnoresFirstMessageObjectMemberOrder(t *testing.T) {
+	p := &usageProjector{}
+	base := time.Date(2026, 8, 14, 9, 8, 28, 0, time.UTC)
+
+	first := usageTestRecord("session_member_order", base, 100, 10, "same head")
+	first.Request = json.RawMessage(`{"model":"claude-opus-5","messages":[{"role":"user","content":[{"type":"text","text":"same head","cache_control":{"type":"ephemeral"}}]}]}`)
+	second := usageTestRecord("session_member_order", base.Add(25*time.Second), 130, 10, "same head")
+	second.Request = json.RawMessage(`{"messages":[{"content":[{"cache_control":{"type":"ephemeral"},"text":"same head","type":"text"}],"role":"user"}],"model":"claude-opus-5"}`)
+
+	require.Equal(t, firstUserMessageKey(first.Request), firstUserMessageKey(second.Request))
+	require.NoError(t, p.process(first))
+	require.NoError(t, p.process(second))
+	_, creation, read, _ := usageNumbers(t, second)
+	require.Equal(t, 98, read)
+	require.Equal(t, 30, creation)
+
+	changed := append(json.RawMessage(nil), second.Request...)
+	changed = bytes.Replace(changed, []byte("same head"), []byte("compacted"), 1)
+	require.NotEqual(t, firstUserMessageKey(first.Request), firstUserMessageKey(changed))
 }
 
 func TestUsageProjectorFullFieldShape(t *testing.T) {

@@ -10,7 +10,10 @@ Group=sub2api
 UMask=0077
 WorkingDirectory=/opt/sub2api
 EnvironmentFile=/etc/sub2api/session-delivery.env
-TimeoutStartSec=45m
+# A drain can legitimately span many closed hours after an outage. Resource
+# limits below remain the hard safety boundary while the longer timeout avoids
+# terminating a verified Drive upload/read-back sequence mid-batch.
+TimeoutStartSec=4h
 Nice=10
 IOSchedulingClass=idle
 CPUQuota=150%

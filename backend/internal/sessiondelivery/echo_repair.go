@@ -17,12 +17,13 @@ import (
 // The exporter therefore re-inserts the thinking blocks of earlier responses
 // into later requests of the same session.
 //
-// Records stream in ordered by (session_id, occurred_at, request_id), so a
-// small per-session state suffices. Matching is content-based (exact
-// concatenated assistant text) to stay correct under client-side history
-// compaction. Requests without thinking enabled are left untouched, as are
-// assistant messages that already carry thinking blocks or match no earlier
-// response.
+// Records stream in deterministic archive order and, within each ingest-hour
+// archive, by (session_id, occurred_at, request_id), so a small per-session
+// state suffices. Adjacent archives may overlap in occurred_at when concurrent
+// requests finish in a different order; exact content matching prevents an
+// unrelated branch from receiving a thinking echo. Requests without thinking
+// enabled are left untouched, as are assistant messages that already carry
+// thinking blocks or match no earlier response.
 type echoRepair struct {
 	sessionID string
 	prior     []echoAssistantTurn

@@ -96,6 +96,55 @@ func TestRebuildArchivesReplaysLatestProjectionAcrossHours(t *testing.T) {
 	require.Zero(t, repeated.Changes.ChangedRecords)
 }
 
+func TestRebuildArchivesAllowsConcurrentTimestampOverlapAcrossIngestHours(t *testing.T) {
+	inputDir := t.TempDir()
+	outputDir := t.TempDir()
+	firstHour := time.Date(2026, 8, 13, 16, 0, 0, 0, time.UTC)
+	secondHour := firstHour.Add(time.Hour)
+
+	first := historicalRebuildRecord(firstHour.Add(59*time.Minute+35*time.Second), 1, 100)
+	first.SessionID = "session_rebuild_ingest_overlap"
+	first.RequestID = "req_rebuild_overlap_first"
+	overlap := historicalRebuildRecord(firstHour.Add(59*time.Minute+31*time.Second), 1, 130)
+	overlap.SessionID = first.SessionID
+	overlap.RequestID = "req_rebuild_overlap_second"
+	writeRebuildFixtureArchive(t, inputDir, firstHour, 0, []*DeliveryRecord{first})
+	writeRebuildFixtureArchive(t, inputDir, secondHour, 0, []*DeliveryRecord{overlap})
+
+	result, err := RebuildArchives(t.Context(), RebuildArchivesConfig{
+		InputDir: inputDir, OutputDir: outputDir, PublicModel: DefaultPublicModel, Allow: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Sessions)
+	require.Equal(t, int64(1), result.FidelityAudit.CrossArchiveOverlaps)
+	require.True(t, result.FidelityAudit.Passed)
+	require.Zero(t, result.FidelityAudit.ViolationCount)
+
+	secondRecords := readRebuildDeliveryRecords(t, result.Archives[1].OutputPath)
+	require.Len(t, secondRecords, 1)
+	_, creation, read, _ := usageNumbers(t, &secondRecords[0])
+	require.Equal(t, 0, read)
+	require.Equal(t, 128, creation)
+
+	inputs, err := inventoryRebuildInputs(t.Context(), outputDir, DefaultPublicModel)
+	require.NoError(t, err)
+	reseed, states, err := buildProjectionReseedState(t.Context(), outputDir, DefaultPublicModel, inputs)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), reseed.Records)
+	require.Len(t, states, 1)
+
+	secondOutputDir := t.TempDir()
+	repeated, err := RebuildArchives(t.Context(), RebuildArchivesConfig{
+		InputDir: outputDir, OutputDir: secondOutputDir, PublicModel: DefaultPublicModel, Allow: true,
+	})
+	require.NoError(t, err)
+	require.Zero(t, repeated.Changes.ChangedRecords)
+	require.Equal(t, int64(1), repeated.FidelityAudit.CrossArchiveOverlaps)
+	for index := range result.Archives {
+		require.Equal(t, result.Archives[index].OutputSHA256, repeated.Archives[index].OutputSHA256)
+	}
+}
+
 func TestRebuildArchivesRejectsInputAsOutput(t *testing.T) {
 	dir := t.TempDir()
 	_, err := RebuildArchives(t.Context(), RebuildArchivesConfig{

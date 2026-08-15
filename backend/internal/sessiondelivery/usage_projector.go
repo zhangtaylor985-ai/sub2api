@@ -104,9 +104,9 @@ func (p *usageProjector) process(record *DeliveryRecord) error {
 	}
 
 	msgKey := firstUserMessageKey(record.Request)
-	newChain := !p.haveState ||
-		msgKey != p.firstMsgKey ||
-		record.Timestamp.Sub(p.prevOccurred) > ephemeralCacheTTL
+	newChain := usageChainRestarts(
+		p.haveState, msgKey, p.firstMsgKey, record.Timestamp.Time, p.prevOccurred,
+	)
 
 	var read, creation int
 	if newChain {
@@ -153,6 +153,21 @@ func (p *usageProjector) process(record *DeliveryRecord) error {
 	p.prevOccurred = record.Timestamp.Time
 	p.haveState = true
 	return nil
+}
+
+// usageChainRestarts keeps cache projection causal when records from adjacent
+// ingest-hour archives overlap in request time. A timestamp regression means
+// the request was concurrent with a record already replayed from an earlier
+// archive, so it cannot safely read that record's projected cache prefix.
+func usageChainRestarts(
+	haveState bool,
+	messageKey, previousMessageKey [sha256.Size]byte,
+	occurredAt, previousOccurred time.Time,
+) bool {
+	return !haveState ||
+		messageKey != previousMessageKey ||
+		occurredAt.Before(previousOccurred) ||
+		occurredAt.Sub(previousOccurred) > ephemeralCacheTTL
 }
 
 // firstUserMessageKey fingerprints the conversation head; client-side

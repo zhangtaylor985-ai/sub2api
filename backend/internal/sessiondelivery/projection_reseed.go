@@ -42,9 +42,8 @@ type ProjectionReseedResult struct {
 }
 
 type projectionReseedSession struct {
-	echo          *echoRepair
-	usage         *usageProjector
-	lastTimestamp time.Time
+	echo  *echoRepair
+	usage *usageProjector
 }
 
 // ReseedProjectionArchives rebuilds continuation checkpoints from a complete,
@@ -125,6 +124,10 @@ func buildProjectionReseedState(
 			Hour: input.hour, SHA256: input.sha256, Size: input.size,
 			Records: input.validation.Manifest.DeliveryCount,
 		})
+		// Durable batches advance in ingest-hour order. Request-start timestamps
+		// may overlap across adjacent archives when concurrent requests complete
+		// in a different order, so only the per-archive ordering enforced by the
+		// reader is a hard invariant here.
 		err := forEachArchiveSession(input.path, func(sessionID string, records []*DeliveryRecord) error {
 			state := states[sessionID]
 			if state == nil {
@@ -135,16 +138,12 @@ func buildProjectionReseedState(
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if !state.lastTimestamp.IsZero() && record.Timestamp.Before(state.lastTimestamp) {
-					return fmt.Errorf("projection reseed session %s is not ordered", sessionID)
-				}
 				if err := state.echo.process(record); err != nil {
 					return fmt.Errorf("reseed echo projection for %s: %w", record.RequestID, err)
 				}
 				if err := state.usage.process(record); err != nil {
 					return fmt.Errorf("reseed usage projection for %s: %w", record.RequestID, err)
 				}
-				state.lastTimestamp = record.Timestamp.Time
 				result.Records++
 			}
 			return nil

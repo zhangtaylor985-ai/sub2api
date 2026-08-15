@@ -112,20 +112,20 @@ func RebuildArchives(ctx context.Context, config RebuildArchivesConfig) (*Rebuil
 
 	echoBySession := make(map[string]*echoRepair)
 	usageBySession := make(map[string]*usageProjector)
-	lastTimestamp := make(map[string]time.Time)
+	rebuiltSessions := make(map[string]struct{})
 	result := &RebuildArchivesResult{InputDir: inputDir, OutputDir: outputDir}
 	for _, input := range inputs {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		rebuilt, err := rebuildArchive(ctx, input, outputDir, backend, publicModel, echoBySession, usageBySession, lastTimestamp)
+		rebuilt, err := rebuildArchive(ctx, input, outputDir, backend, publicModel, echoBySession, usageBySession, rebuiltSessions)
 		if err != nil {
 			return nil, fmt.Errorf("rebuild Session archive %s: %w", filepath.Base(input.path), err)
 		}
 		result.Archives = append(result.Archives, rebuilt)
 		addRebuildStats(&result.Changes, rebuilt.Changes)
 	}
-	result.Sessions = len(lastTimestamp)
+	result.Sessions = len(rebuiltSessions)
 	fidelityAudit, err := AuditArchivesFidelity(ctx, outputDir, publicModel)
 	if err != nil {
 		return nil, fmt.Errorf("audit rebuilt Session archives: %w", err)
@@ -249,7 +249,7 @@ func rebuildArchive(
 	publicModel string,
 	echoBySession map[string]*echoRepair,
 	usageBySession map[string]*usageProjector,
-	lastTimestamp map[string]time.Time,
+	rebuiltSessions map[string]struct{},
 ) (RebuildArchiveResult, error) {
 	workDir, err := os.MkdirTemp(outputDir, ".rebuild-"+input.hour.Format("20060102-15")+"-*")
 	if err != nil {
@@ -259,7 +259,7 @@ func rebuildArchive(
 	stagedPath := filepath.Join(workDir, "session-delivery-"+input.hour.Format("20060102-15")+".tar.zst")
 
 	manifest, changes, err := buildReprojectedArchive(
-		ctx, input, workDir, stagedPath, publicModel, echoBySession, usageBySession, lastTimestamp,
+		ctx, input, workDir, stagedPath, publicModel, echoBySession, usageBySession, rebuiltSessions,
 	)
 	if err != nil {
 		return RebuildArchiveResult{}, err
@@ -312,7 +312,7 @@ func buildReprojectedArchive(
 	publicModel string,
 	echoBySession map[string]*echoRepair,
 	usageBySession map[string]*usageProjector,
-	lastTimestamp map[string]time.Time,
+	rebuiltSessions map[string]struct{},
 ) (ExportManifest, RebuildChangeStats, error) {
 	archiveFile, err := os.OpenFile(archivePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -354,6 +354,11 @@ func buildReprojectedArchive(
 	var changes RebuildChangeStats
 	var tokenUsage DeliveryTokenMetrics
 	sessionWriter := newSessionEntryWriter(workDir, tarWriter, hourEnd)
+	// The archive hour is based on ingested_at while DeliveryRecord.Timestamp
+	// is the request start. Concurrent requests can therefore overlap across an
+	// archive boundary. forEachArchiveSession still rejects regressions inside
+	// one archive; replay the verified archive sequence exactly as production
+	// checkpoints advanced it instead of rejecting a legal boundary overlap.
 	iterateErr := forEachArchiveSession(input.path, func(sessionID string, records []*DeliveryRecord) error {
 		echo := echoBySession[sessionID]
 		if echo == nil {
@@ -368,9 +373,6 @@ func buildReprojectedArchive(
 		for _, record := range records {
 			if err := ctx.Err(); err != nil {
 				return err
-			}
-			if previous := lastTimestamp[sessionID]; !previous.IsZero() && record.Timestamp.Before(previous) {
-				return fmt.Errorf("session %s is not ordered across input archives", sessionID)
 			}
 			beforeRecord, err := json.Marshal(record)
 			if err != nil {
@@ -485,7 +487,7 @@ func buildReprojectedArchive(
 			if !bytes.Equal(beforeRecord, afterRecord) {
 				changes.ChangedRecords++
 			}
-			lastTimestamp[sessionID] = record.Timestamp.Time
+			rebuiltSessions[sessionID] = struct{}{}
 		}
 		return nil
 	})

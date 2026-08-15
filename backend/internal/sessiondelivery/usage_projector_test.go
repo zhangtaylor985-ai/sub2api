@@ -93,6 +93,24 @@ func TestUsageProjectorCacheTTLExpiry(t *testing.T) {
 	require.Equal(t, 10098, creation2)
 }
 
+func TestUsageProjectorTimestampRegressionRestartsConcurrentBranch(t *testing.T) {
+	p := &usageProjector{}
+	base := time.Date(2026, 8, 13, 16, 59, 35, 0, time.UTC)
+
+	first := usageTestRecord("session_overlap", base, 10000, 50, "same head")
+	require.NoError(t, p.process(first))
+
+	// The next ingest-hour archive can contain a request that started a few
+	// seconds earlier but completed later. It must not read a cache prefix from
+	// the future record that happened to be replayed first.
+	overlap := usageTestRecord("session_overlap", base.Add(-4*time.Second), 10100, 50, "same head")
+	require.NoError(t, p.process(overlap))
+	input, creation, read, _ := usageNumbers(t, overlap)
+	require.Equal(t, 2, input)
+	require.Equal(t, 0, read)
+	require.Equal(t, 10098, creation)
+}
+
 func TestUsageProjectorFullFieldShape(t *testing.T) {
 	p := &usageProjector{}
 	rec := usageTestRecord("session_shape", time.Now().UTC(), 8000, 42, "head")

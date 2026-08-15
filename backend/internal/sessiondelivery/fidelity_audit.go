@@ -29,6 +29,7 @@ type FidelityAuditReport struct {
 	Archives                int                   `json:"archives"`
 	Sessions                int                   `json:"sessions"`
 	CrossHourSessions       int                   `json:"cross_hour_sessions"`
+	CrossArchiveOverlaps    int64                 `json:"cross_archive_timestamp_overlaps"`
 	Records                 int64                 `json:"records"`
 	ClaudeShapeRecords      int64                 `json:"claude_shape_records"`
 	CodexShapeRecords       int64                 `json:"codex_shape_records"`
@@ -46,10 +47,10 @@ type FidelityAuditReport struct {
 }
 
 type fidelityAuditSession struct {
-	lastTimestamp time.Time
-	hours         map[string]struct{}
-	echo          echoRepair
-	usage         usageProjector
+	maxTimestamp time.Time
+	hours        map[string]struct{}
+	echo         echoRepair
+	usage        usageProjector
 }
 
 // AuditArchivesFidelity validates every record and then checks cross-record
@@ -85,10 +86,16 @@ func AuditArchivesFidelity(ctx context.Context, inputDir, publicModel string) (*
 					return err
 				}
 				report.Records++
-				if !state.lastTimestamp.IsZero() && record.Timestamp.Before(state.lastTimestamp) {
-					addFidelityViolation(report, record, "record timestamp regressed across archives")
+				// Archives are partitioned by ingested_at while the delivered
+				// timestamp is the request start. Concurrent requests can therefore
+				// overlap at an archive boundary without corrupting either archive.
+				// The per-archive reader already enforces timestamp order within a
+				// Session entry; retain cross-archive overlap as audit evidence.
+				if !state.maxTimestamp.IsZero() && record.Timestamp.Before(state.maxTimestamp) {
+					report.CrossArchiveOverlaps++
+				} else {
+					state.maxTimestamp = record.Timestamp.Time
 				}
-				state.lastTimestamp = record.Timestamp.Time
 
 				request, requestErr := decodeJSONObject(record.Request, "request")
 				if requestErr != nil {
@@ -271,8 +278,13 @@ func auditUsageChain(report *FidelityAuditReport, state *fidelityAuditSession, r
 	creation := rawInt(usage["cache_creation_input_tokens"])
 	prefix := read + creation
 	messageKey := firstUserMessageKey(record.Request)
-	newChain := !state.usage.haveState || messageKey != state.usage.firstMsgKey ||
-		record.Timestamp.Sub(state.usage.prevOccurred) > ephemeralCacheTTL
+	newChain := usageChainRestarts(
+		state.usage.haveState,
+		messageKey,
+		state.usage.firstMsgKey,
+		record.Timestamp.Time,
+		state.usage.prevOccurred,
+	)
 	wantRead := 0
 	if !newChain {
 		wantRead = state.usage.prevPrefix

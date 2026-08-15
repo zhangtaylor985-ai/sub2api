@@ -104,8 +104,8 @@ func isQueryValueChar(b byte) bool {
 
 // sanitizeAssistantTextBlock rewrites the text field of an assistant text
 // block in place, returning whether the block changed. Web search citations
-// on the block carry the same cited URLs, so their url fields are stripped
-// together to keep the block internally consistent.
+// on the block may carry the same URL either in url or inside cited_text, so
+// every string in the assistant-generated citation payload is normalized.
 func sanitizeAssistantTextBlock(block map[string]json.RawMessage) (bool, int64) {
 	changed := false
 	var stripped int64
@@ -117,24 +117,11 @@ func sanitizeAssistantTextBlock(block map[string]json.RawMessage) (bool, int64) 
 		}
 	}
 	if rawCitations := block["citations"]; len(rawCitations) > 0 {
-		var citations []map[string]json.RawMessage
-		if err := json.Unmarshal(rawCitations, &citations); err == nil {
-			citationsChanged := false
-			for _, citation := range citations {
-				url := rawString(citation["url"])
-				if url == "" {
-					continue
-				}
-				if sanitized, n := stripOpenAISearchTracking(url); n > 0 {
-					citation["url"] = mustJSON(sanitized)
-					citationsChanged = true
-					stripped += n
-				}
-			}
-			if citationsChanged {
-				block["citations"] = mustJSON(citations)
-				changed = true
-			}
+		sanitized, n, err := sanitizeJSONStrings(rawCitations)
+		if err == nil && n > 0 {
+			block["citations"] = sanitized
+			changed = true
+			stripped += n
 		}
 	}
 	return changed, stripped

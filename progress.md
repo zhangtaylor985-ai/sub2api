@@ -27,6 +27,10 @@
 - 使用当前精确源码构建 Linux AMD64 回归二进制，SHA-256=`e6c611674d9312688c4a8e5b967051186a1fc50a7380950e79917fce5a6d041d`，只放在隔离机 `/tmp`，未替换 `/opt/sub2api/sessionctl`。
 - 7 个真实种子归档完成二次重建：第一次输出与 `regress-fixed-seed-idem-codex-20260815` 7/7 压缩字节完全一致，树摘要 SHA-256=`ab4518bd58bea57ec96d06e221566feecd5ba31cef3b6c47e0ead4547452071c`；逐文件 validator 全过。全序列 audit：1,222 条、102 Session、14 个跨小时 Session、Claude 922/Codex 300、thinking 1,051、精确回声 12,690、工具记录 752，`violation_count=0`。
 - 完成本机 11 小时完整历史双重建：旧输入 2,081 条，按最终策略交付 2,005 条；run2 `changed_records=0`，11/11 文件压缩字节一致，两轮树 SHA-256 均为 `816686c8d3f4d01d3d8737747327c70468a57c3898dc0cf0b0195f82b05bb91e`。内置 validator/audit 与独立字段级 `jq` 扫描均 0 违规；本轮没有上传 Drive、写生产数据库或替换生产二进制。
+- 固定并推送首轮 review 提交 `bd85ad1dc`；ARM64 app canary 第一次因生产 env 中 8080 覆盖临时端口而在 bind 前安全退出，正式服务全程健康；改为进程入口显式覆盖 18080 后 health、Session 管理 API 401、0 restart、无 fatal/panic 全部通过，结束后端口释放。
+- Session 主机先备份旧 `/opt/sub2api/sessionctl`（SHA-256=`0fc4c15024e6c628c181afbc832f1158a22981f37578465b1bdf495cff6e5f85`），再替换为 `bd85ad1dc` 候选（SHA-256=`cc1d607138242f653c1f8f56165238b0728e00531ec68f867ea3ff2e3dcb14a2`）；timer 保持 inactive。手动 10 UTC canary 仍在上传前失败，没有 Drive 对象或 purge。
+- 只读定位失败记录后确认漏口为 `citations[].cited_text`；normalizer 现递归处理整个 assistant citations payload，并新增生产同形态测试。追补后的全量 Go/vet/race/PG18 integration 全过。
+- cited_text 追补后再次完成 11 小时双重建：2,005 条、140 Session、25 个跨小时 Session、Claude 1,340/Codex 665、0 违规；run2 `changed_records=0`，11/11 压缩字节相同，树摘要两轮均为 `4f54fb996eac1f2eeec65fcb99dbba8331458d04564ebce03e2ae31479dc1a4c`；独立字段扫描含 UTM、模型、UA、ID、caller、role、system identity 与助手自称全部 0 违规。
 
 ## 2026-08-14 OpenAI 搜索追踪参数交付修复（本地 V6）
 

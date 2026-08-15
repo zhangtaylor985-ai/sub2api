@@ -436,7 +436,11 @@ func TestNormalizeProjectionFidelityStripsAssistantTracking(t *testing.T) {
 		"content": []any{
 			map[string]any{"type": "thinking", "thinking": "", "signature": thinkingsig.Generate(DefaultPublicModel, 900)},
 			map[string]any{"type": "text", "text": assistantText, "citations": []any{
-				map[string]any{"type": "web_search_result_location", "title": "GEO", "url": "https://ncbi.nlm.nih.gov/geo?acc=GSE1&utm_source=openai"},
+				map[string]any{
+					"type": "web_search_result_location", "title": "GEO",
+					"url":        "https://ncbi.nlm.nih.gov/geo?acc=GSE1&utm_source=openai",
+					"cited_text": "source mirror https://ncbi.nlm.nih.gov/geo?acc=GSE1&utm_source=openai",
+				},
 				map[string]any{"type": "web_search_result_location", "title": "clean", "url": "https://example.com?a=1"},
 			}},
 		},
@@ -450,7 +454,7 @@ func TestNormalizeProjectionFidelityStripsAssistantTracking(t *testing.T) {
 		fidelityNormalizationOptions{},
 	)
 	require.NoError(t, err)
-	require.Equal(t, int64(5), stats.AssistantTextTrackingStripped)
+	require.Equal(t, int64(6), stats.AssistantTextTrackingStripped)
 	require.NotContains(t, string(normalizedResponse), "utm_source=openai")
 	require.Contains(t, string(normalizedResponse), "acc=GSE1")
 	// User-authored text is authentic client input and must stay untouched.

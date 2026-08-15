@@ -40,7 +40,10 @@
 - 独立本地完整历史回归覆盖 11 个连续小时、2,081 条旧输入；最新规则确定性排除 74 条无法机械转换的外来 system prompt 与 2 条助手自由正文自称 GPT/Codex 的记录，最终交付 2,005 条、140 个 Session、25 个跨小时 Session，输入总数守恒。Claude 1,340 条、Codex 665 条；thinking response 1,794 条、thinking block 1,802 个、请求历史精确回声 22,018 个；tool 记录 1,336 条、server tool 64 条；cache continuation 1,375 次、restart 630 次。
 - 对第一次输出再次完整重建，`changed_records=0` 且所有变化计数为 0；11/11 文件名和压缩归档字节完全一致，两棵输出树 SHA-256 均为 `816686c8d3f4d01d3d8737747327c70468a57c3898dc0cf0b0195f82b05bb91e`。11 个归档逐一 validator 与全序列 `audit-fidelity` 都是 0 违规。
 - 另以独立 `jq` 字段级扫描全部 2,005 条：request/response model 全为 `claude-opus-5`；GPT/Codex/OpenAI UA、缺失 session_id、无时区 timestamp、response.error、`role:"system"`、非法 message/tool ID、缺 caller、空工具名、额外顶层字段、`utm_source=openai`、外来 system 模型身份/旧 cutoff、助手外来模型自称均为 0。用户代理只出现 `claude-cli/2.1.x`，其余记录不伪造 UA。
-- 此结论目前是“本地/隔离种子回归达标”，不是“已上线”：生产 `/opt/sub2api/sessionctl` 仍为旧版，export timer 仍 inactive/enabled，10 UTC 队首失败、DB/Oracle spool 积压与不可恢复捕获缺口尚待发布阶段修复和界定。
+- `bd85ad1dc` 的生产 10 UTC canary 仍在 Drive 上传前被 `rec_a48703bca69ee981e856eb4c6028b6e4` 拦截；只读解包该记录后定位到交付响应 `content[18].citations[0..17].cited_text`，共 18 个 assistant-generated citation 字符串含 `utm_source=openai`。旧 normalizer 只遍历 citation 的 `url` 字段，而 validator 会递归扫描 citation 全部字符串，形成确定性不对称；原始 request/response 中的 UTM 位置仅作根因证据，未输出正文或改写数据库。
+- 修复改为递归清理 assistant text block 的整个 citations payload，覆盖 `url`、`cited_text` 及未来嵌套字符串；user 与 tool-result 内容仍不进入该路径。新增与生产同形态的 `cited_text` 回归后，Go 全量/vet/race、PG18 integration 全过。
+- 追补后重新做 11 小时双重建：run2 `changed_records=0`、全部变化计数为 0，11/11 压缩字节一致；按“文件 SHA 列表再哈希”的树摘要两轮均为 `4f54fb996eac1f2eeec65fcb99dbba8331458d04564ebce03e2ae31479dc1a4c`。内置审计仍为 2,005 条/0 违规，独立字段扫描的 `utm_source_openai_strings` 及其余泄露/形态指标全部为 0。
+- 此结论目前是“本地/隔离回归达标”，不是“最终版本已上线”：生产 `/opt/sub2api/sessionctl` 暂为已备份可回滚的 `bd85ad1dc` 首轮候选，cited_text 追补版尚未替换；export timer 仍 inactive/enabled，10 UTC 队首、DB/Oracle spool 积压与不可恢复捕获缺口尚待最终候选发布后修复和界定。
 
 ## 2026-08-14 外来客户端工具集转换（V13，取代 V10 的排除方案）
 

@@ -4,16 +4,16 @@
 
 ### 目标
 
-以 `f59ad72ac` 加复核补丁为候选（回归结束后再固定新提交），先完成代码审查和全量回归，证明交付链路满足用户两张截图及项目 Session 标准；门禁通过后发布 app/sessionctl，修复并验证数据库阻塞，最后用同一提交重建全部历史 Drive 交付文件、上传新版本目录、回读 SHA、reseed projection 并回填精确 Token。
+以 `bd85ad1dc` 加生产 `citations[].cited_text` 跟踪参数补丁为候选（本轮回归结束后再固定新提交），先完成代码审查和全量回归，证明交付链路满足用户两张截图及项目 Session 标准；门禁通过后发布 app/sessionctl，修复并验证数据库阻塞，最后用同一提交重建全部历史 Drive 交付文件、上传新版本目录、回读 SHA、reseed projection 并回填精确 Token。
 
 | 阶段 | 状态 | 验收输出 |
 | --- | --- | --- |
-| 1. 固定候选与代码审查 | completed | review `1612d5ef3..f59ad72ac` 并修复工具 schema/语义、system role 与 model identity 边界；仅 Session 包，`signature.go` 与实时响应零改动 |
-| 2. 本地全量回归 | completed | Go 全量/race/vet、PG18 全 integration、前端 lint/typecheck/Session 专项/embed build 通过；全量 Vitest 12 个无关基线失败已隔离举证 |
+| 1. 固定候选与代码审查 | completed | review `1612d5ef3..bd85ad1dc` 并修复工具 schema/语义、system role、model identity 与 citation cited_text 边界；仅 Session 包，`signature.go` 与实时响应零改动 |
+| 2. 本地全量回归 | completed | cited_text 追补后 Go 全量/race/vet、PG18 全 integration、前端 lint/typecheck/Session 专项/embed build 通过；全量 Vitest 12 个无关基线失败已隔离举证 |
 | 3. Claude Code/Codex 黑盒 | completed | Claude Code `-p`/WebSearch/真实 TTY 双轮+Bash、Codex 0.147 `exec+resume`；14 条真实捕获投影 0 违规、thinking 回声 10/10 一致 |
 | 4. 数据库阻塞诊断与修复 | in_progress | 已确认不是 DB lock，而是旧 exporter 被 UTM 记录队首阻塞并触发磁盘/spool 连锁；待生产 canary、追赶与缺口界定 |
 | 5. 固定提交发布 | pending | fetch/push、ARM64 app + AMD64 sessionctl SHA、回滚件、systemd 重启、health/UI/日志/usage 验收 |
-| 6. 历史 Drive 全量重建 | completed | 本机 11 小时/2,005 条连续序列双重建；11/11 压缩字节一致，树 SHA 一致，内置与独立外部审计均 0 违规 |
+| 6. 历史 Drive 全量重建 | completed | cited_text 追补后本机 11 小时/2,005 条连续序列再次双重建；11/11 压缩字节一致，树 SHA 一致，内置与独立外部审计均 0 违规 |
 | 7. 新 Drive 目录与状态衔接 | pending | 新版本目录 immutable 上传、逐对象回读 SHA；旧目录不覆盖不删除；reseed/token backfill dry-run 后 apply |
 | 8. 生产增量观察与交付报告 | pending | timer active/enabled、真实闭合小时成功、磁盘/Token/UI/Drive/DB 对账、缺口与回滚路径完整记录 |
 

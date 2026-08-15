@@ -664,16 +664,16 @@ func TestHourlyExportHoldsBackUnconvertibleRecordWithoutFailingTheHour(t *testin
 	require.NoError(t, err)
 	require.True(t, inserted)
 
-	// A foreign tool with no Claude Code counterpart that the model actually
-	// called: conversion cannot drop the declaration without orphaning the call
-	// and cannot map the arguments, so normalization fails for this record.
+	// This foreign shell call supplies two source fields for Claude Code's one
+	// command field. Picking either would silently change what the model asked to
+	// run, so normalization must hold back this record instead of guessing.
 	unconvertible := buildIntegrationAnthropicEnvelope(t, canonicalizer, hour.Add(10*time.Minute), "unconvertible", 200)
 	var request map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(unconvertible.Delivery.Request, &request))
-	request["tools"] = json.RawMessage(`[{"name":"music_generate","input_schema":{"type":"object"}}]`)
+	request["tools"] = json.RawMessage(`[{"name":"exec_command","input_schema":{"type":"object"}}]`)
 	request["messages"] = json.RawMessage(`[
-		{"role":"user","content":[{"type":"text","text":"make a jingle"}]},
-		{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01aaaaaaaaaaaaaaaaaaaaaa","name":"music_generate","input":{"prompt":"jingle"}}]},
+		{"role":"user","content":[{"type":"text","text":"run a command"}]},
+		{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01aaaaaaaaaaaaaaaaaaaaaa","name":"exec_command","input":{"cmd":"pwd","command":"whoami"}}]},
 		{"role":"user","content":[{"type":"text","text":"thanks"}]}
 	]`)
 	unconvertible.Delivery.Request, err = json.Marshal(request)
@@ -702,7 +702,7 @@ func TestHourlyExportHoldsBackUnconvertibleRecordWithoutFailingTheHour(t *testin
 
 	records := readDeliveryRecordsFromArchive(t, result.Archive.Name)
 	require.Len(t, records, 1)
-	require.NotContains(t, string(records[0].Request), "music_generate")
+	require.NotContains(t, string(records[0].Request), "exec_command")
 }
 
 type integrationDurableArchive struct {

@@ -41,25 +41,16 @@ var foreignToolTargets = map[string]string{
 	"exec":          "Bash",
 	"exec_command":  "Bash",
 	"shell_command": "Bash",
-	// Writing to a live shell session is a command run against that shell.
-	"write_stdin": "Bash",
 	// Claude Code's Read covers image files, which is all view_image does.
-	"read":        "Read",
-	"view_image":  "Read",
-	"write":       "Write",
-	"edit":        "Edit",
-	"apply_patch": "Edit",
-	"get_goal":    "TaskGet",
-	"create_goal": "TaskCreate",
-	"update_goal": "TaskUpdate",
-	// Direct counterparts.
-	"list_mcp_resources":          "ListMcpResourcesTool",
-	"read_mcp_resource":           "ReadMcpResourceTool",
-	"list_mcp_resource_templates": "ReadMcpResourceDirTool",
-	"agents_list":                 "ListAgents",
-	"list_agents":                 "ListAgents",
-	"send_message":                "SendMessage",
-	"sessions_send":               "SendMessage",
+	"read":       "Read",
+	"view_image": "Read",
+	"write":      "Write",
+	// These two are true schema-level counterparts. Tools such as write_stdin,
+	// apply_patch, update_goal and list_mcp_resource_templates only resemble a
+	// Claude Code built-in by name; their arguments or semantics differ, so the
+	// MCP fallback below preserves them instead of manufacturing an invalid call.
+	"read_mcp_resource": "ReadMcpResourceTool",
+	"send_message":      "SendMessage",
 }
 
 // foreignArgumentTargets renames a converted call's arguments so its input
@@ -79,17 +70,12 @@ var foreignArgumentTargets = map[string]map[string]string{
 		"path":    "file_path",
 		"content": "content",
 	},
-	"Edit": {"path": "file_path"},
 	"Bash": {
-		"cmd":     "command",
-		"command": "command",
-		"input":   "command",
-		// write_stdin sends these characters to a shell, which is the command.
-		"chars":         "command",
-		"timeout":       "timeout",
-		"timeout_ms":    "timeout",
-		"yieldMs":       "timeout",
-		"yield_time_ms": "timeout",
+		"cmd":        "command",
+		"command":    "command",
+		"input":      "command",
+		"timeout":    "timeout",
+		"timeout_ms": "timeout",
 	},
 	"SendMessage": {
 		"target":  "to",
@@ -117,10 +103,6 @@ var foreignArgumentDroppable = map[string]map[string]bool{
 		"shell":               true,
 		"tty":                 true,
 		"workdir":             true, // folded into the command first.
-		// Which shell a command went to is the foreign client's bookkeeping;
-		// Claude Code addresses a background shell by its own identifier and a
-		// foreground one not at all.
-		"session_id": true,
 		// Observed only as "gateway", a routing label rather than a host.
 		"host": true,
 	},
@@ -157,23 +139,16 @@ func (s foreignToolConversionStats) changed() bool {
 //   - A tool with a Claude Code counterpart is replaced by that counterpart's
 //     real definition, and every call to it is renamed with its arguments
 //     mapped onto the target schema.
-//   - A namespaced tool (ns__tool) becomes an MCP tool (mcp__ns__tool), which is
-//     how Claude Code carries externally provided tools. This covers the
-//     namespaced Codex projection without inventing a counterpart for it.
+//   - A called tool without an exact counterpart becomes an MCP tool, which is
+//     how Claude Code carries externally provided tools. Existing ns__tool
+//     names become mcp__ns__tool; flat names use the synthetic workspace
+//     namespace. The original schema and call input survive unchanged.
 //   - A tool with no counterpart that the exchange never called is dropped. It
 //     advertised a capability the assistant never used, so dropping it removes a
 //     client fingerprint without touching anything the model actually did.
 //
-// A tool with no counterpart that *was* called is an error: mangling a call the
-// model really made would corrupt the exchange, so the honest response is to
-// surface it and extend the mapping above.
-//
-// MEASURED in this corpus: 26 of 209 records declare foreign tools, in three
-// cohorts — a Codex CLI set (apply_patch, update_plan, shell_command,
-// codex_app, plus a tool with an empty name, which the Messages API rejects
-// outright), a Codex exec set (exec_command, write_stdin, view_image) and one
-// unrelated agent platform (browser, canvas, music_generate, tts). Of the 26
-// foreign tools those records declare, only two were ever called: read and exec.
+// A called tool with neither a valid MCP name nor an exact counterpart is an
+// error: mangling a call the model really made would corrupt the exchange.
 func convertForeignClientTools(
 	request map[string]json.RawMessage,
 	response map[string]json.RawMessage,
@@ -224,9 +199,8 @@ func convertForeignClientTools(
 		stats.ToolsConverted++
 		handled = append(handled, name)
 		if emitted[target] {
-			// Two foreign tools can share one counterpart — update_plan and
-			// update_goal both update a task. The declaration is emitted once;
-			// both call sites still rename onto it.
+			// Several shell surfaces can share Bash. The declaration is emitted
+			// once; every call site still renames onto it.
 			continue
 		}
 		emitted[target] = true
@@ -639,18 +613,32 @@ func convertForeignToolInput(target string, raw json.RawMessage) (json.RawMessag
 		// wraps it into an object owns that shape and runs elsewhere.
 		return nil, nil //nolint:nilerr // not an object: nothing to rename.
 	}
-	if target == "Bash" {
-		convertBashWorkdir(input)
-	}
 	droppable := foreignArgumentDroppable[target]
 	mapped := make(map[string]json.RawMessage, len(input))
 	for key, value := range input {
+		if target == "Bash" && (key == "yieldMs" || key == "yield_time_ms") {
+			// Yield only controls when the foreign client returns a background
+			// handle. Mapping it to Bash.timeout would incorrectly turn it into a
+			// command-killing deadline.
+			continue
+		}
 		if renamed, ok := renames[key]; ok {
+			if _, exists := mapped[renamed]; exists {
+				return nil, fmt.Errorf("converted %s call carries multiple arguments for Claude Code field %q", target, renamed)
+			}
 			mapped[renamed] = value
 			continue
 		}
 		if !droppable[key] {
 			return nil, fmt.Errorf("converted %s call carries argument %q with no Claude Code field", target, key)
+		}
+	}
+	if target == "Bash" {
+		if err := validateBashRoutingLabel(input["host"]); err != nil {
+			return nil, err
+		}
+		if err := convertBashWorkdir(mapped, input["workdir"]); err != nil {
+			return nil, err
 		}
 	}
 	encoded, err := json.Marshal(mapped)
@@ -664,13 +652,38 @@ func convertForeignToolInput(target string, raw json.RawMessage) (json.RawMessag
 // how Claude Code expresses it: the Bash schema has no working-directory field,
 // so dropping the argument would silently move the command somewhere else,
 // while prefixing preserves exactly what ran.
-func convertBashWorkdir(input map[string]json.RawMessage) {
-	workdir := rawString(input["workdir"])
-	command := rawString(input["command"])
-	if workdir == "" || command == "" {
-		return
+func convertBashWorkdir(mapped map[string]json.RawMessage, rawWorkdir json.RawMessage) error {
+	if len(rawWorkdir) == 0 || string(rawWorkdir) == "null" {
+		return nil
 	}
-	input["command"] = mustJSON("cd " + shellQuote(workdir) + " && " + command)
+	var workdir string
+	if err := json.Unmarshal(rawWorkdir, &workdir); err != nil {
+		return fmt.Errorf("converted Bash call carries a non-string workdir")
+	}
+	if workdir == "" {
+		return nil
+	}
+	commandRaw, ok := mapped["command"]
+	if !ok {
+		return fmt.Errorf("converted Bash call carries workdir without a command")
+	}
+	var command string
+	if err := json.Unmarshal(commandRaw, &command); err != nil || command == "" {
+		return fmt.Errorf("converted Bash call carries workdir without a string command")
+	}
+	mapped["command"] = mustJSON("cd " + shellQuote(workdir) + " && " + command)
+	return nil
+}
+
+func validateBashRoutingLabel(rawHost json.RawMessage) error {
+	if len(rawHost) == 0 || string(rawHost) == "null" {
+		return nil
+	}
+	var host string
+	if err := json.Unmarshal(rawHost, &host); err != nil || host != "gateway" {
+		return fmt.Errorf("converted Bash call carries unsupported host routing label")
+	}
+	return nil
 }
 
 // shellQuote renders a path as a single POSIX shell word.

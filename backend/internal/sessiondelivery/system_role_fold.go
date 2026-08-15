@@ -26,12 +26,11 @@ const (
 	systemReminderClose = "\n</system-reminder>"
 )
 
-// foldSystemRoleMessages moves every non-user, non-assistant turn into an
-// adjacent user turn and drops the original entry. It prefers the preceding
-// user turn, which is where the client places these injections; a following
-// user turn is the fallback. An entry with no adjacent user turn is left in
-// place for the validator to reject, because silently dropping conversation
-// content would be worse than a visible failure.
+// foldSystemRoleMessages moves only a role:"system" turn immediately following
+// a user turn into that user turn and drops the original entry. This is the only
+// arrangement measured in the corpus. Unknown roles, leading system turns and
+// non-adjacent system turns are left in place for the validator to reject;
+// inventing a relationship that was not present would be less faithful.
 //
 // The pass is idempotent: a folded request has no such entry left, and an
 // already-wrapped text is carried over verbatim instead of being wrapped twice.
@@ -58,13 +57,13 @@ func foldSystemRoleMessages(request map[string]json.RawMessage) (int64, error) {
 	removed := make([]bool, len(decoded))
 	for index, message := range decoded {
 		role := rawString(message["role"])
-		if role == "user" || role == "assistant" {
+		if role != "system" {
 			continue
 		}
-		target := nearestUserTurn(decoded, removed, index)
-		if target < 0 {
+		if index == 0 || removed[index-1] || rawString(decoded[index-1]["role"]) != "user" {
 			continue
 		}
+		target := index - 1
 		blocks, err := systemReminderBlocks(message["content"])
 		if err != nil {
 			return 0, err
@@ -74,7 +73,7 @@ func foldSystemRoleMessages(request map[string]json.RawMessage) (int64, error) {
 			folded++
 			continue
 		}
-		if err := appendUserContentBlocks(decoded[target], blocks, target > index); err != nil {
+		if err := appendUserContentBlocks(decoded[target], blocks, false); err != nil {
 			return 0, err
 		}
 		removed[index] = true
@@ -103,22 +102,6 @@ func foldSystemRoleMessages(request map[string]json.RawMessage) (int64, error) {
 	return folded, nil
 }
 
-// nearestUserTurn finds the user turn to fold into, scanning backwards first so
-// the injection keeps its conversational position, then forwards.
-func nearestUserTurn(messages []map[string]json.RawMessage, removed []bool, from int) int {
-	for index := from - 1; index >= 0; index-- {
-		if !removed[index] && rawString(messages[index]["role"]) == "user" {
-			return index
-		}
-	}
-	for index := from + 1; index < len(messages); index++ {
-		if !removed[index] && rawString(messages[index]["role"]) == "user" {
-			return index
-		}
-	}
-	return -1
-}
-
 // systemReminderBlocks converts the entry's content into text blocks carrying
 // the client's wrapper. Block content is carried over whole so any member the
 // client attached — cache_control in this corpus — survives; only the text is
@@ -139,8 +122,7 @@ func systemReminderBlocks(content json.RawMessage) ([]json.RawMessage, error) {
 				return nil, err
 			}
 			if rawString(block["type"]) != "text" {
-				wrapped = append(wrapped, rawBlock)
-				continue
+				return nil, fmt.Errorf("system message carries non-text content block %q", rawString(block["type"]))
 			}
 			text := rawString(block["text"])
 			if strings.TrimSpace(text) == "" {
@@ -171,7 +153,8 @@ func systemReminderBlocks(content json.RawMessage) ([]json.RawMessage, error) {
 }
 
 func wrapSystemReminder(text string) string {
-	if strings.Contains(text, "<system-reminder>") {
+	trimmed := strings.TrimSpace(text)
+	if strings.HasPrefix(trimmed, "<system-reminder>") && strings.HasSuffix(trimmed, "</system-reminder>") {
 		return text
 	}
 	return systemReminderOpen + text + systemReminderClose

@@ -1,5 +1,33 @@
 # Session Delivery 可观测性进度记录
 
+## 2026-08-15
+
+- 用户确认最新 Session 保真代码已完成，并一次性授权代码 review、完整回归、生产发布、历史 Drive 全量重建、数据库阻塞修复和最终生产验收。
+- 已完整读取并启用 `planning-with-files`、`sub2api-session-delivery-ops`（含 historical/live references）、`sub2api-production-regression`、`sub2api-production-inspection`、`sub2api-deploy`、`sub2api-local-binary-deploy` 与 `sub2api-cc1-tty-blackbox-testing`。
+- `planning-with-files` catchup 对 Codex 原生 session 不支持，已记录；通过 `git worktree list`、分支日志、状态和现有三份记录恢复上下文。
+- 确认独立 worktree 干净，候选 HEAD=`f59ad72ac`，相对远端 ahead 3；主工作区大量无关业务改动保持原样。
+- 已把两张截图转录为机器可执行验收矩阵，并建立 review、回归、黑盒、DB 阻塞、发布、历史重建、Drive/reseed/backfill、生产观察八阶段计划。
+- 第一次向三份计划文件插入新章节时因 `findings.md` 标题假设错误导致 `apply_patch` 整体拒绝；未改任何文件。读取准确标题后改用精确上下文重新应用成功。
+- 已定位 Cursor 任务 transcript `e69b779e-3308-4ac0-a8e9-cc66a99dd2f3`，计划以脱敏方式提取其变更意图和测试证据，不替代独立验收。
+- 静态 review 找到并修复三组发布阻断问题：Codex `cmd + workdir` 丢目录、语义/schema 不兼容工具被错误直接改名、system identity/role 门禁过宽。所有修改仍只在 `backend/internal/sessiondelivery`，未触碰 `signature.go` 或实时转发。
+- 不兼容工具现按 Claude Code 原生 MCP 形态机械承载，保留原 schema/input；`exec_command` 正确折叠工作目录，yield 控制不再伪装成 timeout；system role 只按实测邻接关系折叠；Opus 5 exact ID 与 May 2026 cutoff 均严格校验。
+- 定向 Session 回归首次正确抓到旧测试仍期待 `yieldMs -> timeout`；更新验收口径后重跑通过。该失败只发生在本地测试，没有生产或远端变更。
+- 已完成双机生产只读体检：主 Sub2API active/health ok、数据库无 blocked/长事务；Session 数据库同样无锁。确认所谓“数据库阻塞”实际是旧 sessionctl 被同一 `utm_source=openai` 记录反复卡住，timer 当前 inactive、export service failed，记录和后续小时分区均仍在库中。
+- 容量现状：主机根盘 82%/约 5.6GB 可用，隔离机 74%/约 11GB 可用；历史全量重建继续坚持在本地执行，生产机只做小时追赶与最终 purge。
+- 本轮修复后的后端全量 `go test ./... -count=1` 与 `go vet ./...` 已通过；尚待 race、PostgreSQL 18 集成、前端/embed 和真实客户端黑盒门禁。
+- 进一步确认 exporter 阻塞已触发容量连锁：Session 库约 8.5GB，隔离机 `disk_guard` 开始拒绝 ingest；主机 spool 计数器到 2GiB 上限后开始拒绝新 Session 捕获。实时 API 仍成功，但不能把这段时间误报为已完整保存。
+- 精确容量证据：Oracle pending 327 个/2,147,483,023 bytes、quarantine 0、tmp 166 个/约 395 MB；Session DB 4,829 条（4,384 deliverable / 445 rejected）、约 8,485 MB。没有删除 pending、tmp、DB 记录或 Drive 对象。
+- Session race 全部通过；PostgreSQL 18 integration 首轮仅有“未知已调用工具”fixture 与新版 MCP 保留语义冲突，改成真正歧义的双命令字段后，定向与完整 integration 全部通过。
+- 使用仓库固定的 pnpm 9.15.9 冻结依赖完成前端 lint/typecheck/Session 专项与生产 build。pnpm 11 的一次 lockfile 机械漂移已用反向精确 patch 还原，未带入提交。
+- 前端全量 Vitest 679/691 通过；12 个失败均位于远端 Session 分支已有的非 Session 模块，且当前候选相对远端对 `frontend/` 零 diff。Session API 2 tests + 页面 4 tests 均通过，不把无关基线修复混入本次紧急归档发布。
+- 最新 `go test ./... -count=1`、`go vet ./...`、race、PostgreSQL 18 全 integration 与前端 production build 通过；进入真实客户端黑盒与完整归档外部审计。
+- 真实客户端本地黑盒完成：Claude Code 2.1.220 的 `-p`、WebSearch、TTY 双轮和 Bash 工具调用均成功；Codex 0.147.0 使用独立临时 `CODEX_HOME` 完成 `exec + resume` 双轮。候选 spool 共 14 条（Claude 12 / Codex 2），按实际小时 exporter 全链投影后 0 违规，thinking 历史回声 10/10 逐字节一致；临时服务已停止，本地测试 Key 已恢复原过期时间并失效缓存。
+- 已通过 Cursor UI 与任务 `e69b779e-3308-4ac0-a8e9-cc66a99dd2f3` 建立单一写入者协作：Cursor 完成 `yield_time_ms` 一字修复与 7 个种子归档回归后停止编辑并交还工作区；未提交、未部署、未清理或覆盖历史归档。其量化复核确认 4,111 次 `exec_command` 不再把 yield 伪装成 timeout，4,111 次 workdir 被正确保留，540 次 `write_stdin` 不再伪装成 Bash，507 个空 command 消失。
+- 交还后由 Codex 独立重跑：后端全包 `go test ./... -count=1`、`go vet ./...`、Session/sessionctl/sessiond/middleware race、PostgreSQL 18 全 integration 均通过；`signature.go` diff 为空。
+- 使用当前精确源码构建 Linux AMD64 回归二进制，SHA-256=`e6c611674d9312688c4a8e5b967051186a1fc50a7380950e79917fce5a6d041d`，只放在隔离机 `/tmp`，未替换 `/opt/sub2api/sessionctl`。
+- 7 个真实种子归档完成二次重建：第一次输出与 `regress-fixed-seed-idem-codex-20260815` 7/7 压缩字节完全一致，树摘要 SHA-256=`ab4518bd58bea57ec96d06e221566feecd5ba31cef3b6c47e0ead4547452071c`；逐文件 validator 全过。全序列 audit：1,222 条、102 Session、14 个跨小时 Session、Claude 922/Codex 300、thinking 1,051、精确回声 12,690、工具记录 752，`violation_count=0`。
+- 完成本机 11 小时完整历史双重建：旧输入 2,081 条，按最终策略交付 2,005 条；run2 `changed_records=0`，11/11 文件压缩字节一致，两轮树 SHA-256 均为 `816686c8d3f4d01d3d8737747327c70468a57c3898dc0cf0b0195f82b05bb91e`。内置 validator/audit 与独立字段级 `jq` 扫描均 0 违规；本轮没有上传 Drive、写生产数据库或替换生产二进制。
+
 ## 2026-08-14 OpenAI 搜索追踪参数交付修复（本地 V6）
 
 - 用户确认 `utm_source=openai` 指纹显眼、值得修复，并授权范围：只做代码 + 本地 V6 重建和审计；Drive 上传与生产 reseed 待 V6 审计结果后单独确认。

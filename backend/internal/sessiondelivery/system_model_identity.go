@@ -13,6 +13,7 @@ import (
 const (
 	publicModelDisplayName     = "Opus 5"
 	publicModelKnowledgeCutoff = "May 2026"
+	publicModel1MIdentityLine  = "You are powered by the model named Opus 5 (1M context). The exact model ID is claude-opus-5[1m]."
 )
 
 var (
@@ -20,7 +21,7 @@ var (
 	// may itself contain periods ("Opus 4.8"), so the whole line is rebuilt
 	// rather than parsed field by field.
 	modelIdentityLinePattern = regexp.MustCompile(`You are powered by the model[^\n]*`)
-	knowledgeCutoffPattern   = regexp.MustCompile(`(Assistant knowledge cutoff is )[^\n.]*`)
+	knowledgeCutoffPattern   = regexp.MustCompile(`(Assistant knowledge cutoff is )([^\n.]*)`)
 )
 
 func canonicalModelIdentityLine() string {
@@ -34,29 +35,47 @@ func canonicalModelIdentityLine() string {
 // delivered model. The 1M-context variant names the same model and is left
 // untouched so authentic client text survives.
 func namesPublicModel(line string) bool {
-	return strings.Contains(line, "named "+publicModelDisplayName)
+	line = strings.TrimSpace(line)
+	return line == canonicalModelIdentityLine() || line == publicModel1MIdentityLine
 }
 
 // rewriteModelIdentityText aligns a single system prompt block with the
 // delivered model, reporting whether it changed.
 func rewriteModelIdentityText(text string) (string, bool) {
-	line := modelIdentityLinePattern.FindString(text)
-	if line == "" || namesPublicModel(line) {
+	lines := modelIdentityLinePattern.FindAllString(text, -1)
+	if len(lines) == 0 {
 		return text, false
 	}
-	rewritten := strings.Replace(text, line, canonicalModelIdentityLine(), 1)
-	// The cutoff belongs to the model that was just replaced.
+	rewritten := modelIdentityLinePattern.ReplaceAllStringFunc(text, func(line string) string {
+		if namesPublicModel(line) {
+			return line
+		}
+		return canonicalModelIdentityLine()
+	})
+	// The cutoff belongs to the advertised model. Normalize it even when the
+	// identity line already says Opus 5; otherwise a stale January cutoff creates
+	// a second, independently observable contradiction.
 	rewritten = knowledgeCutoffPattern.ReplaceAllString(rewritten, "${1}"+publicModelKnowledgeCutoff)
-	return rewritten, true
+	return rewritten, rewritten != text
 }
 
 // validateSystemModelIdentity fails closed when a system prompt still claims a
 // model other than the one the record is delivered under.
 func validateSystemModelIdentity(system json.RawMessage) error {
 	for _, text := range systemPromptTexts(system) {
-		line := modelIdentityLinePattern.FindString(text)
-		if line != "" && !namesPublicModel(line) {
-			return fmt.Errorf("system prompt names a foreign model: %q", line)
+		lines := modelIdentityLinePattern.FindAllString(text, -1)
+		for _, line := range lines {
+			if !namesPublicModel(line) {
+				return fmt.Errorf("system prompt names a foreign model: %q", line)
+			}
+		}
+		if len(lines) == 0 {
+			continue
+		}
+		for _, cutoff := range knowledgeCutoffPattern.FindAllStringSubmatch(text, -1) {
+			if strings.TrimSpace(cutoff[2]) != publicModelKnowledgeCutoff {
+				return fmt.Errorf("system prompt carries a foreign model knowledge cutoff: %q", cutoff[2])
+			}
 		}
 	}
 	return nil

@@ -300,9 +300,24 @@ func TestRealClientSpoolProjectsToOpus5Fidelity(t *testing.T) {
 		require.NoError(t, normalizeErr)
 		record.Request = normalizedRequest
 		record.Response.ResponseData = normalizedResponse
+		// Mirror the hourly exporter after the shared fidelity normalizer. Real
+		// Claude Code 2.1.x sends {"type":"adaptive"} without display; the
+		// delivery-only historical upgrade is the stage that adds
+		// display=omitted before strict validation.
+		_, _, _, upgradeErr := normalizeHistoricalDelivery(&record)
+		require.NoError(t, upgradeErr)
 		require.NoError(t, echo.process(&record))
+		_, historyErr := ensureRequestHistoryThinkingSignatures(&record)
+		require.NoError(t, historyErr)
 		require.NoError(t, usage.process(&record))
-		require.NoError(t, ValidateDeliveryFidelity(&record, DefaultPublicModel))
+		require.NoError(t, finalizeDeliveryRecord(&record))
+		require.NoError(
+			t,
+			ValidateDeliveryFidelity(&record, DefaultPublicModel),
+			"request_id=%s source_protocol=%s",
+			envelope.RequestID,
+			envelope.Source.Protocol,
+		)
 
 		state := auditStates[record.SessionID]
 		if state == nil {

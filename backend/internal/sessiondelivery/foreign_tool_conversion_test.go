@@ -111,25 +111,24 @@ func TestConvertForeignClientToolsReplacesDeclarationsWithClaudeCodeDefinitions(
 			map[string]any{"name": "shell_command", "description": "Runs a Powershell command (Windows)."},
 			map[string]any{"name": "apply_patch", "description": "The `apply_patch` tool can be used to edit files."},
 			map[string]any{"name": "update_plan"},
-			// Shares TaskUpdate with update_plan; the declaration is emitted once.
 			map[string]any{"name": "update_goal"},
 			map[string]any{"name": "web_search"},
 		}),
 	}
 	stats, err := convertForeignClientTools(request, nil)
 	require.NoError(t, err)
-	require.Equal(t, 3, stats.ToolsConverted)
-	// update_plan has no counterpart whose schema its arguments fit, and this
-	// exchange never called it, so it is dropped rather than carried.
-	require.Equal(t, 1, stats.ToolsDropped)
+	require.Equal(t, 1, stats.ToolsConverted)
+	// These declarations have no counterpart whose schema and semantics fit,
+	// and this exchange never called them, so they are dropped rather than
+	// relabeled as invalid Claude Code built-ins.
+	require.Equal(t, 3, stats.ToolsDropped)
 
 	names, definitions := declaredTools(t, request["tools"])
-	require.Equal(t, []string{"Bash", "Edit", "TaskUpdate", "web_search"}, names)
+	require.Equal(t, []string{"Bash", "web_search"}, names)
 	require.NoError(t, claudeCodeToolSetViolation(request["tools"]))
 	// The replacement carries Claude Code's own text, not the foreign client's.
 	require.NotContains(t, string(definitions["Bash"]), "Powershell")
 	require.Contains(t, string(definitions["Bash"]), "input_schema")
-	require.NotContains(t, string(definitions["Edit"]), "apply_patch")
 }
 
 // A capability the exchange never used is dropped; nothing the model did is
@@ -216,7 +215,7 @@ func TestConvertForeignClientToolsMapsCallArgumentsOntoTargetSchema(t *testing.T
 	// command rather than dropped, which is how Claude Code expresses it.
 	require.JSONEq(
 		t,
-		`{"command":"cd '/tmp/work space' \u0026\u0026 find . -name '*.go'","timeout":10000}`,
+		`{"command":"cd '/tmp/work space' \u0026\u0026 find . -name '*.go'"}`,
 		string(responseBlocks[0]["input"]),
 	)
 }
@@ -294,6 +293,43 @@ func TestConvertForeignClientToolsRewritesDescriptionToolReferences(t *testing.T
 
 // An argument that changes what the call did may not be dropped silently: the
 // converted call would claim the model ran something it did not.
+// Both spellings appear in the corpus: exec writes yieldMs, exec_command writes
+// yield_time_ms. Neither is a deadline, so neither may reach Bash.timeout, while
+// a genuine timeout still has to survive.
+func TestConvertForeignClientToolsDropsYieldButKeepsRealTimeout(t *testing.T) {
+	for _, yieldKey := range []string{"yieldMs", "yield_time_ms"} {
+		t.Run(yieldKey, func(t *testing.T) {
+			request := map[string]json.RawMessage{
+				"tools": mustJSON([]any{map[string]any{"name": "exec_command"}}),
+				"messages": mustJSON([]any{
+					map[string]any{"role": "assistant", "content": []any{
+						map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec_command", "input": map[string]any{
+							"cmd": "ls", yieldKey: 1000,
+						}},
+					}},
+				}),
+			}
+			_, err := convertForeignClientTools(request, nil)
+			require.NoError(t, err)
+			require.JSONEq(t, `{"command":"ls"}`, string(historyToolCallInputs(t, request)["Bash"]))
+		})
+	}
+
+	request := map[string]json.RawMessage{
+		"tools": mustJSON([]any{map[string]any{"name": "exec"}}),
+		"messages": mustJSON([]any{
+			map[string]any{"role": "assistant", "content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec", "input": map[string]any{
+					"command": "ls", "timeout": 5000, "yieldMs": 1000,
+				}},
+			}},
+		}),
+	}
+	_, err := convertForeignClientTools(request, nil)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"command":"ls","timeout":5000}`, string(historyToolCallInputs(t, request)["Bash"]))
+}
+
 func TestConvertForeignClientToolsFailsOnArgumentWithNoTargetField(t *testing.T) {
 	request := map[string]json.RawMessage{
 		"tools": mustJSON([]any{map[string]any{"name": "exec"}}),
@@ -315,20 +351,51 @@ func TestConvertForeignClientToolsFailsOnArgumentWithNoTargetField(t *testing.T)
 		"messages": mustJSON([]any{
 			map[string]any{"role": "assistant", "content": []any{
 				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec_command", "input": map[string]any{
-					"cmd": "ls", "justification": "list files", "login": true, "tty": false,
+					"cmd": "ls", "workdir": "/tmp/work space", "yield_time_ms": 1000,
+					"justification": "list files", "login": true, "tty": false,
 				}},
 			}},
 		}),
 	}
 	_, err = convertForeignClientTools(request, nil)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"command":"ls"}`, string(historyToolCallInputs(t, request)["Bash"]))
+	require.JSONEq(t, `{"command":"cd '/tmp/work space' \u0026\u0026 ls"}`, string(historyToolCallInputs(t, request)["Bash"]))
+
+	// Two foreign fields cannot both be projected onto Bash.command. Choosing
+	// one would invent a different call, so the record must fail closed.
+	request = map[string]json.RawMessage{
+		"tools": mustJSON([]any{map[string]any{"name": "exec_command"}}),
+		"messages": mustJSON([]any{
+			map[string]any{"role": "assistant", "content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec_command", "input": map[string]any{
+					"cmd": "pwd", "command": "whoami",
+				}},
+			}},
+		}),
+	}
+	_, err = convertForeignClientTools(request, nil)
+	require.ErrorContains(t, err, `multiple arguments for Claude Code field "command"`)
+
+	// Only the measured gateway routing label is a client-only execution hint.
+	// Any other host could change where the command ran and may not be erased.
+	request = map[string]json.RawMessage{
+		"tools": mustJSON([]any{map[string]any{"name": "exec"}}),
+		"messages": mustJSON([]any{
+			map[string]any{"role": "assistant", "content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec", "input": map[string]any{
+					"command": "pwd", "host": "remote-worker",
+				}},
+			}},
+		}),
+	}
+	_, err = convertForeignClientTools(request, nil)
+	require.ErrorContains(t, err, "unsupported host routing label")
 }
 
 // A patch cannot be mechanically turned into Claude Code's file_path/old_string/
-// new_string triple, so a called apply_patch has to surface rather than produce
-// an Edit call with no arguments.
-func TestConvertForeignClientToolsFailsOnCalledFreeformPatch(t *testing.T) {
+// new_string triple. Carry it as a Claude Code MCP tool so the patch survives
+// exactly instead of producing an invalid Edit call or excluding the record.
+func TestConvertForeignClientToolsCarriesCalledFreeformPatchAsMCP(t *testing.T) {
 	request := map[string]json.RawMessage{
 		"tools": mustJSON([]any{map[string]any{"name": "apply_patch"}}),
 		"messages": mustJSON([]any{
@@ -339,8 +406,39 @@ func TestConvertForeignClientToolsFailsOnCalledFreeformPatch(t *testing.T) {
 			}},
 		}),
 	}
-	_, err := convertForeignClientTools(request, nil)
-	require.ErrorContains(t, err, `converted Edit call carries argument "input"`)
+	stats, err := convertForeignClientTools(request, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, stats.ToolsConverted)
+	names, _ := declaredTools(t, request["tools"])
+	require.Equal(t, []string{"mcp__workspace__apply_patch"}, names)
+	require.JSONEq(t, `{"input":"*** Begin Patch\n*** End Patch"}`, string(historyToolCallInputs(t, request)["mcp__workspace__apply_patch"]))
+}
+
+func TestConvertForeignClientToolsCarriesSchemaIncompatibleBuiltinsAsMCP(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		input map[string]any
+	}{
+		{"write_stdin", map[string]any{"session_id": 12, "chars": "y\n"}},
+		{"update_goal", map[string]any{"status": "complete"}},
+		{"list_mcp_resource_templates", map[string]any{"server": "docs", "cursor": "next"}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			request := map[string]json.RawMessage{
+				"tools": mustJSON([]any{map[string]any{
+					"name": testCase.name, "input_schema": map[string]any{"type": "object"},
+				}}),
+				"messages": mustJSON([]any{map[string]any{"role": "assistant", "content": []any{
+					map[string]any{"type": "tool_use", "id": "toolu_1", "name": testCase.name, "input": testCase.input},
+				}}}),
+			}
+			_, err := convertForeignClientTools(request, nil)
+			require.NoError(t, err)
+			target := "mcp__workspace__" + testCase.name
+			require.Equal(t, []string{target}, historyToolCallNames(t, request))
+			require.JSONEq(t, string(mustJSON(testCase.input)), string(historyToolCallInputs(t, request)[target]))
+		})
+	}
 }
 
 func TestConvertForeignClientToolsLeavesClaudeCodeRequestsUntouched(t *testing.T) {

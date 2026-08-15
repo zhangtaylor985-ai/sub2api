@@ -1,5 +1,47 @@
 # Session Delivery 可观测性发现记录
 
+## 2026-08-15 最新候选与截图要求
+
+- 用户确认代码调整完成并授权 review、回归、生产发布、历史 Google Drive 全量重建及数据库阻塞修复全流程。
+- 固定候选为 `codex/session-delivery-v2-rollout@f59ad72ac`；相对已推送 `b92c8bfff` 新增 `1612d5ef3`（Claude Code wire shape）、`93d7b25fb`（system prompt 模型身份/May 2026）、`f59ad72ac`（助手自由正文外来模型自称 fail-closed）。工作区干净，分支 ahead 3。
+- 主工作区 `/Users/taylor/sdk/sub2api` 仍有大量无关业务管理改动与未跟踪凭据/数据目录；不得在其中构建、stash、提交或清理。本任务继续使用独立 hourly worktree。
+- 截图第一优先级是交付黑盒完整呈现 Claude Code + `claude-opus-5`：模型字段、UA、system 自述/知识截止、ID/caller/tool/system role、OpenAI 字段/UTM、HTML 字节与幂等均需全量机器审计。
+- 外来客户端处理必须区分“工具面机械转换”和“模型自由散文”：前者转换保留；后者若自称 GPT/Codex 不允许改写，只能 fail-closed 排除并维持 internal=delivery+excluded 守恒。
+- 第二优先级逐条核对 vendor spec 3/5/6/7；thinking.signature 比例截图基线为 89.9%，规范阈值为 30%，最终以最新完整序列实际统计为准。
+- Cursor 任务 `e69b779e-3308-4ac0-a8e9-cc66a99dd2f3` 的本地 transcript 已定位，后续仅作作者意图和既有测试的辅助证据；最终结论以 Git diff、独立回归与归档审计为准。
+- `planning-with-files` catchup 因不支持 Codex 原生 session 跳过；已改用 Git 状态、现有计划与截图恢复上下文。
+- 三个候选提交共改 35 个文件、约 4,679 行新增；业务代码全部位于 `backend/internal/sessiondelivery`，其余仅三份计划记录，没有触达 gateway/service/handler/实时 SSE 路径。`backend/internal/sessiondelivery/signature.go` 相对已上线基线无 diff。
+- `1612d5ef3` 覆盖 wire shape、system role folding、HTML 序列化、外来工具转换和逐条 quarantine；`93d7b25fb` 覆盖 system 模型身份及 May 2026；`f59ad72ac` 覆盖助手自由散文自称外来模型的 fail-closed 排除。提交说明声称完整序列二次重建通过，但仍需本轮独立复现。
+- Cursor transcript 脱敏核对到完整演进证据：V7/V8 曾为 11 个归档/2,007 条且逐字节一致；随后发现 2 条中文“我是 GPT-5 系列的 Codex 编程智能体”真泄露，`f59ad72ac` 将其计入 excluded 后 V9 为 2,005 条，V9/V10 11/11 SHA 一致。历史 SSH 任务显示 aborted 是服务端重建结束后通道未退出，被人工终止，不代表重建失败。
+- Cursor transcript 同时记录过一次真实缺陷：最初 `continue` 跳过自称记录却未增加 excluded，触发 manifest 数量不守恒；后续已接入 `ExcludedCount` 并重跑成功。这一处需要在代码 review 和集成测试中重点复核。
+- 初步静态 review 已确认守恒修复同时校验“输入总数不变”和“delivery 减少量精确等于两类 held-back 计数”，manifest 也把两类计数加回 excluded；需要集成测试验证逐小时、全序列与幂等。
+- 初步发现三个需要继续验证的边界：system role folding 当前处理所有非 user/assistant 角色且会跨多轮寻找 user，可能把未知非法角色或非相邻内容机械伪装成 reminder；system 模型 validator 目前只用 `named Opus 5` 子串判定，需确认不会放过“显示名 Opus 5、exact ID 仍为外来模型”的矛盾行；Opus 5 identity 已存在时 cutoff 是否强制 May 2026 需从测试和全量审计确认。
+- 外来工具转换静态 review 发现一个确定性语义缺陷：`convertBashWorkdir` 在参数重命名前只读取 `input["command"]`，而 Codex `exec_command` 使用 `cmd`；结果 `workdir` 会被允许删除但没有折叠进最终 `command`，与代码注释和“不能静默改变执行目录”的 fail-closed 口径冲突。必须补测试并修复后才能发布。
+- 内嵌 Claude Code schema 进一步确认：`TaskGet` 必填 `taskId`，`TaskCreate` 必填 `subject`/`description`，`TaskUpdate` 必填 `taskId`；因此把 `get_goal`/`create_goal`/`update_goal` 直接改名为这三个工具、却不做参数语义转换，会生成不符合 Claude Code schema 的调用。`list_mcp_resource_templates` 与 `ReadMcpResourceDirTool(server, uri)` 也不是同一语义，不能直接改名。
+- 现有 `workdir` 单测只覆盖输入本来就叫 `command` 的情形，没有覆盖实际 Codex `exec_command.cmd`，所以此前回归未能发现目录丢失。修复需新增 `cmd + workdir` 用例，并对所有不兼容的“仅改名”映射改用保留原 schema 的 `mcp__workspace__*` 机械承载或明确 fail-closed。
+- 另有高风险映射需验证或收紧：`write_stdin -> Bash` 把向既有进程写字符伪装成新 shell 命令；`get_goal/create_goal/update_goal -> Task*` 没有参数映射，目标 Claude Code schema 很可能不兼容；未来一旦真实调用会生成形态合法但语义/参数不合法的记录。当前 V9 语料只调用 `read/exec` 不足以覆盖这些路径。
+- 上述 review 缺口已在本轮候选修复：只有 schema/语义确实等价的 shell/read/write/read-resource/send-message 保留直接映射；`write_stdin`、`apply_patch`、goal、资源模板/分页列表、agent 列表等一旦被调用，改走 `mcp__workspace__*` 并原样保留 schema 与 input，未调用声明仍删除。这样既不整条排除 Codex 记录，也不伪造无效 Claude 内置工具调用。
+- `exec_command.cmd + workdir` 现先映射到 `command`，再折叠为 `cd <quoted-workdir> && <command>`；重复命令来源、workdir 无字符串命令、非 `gateway` host 均 fail-closed。`yield-time_ms/yieldMs` 被视为客户端何时让出控制权，不再错误映射成会杀死命令的 `Bash.timeout`。
+- system role folding 已收紧为语料唯一实测形态：只折叠“紧跟 user 的 `role:"system"`”；leading、非相邻或未知角色留给 validator 拒绝，system 中非 text block 直接 fail-closed，不再跨多轮猜测归属。
+- system 模型身份门禁已由显示名子串升级为整句白名单：仅接受规范 `claude-opus-5` 与官方 `claude-opus-5[1m]` 两种整句；即使显示名为 Opus 5，只要 exact ID 外来仍拒绝；存在身份句时 cutoff 必须为 May 2026，旧 cutoff 会被确定性修复。
+- 新增定向回归覆盖以上边界；`go test ./internal/sessiondelivery` 对工具转换、system identity、system role 与共享 normalizer 用例已通过。
+- 2026-08-15 生产只读体检确认“数据库阻塞”不是 PostgreSQL lock：主 Sub2API 库 blocked session=0、最长事务约 5 秒；Session 隔离库 blocked session=0、无长事务。主应用 active/health ok，但根盘已 82%（约 5.6GB 可用），需避免在主机做历史重建。
+- 真正阻塞点是 Session 导出：隔离机 `sessiond` active，但 `sub2api-session-export.timer` inactive/未调度、最近 service failed；日志显示同一 `rec_a48703bca69ee981e856eb4c6028b6e4` 从 8 月 14 日持续因 `response content[18] ... utm_source=openai` 失败。隔离库没有锁，约 11GB 可用/74% 使用，数据分区仍完整保留至 2026-08-15 07 UTC，故属于“导出队首记录阻塞”，不是数据丢失或 DB 死锁。
+- 当前候选的精确 UTM sanitizer/validator 与逐条 normalization holdback 正覆盖该根因；发布前仍须用生产记录做 dry/canary 导出验证，发布后再恢复 timer、按小时追赶、Drive 回读 SHA 后 purge。
+- 容量连锁已量化：Oracle spool `pending=327`、`2,147,483,023` bytes，已经贴住 2 GiB 硬上限；`quarantine=0`，另有 166 个 capture 临时文件约 395 MB，未做删除或改写。Session DB 为 4,829 条、约 8,485 MB，4,384 条 deliverable / 445 条 rejected，时间覆盖 2026-08-14 09:59:57 UTC 至 2026-08-15 07:09:02 UTC。
+- export batch 现有 26 个 `purged` 和 1 个失败的 10 UTC 批次；旧 sessionctl 从 10 UTC 起反复在 Drive 上传前被 UTM 严格门禁拦截，后续小时没有被 purge。隔离机达到 75% disk guard 后拒绝 ingest，forwarder 因此不能清空 Oracle spool；spool 满后新的 Session 捕获被容量保护跳过。实时 AI 请求不受影响，但该时段存在不可伪造补齐的 Session 缺口，恢复后必须精确界定起止时间。
+- race 门禁通过：`go test -race ./internal/sessiondelivery ./cmd/sessionctl ./cmd/sessiond ./internal/server/middleware -count=1`。PostgreSQL 18 全集成门禁通过，包括 export/readback/purge、opaque history、跨小时 checkpoint、reseed dry-run/apply、rejection repair、旧 thinking 升级与单条 normalization holdback。
+- PostgreSQL 首轮测试曾因旧 fixture 把“可安全承载为 MCP 的未知调用”仍当成不可转换而失败；改用 `cmd` 与 `command` 同时映射同一 Bash 字段的真实歧义后，单条扣下/整小时继续的测试通过。该失败证明新版 MCP 保留行为生效，不是生产缺陷。
+- 前端冻结依赖门禁：lint、typecheck、Session API 2 tests、Session 页面 4 tests 与 production build 通过。全量 Vitest 为 679/691 通过、12 失败；失败集中在 AccountUsageCell、两个 distribution chart、EmailVerifyView 和 persisted page size，当前候选相对远端 Session 分支对 `frontend/` 零 diff，因此均为基线已有且与本次 Session-only 修复无关。pnpm 11 曾忽略旧式 override 并机械改写 lockfile，已按仓库 Dockerfile 固定 pnpm 9.15.9 重新安装并把 lockfile 精确还原，工作区无依赖文件漂移。
+- 固定依赖的前端生产构建成功，输出仍包含现有 chunk-size/dynamic-import 警告；后端 `go test ./... -count=1`、`go vet ./...` 与 embed 资源均通过。当前发布门禁只剩真实客户端黑盒、完整归档外部审计/二次幂等和生产 canary。
+- Cursor 对最终工具转换补丁的语料 A/B 发现是有效真问题：旧直映 `write_stdin -> Bash` 会制造 540 次错误 Bash 调用（507 次空 command）；旧 workdir 折叠顺序会让 4,111 次 `exec_command` 静默丢失目录；yield 键的拼写错误又会让同 4,111 次调用误映射为 timeout 或直接 fail-closed。最终实现把 `write_stdin` 原样承载为 `mcp__workspace__write_stdin`，先完成 `cmd -> command` 再折叠 workdir，并丢弃 `yieldMs`/`yield_time_ms` 而保留真正的 timeout。
+- 同一 1,240 条种子输入的最终输出仍为 1,222 条，没有因 fail-closed 收紧额外排除；workdir 保留数由 1,026 增至 5,137，带 timeout 数由 19,201 降到 15,090，差值精确等于 4,111 次 `exec_command`；空 command 为 0，540 次 `write_stdin` 保持 MCP 形态。
+- 种子二次重建已达到强幂等：7 个 `.tar.zst` 不只是解码内容相同，而是压缩归档字节与文件名逐一相同，树 SHA-256 均为 `ab4518bd58bea57ec96d06e221566feecd5ba31cef3b6c47e0ead4547452071c`。完整 audit `passed=true`、`public_model=claude-opus-5`、1,222 条、`violation_count=0`；Claude/Codex、thinking/tool/server-tool、cache continuation/restart 与跨小时 Session 均有覆盖。
+- 独立本地完整历史回归覆盖 11 个连续小时、2,081 条旧输入；最新规则确定性排除 74 条无法机械转换的外来 system prompt 与 2 条助手自由正文自称 GPT/Codex 的记录，最终交付 2,005 条、140 个 Session、25 个跨小时 Session，输入总数守恒。Claude 1,340 条、Codex 665 条；thinking response 1,794 条、thinking block 1,802 个、请求历史精确回声 22,018 个；tool 记录 1,336 条、server tool 64 条；cache continuation 1,375 次、restart 630 次。
+- 对第一次输出再次完整重建，`changed_records=0` 且所有变化计数为 0；11/11 文件名和压缩归档字节完全一致，两棵输出树 SHA-256 均为 `816686c8d3f4d01d3d8737747327c70468a57c3898dc0cf0b0195f82b05bb91e`。11 个归档逐一 validator 与全序列 `audit-fidelity` 都是 0 违规。
+- 另以独立 `jq` 字段级扫描全部 2,005 条：request/response model 全为 `claude-opus-5`；GPT/Codex/OpenAI UA、缺失 session_id、无时区 timestamp、response.error、`role:"system"`、非法 message/tool ID、缺 caller、空工具名、额外顶层字段、`utm_source=openai`、外来 system 模型身份/旧 cutoff、助手外来模型自称均为 0。用户代理只出现 `claude-cli/2.1.x`，其余记录不伪造 UA。
+- 此结论目前是“本地/隔离种子回归达标”，不是“已上线”：生产 `/opt/sub2api/sessionctl` 仍为旧版，export timer 仍 inactive/enabled，10 UTC 队首失败、DB/Oracle spool 积压与不可恢复捕获缺口尚待发布阶段修复和界定。
+
 ## 2026-08-14 外来客户端工具集转换（V13，取代 V10 的排除方案）
 
 - 用户否决整条排除，要求把 Codex 客户端改成 Claude Code 形态。重新按功能（读每个外来工具自己的 description，而不是看名字）逐项对表后，转换范围远小于排除方案预估：26 条记录声明的 26 个外来工具里，**只有 2 个真正被调用过**（`read` 4 次、`exec` 1 次），其余 24 个全是"声明了但整段对话从未调用"。所以此前"改名就得伪造整段对话"的判断只对被调用的工具成立，对绝大多数声明并不成立。

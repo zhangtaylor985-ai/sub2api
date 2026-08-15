@@ -103,6 +103,22 @@ func TestNormalizeSystemModelIdentityIsIdempotent(t *testing.T) {
 func TestValidateSystemModelIdentityRejectsForeignModel(t *testing.T) {
 	system := mustJSON("You are powered by the model gpt-5.5.")
 	require.ErrorContains(t, validateSystemModelIdentity(system), "foreign model")
+
+	// A matching display name is insufficient when the exact ID still exposes
+	// the backend model.
+	lookalike := mustJSON("You are powered by the model named Opus 5. The exact model ID is gpt-5.6-sol.")
+	require.ErrorContains(t, validateSystemModelIdentity(lookalike), "foreign model")
+}
+
+func TestNormalizeSystemModelIdentityRepairsStaleCutoffOnOpus5(t *testing.T) {
+	prompt := canonicalModelIdentityLine() + "\n - Assistant knowledge cutoff is January 2026."
+	require.ErrorContains(t, validateSystemModelIdentity(mustJSON(prompt)), "knowledge cutoff")
+
+	normalized, rewrites, err := normalizeSystemModelIdentity(mustJSON(prompt))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), rewrites)
+	require.Contains(t, string(normalized), "May 2026")
+	require.NoError(t, validateSystemModelIdentity(normalized))
 }
 
 // A prompt that never names a model is left alone rather than having one added.

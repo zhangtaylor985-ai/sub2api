@@ -97,7 +97,7 @@ func TestFoldSystemRoleMessagesDoesNotDoubleWrapOrRepeat(t *testing.T) {
 	require.JSONEq(t, string(first), string(request["messages"]))
 }
 
-func TestFoldSystemRoleMessagesFallsBackToFollowingUserTurn(t *testing.T) {
+func TestFoldSystemRoleMessagesLeavesLeadingSystemTurnForValidator(t *testing.T) {
 	request := map[string]json.RawMessage{
 		"messages": mustJSON([]any{
 			map[string]any{"role": "system", "content": "Skills are available."},
@@ -109,14 +109,43 @@ func TestFoldSystemRoleMessagesFallsBackToFollowingUserTurn(t *testing.T) {
 
 	folded, err := foldSystemRoleMessages(request)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), folded)
+	require.Zero(t, folded)
 
 	messages := decodeMessages(t, mustJSON(map[string]json.RawMessage{"messages": request["messages"]}))
-	require.Len(t, messages, 1)
-	require.Equal(t, []string{
-		"<system-reminder>\nSkills are available.\n</system-reminder>",
-		"hello",
-	}, blockTexts(t, messages[0]["content"]))
+	require.Len(t, messages, 2)
+	require.Equal(t, "system", messages[0]["role"])
+	require.Equal(t, "user", messages[1]["role"])
+}
+
+func TestFoldSystemRoleMessagesLeavesUnknownAndNonAdjacentRoles(t *testing.T) {
+	request := map[string]json.RawMessage{
+		"messages": mustJSON([]any{
+			map[string]any{"role": "user", "content": "hello"},
+			map[string]any{"role": "assistant", "content": "hi"},
+			map[string]any{"role": "system", "content": "not adjacent"},
+			map[string]any{"role": "developer", "content": "unknown role"},
+		}),
+	}
+
+	folded, err := foldSystemRoleMessages(request)
+	require.NoError(t, err)
+	require.Zero(t, folded)
+	require.Contains(t, string(request["messages"]), `"role":"system"`)
+	require.Contains(t, string(request["messages"]), `"role":"developer"`)
+}
+
+func TestFoldSystemRoleMessagesRejectsNonTextSystemBlocks(t *testing.T) {
+	request := map[string]json.RawMessage{
+		"messages": mustJSON([]any{
+			map[string]any{"role": "user", "content": "hello"},
+			map[string]any{"role": "system", "content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": map[string]any{}},
+			}},
+		}),
+	}
+
+	_, err := foldSystemRoleMessages(request)
+	require.ErrorContains(t, err, "non-text content block")
 }
 
 // Dropping conversation content silently would be worse than a visible

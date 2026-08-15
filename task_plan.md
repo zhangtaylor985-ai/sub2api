@@ -1,5 +1,42 @@
 # Session Delivery 可观测性实施计划
 
+## 2026-08-15 最新保真代码复核、生产发布与历史归档收尾
+
+### 目标
+
+以 `f59ad72ac` 加复核补丁为候选（回归结束后再固定新提交），先完成代码审查和全量回归，证明交付链路满足用户两张截图及项目 Session 标准；门禁通过后发布 app/sessionctl，修复并验证数据库阻塞，最后用同一提交重建全部历史 Drive 交付文件、上传新版本目录、回读 SHA、reseed projection 并回填精确 Token。
+
+| 阶段 | 状态 | 验收输出 |
+| --- | --- | --- |
+| 1. 固定候选与代码审查 | completed | review `1612d5ef3..f59ad72ac` 并修复工具 schema/语义、system role 与 model identity 边界；仅 Session 包，`signature.go` 与实时响应零改动 |
+| 2. 本地全量回归 | completed | Go 全量/race/vet、PG18 全 integration、前端 lint/typecheck/Session 专项/embed build 通过；全量 Vitest 12 个无关基线失败已隔离举证 |
+| 3. Claude Code/Codex 黑盒 | completed | Claude Code `-p`/WebSearch/真实 TTY 双轮+Bash、Codex 0.147 `exec+resume`；14 条真实捕获投影 0 违规、thinking 回声 10/10 一致 |
+| 4. 数据库阻塞诊断与修复 | in_progress | 已确认不是 DB lock，而是旧 exporter 被 UTM 记录队首阻塞并触发磁盘/spool 连锁；待生产 canary、追赶与缺口界定 |
+| 5. 固定提交发布 | pending | fetch/push、ARM64 app + AMD64 sessionctl SHA、回滚件、systemd 重启、health/UI/日志/usage 验收 |
+| 6. 历史 Drive 全量重建 | completed | 本机 11 小时/2,005 条连续序列双重建；11/11 压缩字节一致，树 SHA 一致，内置与独立外部审计均 0 违规 |
+| 7. 新 Drive 目录与状态衔接 | pending | 新版本目录 immutable 上传、逐对象回读 SHA；旧目录不覆盖不删除；reseed/token backfill dry-run 后 apply |
+| 8. 生产增量观察与交付报告 | pending | timer active/enabled、真实闭合小时成功、磁盘/Token/UI/Drive/DB 对账、缺口与回滚路径完整记录 |
+
+### 截图验收矩阵
+
+- `request.model` / `response.model` 全部为 `claude-opus-5`；官方 `claude-opus-5[1m]` 保留原样。
+- metadata 只呈现 Claude Code 形态 `user_agent=claude-cli/2.1.x`，不暴露 GPT/Codex/OpenAI 客户端身份。
+- Claude Code system prompt 自述统一 Opus 5，`Assistant knowledge cutoff` 同步为 `May 2026`。
+- 助手自由正文若自称 GPT/Codex/其他非 Claude 模型，不改写，整条 fail-closed 排除并保持 manifest 总数守恒。
+- Codex/外来客户端工具声明、调用、结果、ID、caller、空工具名与 `role:"system"`：可机械转换部分全部转换为 Claude Code wire shape，不因客户端来源整条排除。
+- OpenAI 专有协议字段、精确 `utm_source=openai`、外来 ID/工具名在交付面为 0；用户正文、环境信息和第三方 MCP 描述中的真实词汇不误判。
+- 真实 `<>&` 不保留 Go HTML 转义；字符串中作为文本出现的 `\\u003c` 等不误改。
+- 完整历史序列二次重建逐字节一致；全量外部审计 0 违规。
+- vendor spec 3/5/6/7：`session_id`、带时区 `timestamp`、`response_data` 非空、`response.error` 不出现、thinking signature 比例高于 30%、逐行单记录 JSONL、无 SSE/日志混入。
+- 所有改动限定在 `backend/internal/sessiondelivery` 保存/导出链路；实时客户端转发字节不变。
+
+### 风险与安全边界
+
+- 主工作区存在大量无关业务改动；本任务只在干净 worktree `/Users/taylor/sdk/sub2api-session-delivery-v2-hourly` 执行，不 stash、不覆盖、不顺带提交主工作区现场。
+- 历史重建使用本机，不在 2GB Session DB 主机做全量重算；新 Drive 目录并行存放，旧目录与正式增量对象均保留。
+- app 发布预计一次短暂 systemd 重启；sessionctl 替换前暂停 exporter，所有二进制和数据库状态保留回滚件。
+- 未被 recorder 捕获的历史窗口不可从 usage metadata 伪造 Session；最终报告必须单独披露。
+
 ## 2026-08-14 Anthropic wire shape 保真补齐（本地 V9）
 
 ### 目标

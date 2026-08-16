@@ -22,7 +22,38 @@ var (
 	// rather than parsed field by field.
 	modelIdentityLinePattern = regexp.MustCompile(`You are powered by the model[^\n]*`)
 	knowledgeCutoffPattern   = regexp.MustCompile(`(Assistant knowledge cutoff is )([^\n.]*)`)
+
+	// Alongside the identity line, Anthropic injects a paragraph introducing the
+	// active model and ranking it against its siblings. It occupies its own
+	// paragraph and is terminated by a blank line.
+	modelTierParagraphPattern = regexp.MustCompile(`(?s)(\A|\n)This iteration of Claude is .*?(?:\n\n|\z)`)
+	// publicModelTierParagraph recognizes the paragraph as already describing
+	// the delivered model, in which case it is authentic client text.
+	publicModelTierParagraph = regexp.MustCompile(`\AThis iteration of Claude is Claude ` + publicModelDisplayName + `\b`)
+
+	// Claude Code also names the active model in the git commit trailer it tells
+	// the model to append. MEASURED: 84/88 real Claude Code records carry
+	// "Co-Authored-By: Claude Opus 5 (1M context)", so the display name is the
+	// active model rather than a bare "Claude".
+	coAuthorTrailerPattern = regexp.MustCompile(`Co-Authored-By: Claude([^\n<]*)<`)
+	// publicModelTrailerName accepts both the plain and 1M-context display
+	// names, which denote the same delivered model.
+	publicModelTrailerName = regexp.MustCompile(`\A` + publicModelDisplayName + `\b`)
 )
+
+const coAuthorTrailerPrefix = "Co-Authored-By: Claude"
+
+func canonicalCoAuthorTrailer() string {
+	return coAuthorTrailerPrefix + " " + publicModelDisplayName + " <"
+}
+
+// trailerNamesPublicModel reports whether a commit trailer already credits the
+// delivered model. A bare "Co-Authored-By: Claude" names no model at all and is
+// left alone.
+func trailerNamesPublicModel(match string) bool {
+	inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(match, coAuthorTrailerPrefix), "<"))
+	return inner == "" || publicModelTrailerName.MatchString(inner)
+}
 
 func canonicalModelIdentityLine() string {
 	return fmt.Sprintf(
@@ -39,23 +70,75 @@ func namesPublicModel(line string) bool {
 	return line == canonicalModelIdentityLine() || line == publicModel1MIdentityLine
 }
 
+// tierParagraphNamesPublicModel reports whether a matched tier paragraph
+// already introduces the delivered model. The match may carry the newline that
+// separates it from the preceding paragraph.
+func tierParagraphNamesPublicModel(match string) bool {
+	return publicModelTierParagraph.MatchString(strings.TrimLeft(match, "\n"))
+}
+
+// stripForeignModelTierParagraph removes the model-tier paragraph when it
+// introduces a model other than the delivered one.
+//
+// Only the paragraph's opening sentence is an identity claim; the remainder
+// ranks the named model against its siblings and links to a model-specific
+// announcement URL. Rewriting just the opening sentence would leave the rest
+// asserting a different model, and substituting the model name throughout
+// would produce claims Anthropic never published (a model ranked above itself,
+// an announcement URL that does not exist). Dropping the paragraph keeps the
+// surrounding prompt coherent without inventing vendor copy.
+func stripForeignModelTierParagraph(text string) (string, bool) {
+	rewritten := modelTierParagraphPattern.ReplaceAllStringFunc(text, func(match string) string {
+		if tierParagraphNamesPublicModel(match) {
+			return match
+		}
+		if strings.HasPrefix(match, "\n") {
+			return "\n"
+		}
+		return ""
+	})
+	return rewritten, rewritten != text
+}
+
+// rewriteModelDisplayNames aligns every model display-name reference in a
+// single text with the delivered model.
+//
+// Each pattern here substitutes one name inside a fixed client template, which
+// stays coherent afterwards. This is safe to apply outside the system prompt:
+// Claude Code writes the same names into tool descriptions and into the
+// environment block it sends as a conversation turn.
+func rewriteModelDisplayNames(text string) (string, bool) {
+	rewritten := text
+	if modelIdentityLinePattern.MatchString(rewritten) {
+		rewritten = modelIdentityLinePattern.ReplaceAllStringFunc(rewritten, func(line string) string {
+			if namesPublicModel(line) {
+				return line
+			}
+			return canonicalModelIdentityLine()
+		})
+		// The cutoff belongs to the advertised model. Normalize it even when the
+		// identity line already says Opus 5; otherwise a stale January cutoff creates
+		// a second, independently observable contradiction.
+		rewritten = knowledgeCutoffPattern.ReplaceAllString(rewritten, "${1}"+publicModelKnowledgeCutoff)
+	}
+	rewritten = coAuthorTrailerPattern.ReplaceAllStringFunc(rewritten, func(match string) string {
+		if trailerNamesPublicModel(match) {
+			return match
+		}
+		return canonicalCoAuthorTrailer()
+	})
+	return rewritten, rewritten != text
+}
+
 // rewriteModelIdentityText aligns a single system prompt block with the
 // delivered model, reporting whether it changed.
 func rewriteModelIdentityText(text string) (string, bool) {
-	lines := modelIdentityLinePattern.FindAllString(text, -1)
-	if len(lines) == 0 {
-		return text, false
-	}
-	rewritten := modelIdentityLinePattern.ReplaceAllStringFunc(text, func(line string) string {
-		if namesPublicModel(line) {
-			return line
-		}
-		return canonicalModelIdentityLine()
-	})
-	// The cutoff belongs to the advertised model. Normalize it even when the
-	// identity line already says Opus 5; otherwise a stale January cutoff creates
-	// a second, independently observable contradiction.
-	rewritten = knowledgeCutoffPattern.ReplaceAllString(rewritten, "${1}"+publicModelKnowledgeCutoff)
+	rewritten, _ := rewriteModelDisplayNames(text)
+	// The tier paragraph is dropped rather than reworded, so it is handled only
+	// here: elsewhere the surrounding turn depends on it and the record is held
+	// back instead. A prompt can carry it without the identity line, and vice
+	// versa.
+	rewritten, _ = stripForeignModelTierParagraph(rewritten)
 	return rewritten, rewritten != text
 }
 
@@ -67,6 +150,15 @@ func validateSystemModelIdentity(system json.RawMessage) error {
 		for _, line := range lines {
 			if !namesPublicModel(line) {
 				return fmt.Errorf("system prompt names a foreign model: %q", line)
+			}
+		}
+		for _, paragraph := range modelTierParagraphPattern.FindAllString(text, -1) {
+			if !tierParagraphNamesPublicModel(paragraph) {
+				trimmed := strings.TrimSpace(paragraph)
+				if len(trimmed) > 120 {
+					trimmed = trimmed[:120]
+				}
+				return fmt.Errorf("system prompt introduces a foreign model: %q", trimmed)
 			}
 		}
 		if len(lines) == 0 {

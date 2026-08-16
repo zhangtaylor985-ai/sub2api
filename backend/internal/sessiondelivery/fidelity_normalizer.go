@@ -26,6 +26,7 @@ type fidelityNormalizationStats struct {
 	SearchResultIDsReshaped       int64
 	SystemRoleMessagesFolded      int64
 	SystemModelIdentityRewritten  int64
+	RequestTokenBudgetRaised      int64
 	ForeignToolsConverted         int64
 	ForeignToolsDropped           int64
 	// ForeignSystemPromptTools is non-zero when the system prompt still names a
@@ -274,7 +275,26 @@ func normalizeProjectionFidelity(
 		request["system"] = system
 	}
 	stats.SystemModelIdentityRewritten += systemRewrites
-	stats.ForeignModelSelfClaims += countForeignModelSelfClaims(request, response)
+
+	// The same display names also appear in tool descriptions and in the
+	// environment block clients send as a conversation turn.
+	displayNameRewrites, err := normalizeModelDisplayNames(request)
+	if err != nil {
+		return nil, nil, fidelityNormalizationStats{}, err
+	}
+	stats.SystemModelIdentityRewritten += displayNameRewrites
+
+	// Prose naming a foreign model cannot be repaired without fabricating model
+	// output, whether the assistant identified itself or a client sent the
+	// model-tier paragraph as a conversation turn. Both share the hold-back path.
+	stats.ForeignModelSelfClaims += countForeignModelSelfClaims(request, response) +
+		countForeignModelTierProse(request, response)
+
+	budgetRaised, err := alignRequestTokenBudget(request, response)
+	if err != nil {
+		return nil, nil, fidelityNormalizationStats{}, err
+	}
+	stats.RequestTokenBudgetRaised += budgetRaised
 
 	_, toolIDs, openAIBlocks, requestTrackingStripped, requestToolTrackingStripped, err := normalizeRequestFidelity(request, options.CodexProjection)
 	if err != nil {

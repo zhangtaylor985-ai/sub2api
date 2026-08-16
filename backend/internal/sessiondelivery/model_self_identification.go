@@ -66,6 +66,27 @@ func hasForeignModelSelfClaim(text string) bool {
 	return false
 }
 
+// countForeignModelTierProse reports conversation turns carrying Anthropic's
+// model-tier paragraph for a model other than the delivered one.
+//
+// normalizeSystemModelIdentity drops that paragraph from request.system, where
+// it is inert template text. A client can also send it as a conversation turn,
+// and the assistant then answers it on its own terms, restating the named model
+// as the active one. Dropping the turn would leave that reply answering nothing
+// and rewriting the reply would fabricate model output, so the record is held
+// back for the same reason a self-claim is.
+func countForeignModelTierProse(request, response map[string]json.RawMessage) int64 {
+	var hits int64
+	for _, text := range conversationProse(request, response) {
+		for _, paragraph := range modelTierParagraphPattern.FindAllString(text, -1) {
+			if !tierParagraphNamesPublicModel(paragraph) {
+				hits++
+			}
+		}
+	}
+	return hits
+}
+
 // assistantProse returns model-authored text from the response and from the
 // assistant turns echoed back in request history.
 func assistantProse(request, response map[string]json.RawMessage) []string {
@@ -80,6 +101,29 @@ func assistantProse(request, response map[string]json.RawMessage) []string {
 			continue
 		}
 		texts = append(texts, contentBlockProse(message["content"])...)
+	}
+	return texts
+}
+
+// conversationProse returns the text of every conversation turn regardless of
+// role, accepting either content shape, plus the response body. Client-injected
+// prompt text can arrive as a user turn, so unlike assistantProse this is not
+// restricted to model-authored text.
+func conversationProse(request, response map[string]json.RawMessage) []string {
+	texts := contentBlockProse(response["content"])
+
+	var messages []map[string]json.RawMessage
+	if err := json.Unmarshal(request["messages"], &messages); err != nil {
+		return texts
+	}
+	for _, message := range messages {
+		raw := message["content"]
+		var asText string
+		if err := json.Unmarshal(raw, &asText); err == nil {
+			texts = append(texts, asText)
+			continue
+		}
+		texts = append(texts, contentBlockProse(raw)...)
 	}
 	return texts
 }

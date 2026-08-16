@@ -50,6 +50,12 @@ func ValidateDeliveryFidelity(record *DeliveryRecord, publicModel string) error 
 	if err := validateSystemModelIdentity(request["system"]); err != nil {
 		return err
 	}
+	if err := validateModelDisplayNames(request); err != nil {
+		return err
+	}
+	if err := validateRequestTokenBudget(request, response); err != nil {
+		return err
+	}
 	if err := validateRequestHistoryFidelity(request["messages"], publicModel); err != nil {
 		return err
 	}

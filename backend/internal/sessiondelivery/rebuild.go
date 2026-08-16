@@ -42,6 +42,8 @@ type RebuildChangeStats struct {
 	AssistantTextTrackingStripped   int64 `json:"assistant_text_tracking_stripped"`
 	AssistantToolTrackingStripped   int64 `json:"assistant_tool_tracking_stripped"`
 	SystemRoleMessagesFolded        int64 `json:"system_role_messages_folded"`
+	SystemModelIdentityRewritten    int64 `json:"system_model_identity_rewritten"`
+	RequestTokenBudgetRaised        int64 `json:"request_token_budget_raised"`
 	ForeignToolsConverted           int64 `json:"foreign_tools_converted"`
 	ForeignToolsDropped             int64 `json:"foreign_tools_dropped"`
 	ForeignSystemPromptExcluded     int64 `json:"foreign_system_prompt_excluded"`
@@ -468,6 +470,8 @@ func buildReprojectedArchive(
 			changes.AssistantTextTrackingStripped += fidelityStats.AssistantTextTrackingStripped
 			changes.AssistantToolTrackingStripped += fidelityStats.AssistantToolTrackingStripped
 			changes.SystemRoleMessagesFolded += fidelityStats.SystemRoleMessagesFolded
+			changes.SystemModelIdentityRewritten += fidelityStats.SystemModelIdentityRewritten
+			changes.RequestTokenBudgetRaised += fidelityStats.RequestTokenBudgetRaised
 			changes.ForeignToolsConverted += fidelityStats.ForeignToolsConverted
 			changes.ForeignToolsDropped += fidelityStats.ForeignToolsDropped
 			if responseCompleted {
@@ -869,6 +873,8 @@ func addRebuildStats(total *RebuildChangeStats, value RebuildChangeStats) {
 	total.AssistantTextTrackingStripped += value.AssistantTextTrackingStripped
 	total.AssistantToolTrackingStripped += value.AssistantToolTrackingStripped
 	total.SystemRoleMessagesFolded += value.SystemRoleMessagesFolded
+	total.SystemModelIdentityRewritten += value.SystemModelIdentityRewritten
+	total.RequestTokenBudgetRaised += value.RequestTokenBudgetRaised
 	total.ForeignToolsConverted += value.ForeignToolsConverted
 	total.ForeignToolsDropped += value.ForeignToolsDropped
 	total.ForeignSystemPromptExcluded += value.ForeignSystemPromptExcluded

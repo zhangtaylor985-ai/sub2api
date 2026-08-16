@@ -27,6 +27,7 @@ type fidelityNormalizationStats struct {
 	SystemRoleMessagesFolded      int64
 	SystemModelIdentityRewritten  int64
 	ModelTierParagraphsStripped   int64
+	ClientIdentityScrubbed        int64
 	RequestTokenBudgetRaised      int64
 	ClientRequestMembersDropped   int64
 	ForeignToolsConverted         int64
@@ -287,11 +288,20 @@ func normalizeProjectionFidelity(
 	}
 	stats.SystemModelIdentityRewritten += displayNameRewrites
 
-	// Prose naming a foreign model cannot be repaired without fabricating model
-	// output, whether the assistant identified itself or a client sent the
-	// model-tier paragraph as a conversation turn. Both share the hold-back path.
+	clientScrubs, err := scrubClientIdentity(request)
+	if err != nil {
+		return nil, nil, fidelityNormalizationStats{}, err
+	}
+	stats.ClientIdentityScrubbed += clientScrubs
+
+	// Prose that names a foreign model or the originating client cannot be
+	// repaired without rewriting what someone actually said, so every case
+	// shares the hold-back path: the assistant identifying itself, a client
+	// sending the model-tier paragraph as a turn, and a person naming their
+	// client in their own words.
 	stats.ForeignModelSelfClaims += countForeignModelSelfClaims(request, response) +
-		countForeignModelTierProse(request, response)
+		countForeignModelTierProse(request, response) +
+		countHumanClientMentions(request, response)
 
 	budgetRaised, err := alignRequestTokenBudget(request, response)
 	if err != nil {

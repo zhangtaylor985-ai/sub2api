@@ -15,18 +15,29 @@ import (
 // exists to remove — a record delivered as Opus 5 telling the model to credit
 // commits to a different model.
 func normalizeModelDisplayNames(request map[string]json.RawMessage) (int64, error) {
-	tools, err := normalizeToolDescriptionModelNames(request)
+	return rewriteRequestText(request, rewriteModelDisplayNames)
+}
+
+// textRewriter reports the rewritten text and whether it changed.
+type textRewriter func(string) (string, bool)
+
+// rewriteRequestText applies a rewriter to the two places client-authored text
+// reaches the request: tool descriptions and conversation turns. Tool inputs
+// and tool results are left alone, so neither model output nor command text is
+// edited.
+func rewriteRequestText(request map[string]json.RawMessage, rewrite textRewriter) (int64, error) {
+	tools, err := normalizeToolDescriptionModelNames(request, rewrite)
 	if err != nil {
 		return 0, err
 	}
-	messages, err := normalizeMessageModelNames(request)
+	messages, err := normalizeMessageModelNames(request, rewrite)
 	if err != nil {
 		return 0, err
 	}
 	return tools + messages, nil
 }
 
-func normalizeToolDescriptionModelNames(request map[string]json.RawMessage) (int64, error) {
+func normalizeToolDescriptionModelNames(request map[string]json.RawMessage, rewrite textRewriter) (int64, error) {
 	raw := request["tools"]
 	if !isJSONArray(raw) {
 		return 0, nil
@@ -45,7 +56,7 @@ func normalizeToolDescriptionModelNames(request map[string]json.RawMessage) (int
 		if err := json.Unmarshal(tool["description"], &description); err != nil {
 			continue
 		}
-		rewritten, changed := rewriteModelDisplayNames(description)
+		rewritten, changed := rewrite(description)
 		if !changed {
 			continue
 		}
@@ -70,7 +81,7 @@ func normalizeToolDescriptionModelNames(request map[string]json.RawMessage) (int
 	return rewrites, nil
 }
 
-func normalizeMessageModelNames(request map[string]json.RawMessage) (int64, error) {
+func normalizeMessageModelNames(request map[string]json.RawMessage, rewrite textRewriter) (int64, error) {
 	raw := request["messages"]
 	if !isJSONArray(raw) {
 		return 0, nil
@@ -85,7 +96,7 @@ func normalizeMessageModelNames(request map[string]json.RawMessage) (int64, erro
 		if err := json.Unmarshal(rawMessage, &message); err != nil {
 			continue
 		}
-		content, changed, err := rewriteContentModelNames(message["content"])
+		content, changed, err := rewriteContentModelNames(message["content"], rewrite)
 		if err != nil {
 			return 0, err
 		}
@@ -113,13 +124,13 @@ func normalizeMessageModelNames(request map[string]json.RawMessage) (int64, erro
 
 // rewriteContentModelNames handles both message content shapes, rewriting only
 // text so tool inputs and results pass through untouched.
-func rewriteContentModelNames(raw json.RawMessage) (json.RawMessage, bool, error) {
+func rewriteContentModelNames(raw json.RawMessage, rewrite textRewriter) (json.RawMessage, bool, error) {
 	if len(raw) == 0 {
 		return raw, false, nil
 	}
 	var asText string
 	if err := json.Unmarshal(raw, &asText); err == nil {
-		rewritten, changed := rewriteModelDisplayNames(asText)
+		rewritten, changed := rewrite(asText)
 		if !changed {
 			return raw, false, nil
 		}
@@ -145,7 +156,7 @@ func rewriteContentModelNames(raw json.RawMessage) (json.RawMessage, bool, error
 		if err := json.Unmarshal(block["text"], &text); err != nil {
 			continue
 		}
-		rewritten, blockChanged := rewriteModelDisplayNames(text)
+		rewritten, blockChanged := rewrite(text)
 		if !blockChanged {
 			continue
 		}

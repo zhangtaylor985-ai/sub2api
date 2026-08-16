@@ -26,6 +26,7 @@ type fidelityNormalizationStats struct {
 	SearchResultIDsReshaped       int64
 	SystemRoleMessagesFolded      int64
 	SystemModelIdentityRewritten  int64
+	ModelTierParagraphsStripped   int64
 	RequestTokenBudgetRaised      int64
 	ClientRequestMembersDropped   int64
 	ForeignToolsConverted         int64
@@ -272,10 +273,11 @@ func normalizeProjectionFidelity(
 	if err != nil {
 		return nil, nil, fidelityNormalizationStats{}, err
 	}
-	if systemRewrites > 0 {
+	if systemRewrites.BlocksRewritten > 0 {
 		request["system"] = system
 	}
-	stats.SystemModelIdentityRewritten += systemRewrites
+	stats.SystemModelIdentityRewritten += systemRewrites.BlocksRewritten
+	stats.ModelTierParagraphsStripped += systemRewrites.ParagraphsStopped
 
 	// The same display names also appear in tool descriptions and in the
 	// environment block clients send as a conversation turn.

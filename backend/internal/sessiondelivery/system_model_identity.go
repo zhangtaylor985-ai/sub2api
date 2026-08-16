@@ -23,13 +23,18 @@ var (
 	modelIdentityLinePattern = regexp.MustCompile(`You are powered by the model[^\n]*`)
 	knowledgeCutoffPattern   = regexp.MustCompile(`(Assistant knowledge cutoff is )([^\n.]*)`)
 
-	// Alongside the identity line, Anthropic injects a paragraph introducing the
-	// active model and ranking it against its siblings. It occupies its own
-	// paragraph and is terminated by a blank line.
+	// modelTierParagraphPattern DETECTS the paragraph, and is never used to
+	// decide how much text to remove: its extent is unbounded, so a wording
+	// change could make it swallow far more than the paragraph. Removal is
+	// driven by knownForeignTierParagraphPattern instead, and anything this
+	// finds afterwards holds the whole record back.
 	modelTierParagraphPattern = regexp.MustCompile(`(?s)(\A|\n)This iteration of Claude is .*?(?:\n\n|\z)`)
 	// publicModelTierParagraph recognizes the paragraph as already describing
 	// the delivered model, in which case it is authentic client text.
 	publicModelTierParagraph = regexp.MustCompile(`\AThis iteration of Claude is Claude ` + publicModelDisplayName + `\b`)
+	// knownForeignTierParagraphPattern REMOVES only paragraphs matching a
+	// measured literal exactly, bounded by paragraph breaks on both sides.
+	knownForeignTierParagraphPattern = compileKnownTierParagraphs()
 
 	// Claude Code also names the active model in the git commit trailer it tells
 	// the model to append. MEASURED: 84/88 real Claude Code records carry
@@ -77,27 +82,63 @@ func tierParagraphNamesPublicModel(match string) bool {
 	return publicModelTierParagraph.MatchString(strings.TrimLeft(match, "\n"))
 }
 
-// stripForeignModelTierParagraph removes the model-tier paragraph when it
-// introduces a model other than the delivered one.
+// foreignModelTierParagraphs holds each model-tier paragraph exactly as
+// measured. MEASURED: one 694-character variant, byte-identical across every
+// occurrence in every captured archive.
+//
+// Removal matches these literally rather than by pattern. A pattern would
+// delete whatever a wording change happened to make it match, silently and
+// without bound; a literal can only ever remove text that was verified first,
+// and an unrecognized variant survives to hold its record back instead.
+var foreignModelTierParagraphs = []string{
+	"This iteration of Claude is Claude Fable 5, the first model in Anthropic's new Claude 5 " +
+		"family and part of a new Mythos-class model tier that sits above Claude Opus in capability. " +
+		"Claude Fable 5 and Claude Mythos 5 share the same underlying model. " +
+		"Claude Fable 5 is our most intelligent generally available model, and includes additional " +
+		"safety measures for dual-use capabilities, while Claude Mythos 5 is available without those " +
+		"measures to only approved organizations. " +
+		"Fable 5 is the most advanced generally available Claude model. " +
+		"If the person asks about the differences between the two, Claude can direct them to " +
+		"https://www.anthropic.com/news/claude-fable-5-mythos-5 for more information.",
+}
+
+// compileKnownTierParagraphs builds an exact-text matcher requiring a blank
+// line or a text boundary on each side. Anything standing on its own line but
+// not in its own paragraph is a shape that was never measured, so it is left
+// for the hold-back path rather than removed on a guess.
+func compileKnownTierParagraphs() *regexp.Regexp {
+	quoted := make([]string, 0, len(foreignModelTierParagraphs))
+	for _, paragraph := range foreignModelTierParagraphs {
+		quoted = append(quoted, regexp.QuoteMeta(paragraph))
+	}
+	return regexp.MustCompile(`(?:\A|\n\n)(?:` + strings.Join(quoted, "|") + `)(?:\n\n|\z)`)
+}
+
+// stripForeignModelTierParagraph removes measured model-tier paragraphs that
+// introduce a model other than the delivered one, reporting how many went.
 //
 // Only the paragraph's opening sentence is an identity claim; the remainder
 // ranks the named model against its siblings and links to a model-specific
 // announcement URL. Rewriting just the opening sentence would leave the rest
-// asserting a different model, and substituting the model name throughout
-// would produce claims Anthropic never published (a model ranked above itself,
-// an announcement URL that does not exist). Dropping the paragraph keeps the
+// asserting a different model, and substituting the model name throughout would
+// produce claims Anthropic never published (a model ranked above itself, an
+// announcement URL that does not exist). Dropping the paragraph keeps the
 // surrounding prompt coherent without inventing vendor copy.
-func stripForeignModelTierParagraph(text string) (string, bool) {
-	rewritten := modelTierParagraphPattern.ReplaceAllStringFunc(text, func(match string) string {
+func stripForeignModelTierParagraph(text string) (string, int64) {
+	var stripped int64
+	rewritten := knownForeignTierParagraphPattern.ReplaceAllStringFunc(text, func(match string) string {
 		if tierParagraphNamesPublicModel(match) {
 			return match
 		}
-		if strings.HasPrefix(match, "\n") {
-			return "\n"
+		stripped++
+		// The leading blank line separated the paragraph from the one above it
+		// and still has to separate that one from whatever now follows.
+		if strings.HasPrefix(match, "\n\n") {
+			return "\n\n"
 		}
 		return ""
 	})
-	return rewritten, rewritten != text
+	return rewritten, stripped
 }
 
 // rewriteModelDisplayNames aligns every model display-name reference in a
@@ -131,15 +172,16 @@ func rewriteModelDisplayNames(text string) (string, bool) {
 }
 
 // rewriteModelIdentityText aligns a single system prompt block with the
-// delivered model, reporting whether it changed.
-func rewriteModelIdentityText(text string) (string, bool) {
+// delivered model, reporting whether it changed and how many tier paragraphs
+// were removed.
+func rewriteModelIdentityText(text string) (string, bool, int64) {
 	rewritten, _ := rewriteModelDisplayNames(text)
 	// The tier paragraph is dropped rather than reworded, so it is handled only
 	// here: elsewhere the surrounding turn depends on it and the record is held
 	// back instead. A prompt can carry it without the identity line, and vice
 	// versa.
-	rewritten, _ = stripForeignModelTierParagraph(rewritten)
-	return rewritten, rewritten != text
+	rewritten, stripped := stripForeignModelTierParagraph(rewritten)
+	return rewritten, rewritten != text, stripped
 }
 
 // validateSystemModelIdentity fails closed when a system prompt still claims a
@@ -197,32 +239,41 @@ func systemPromptTexts(system json.RawMessage) []string {
 	return texts
 }
 
+// systemIdentityRewriteStats separates the two edits so the count of removed
+// paragraphs can be reported on its own.
+type systemIdentityRewriteStats struct {
+	BlocksRewritten   int64
+	ParagraphsStopped int64
+}
+
 // normalizeSystemModelIdentity rewrites model self-references in request.system
 // so the prompt agrees with the model the record is delivered under.
-func normalizeSystemModelIdentity(system json.RawMessage) (json.RawMessage, int64, error) {
+func normalizeSystemModelIdentity(system json.RawMessage) (json.RawMessage, systemIdentityRewriteStats, error) {
+	var stats systemIdentityRewriteStats
 	if len(system) == 0 {
-		return system, 0, nil
+		return system, stats, nil
 	}
 
 	var asText string
 	if err := json.Unmarshal(system, &asText); err == nil {
-		rewritten, changed := rewriteModelIdentityText(asText)
+		rewritten, changed, stripped := rewriteModelIdentityText(asText)
 		if !changed {
-			return system, 0, nil
+			return system, stats, nil
 		}
 		encoded, err := json.Marshal(rewritten)
 		if err != nil {
-			return nil, 0, fmt.Errorf("encode system prompt: %w", err)
+			return nil, stats, fmt.Errorf("encode system prompt: %w", err)
 		}
-		return encoded, 1, nil
+		stats.BlocksRewritten = 1
+		stats.ParagraphsStopped = stripped
+		return encoded, stats, nil
 	}
 
 	var blocks []map[string]json.RawMessage
 	if err := json.Unmarshal(system, &blocks); err != nil {
-		return system, 0, nil
+		return system, stats, nil
 	}
 
-	var rewrites int64
 	for _, block := range blocks {
 		raw, ok := block["text"]
 		if !ok {
@@ -232,19 +283,20 @@ func normalizeSystemModelIdentity(system json.RawMessage) (json.RawMessage, int6
 		if err := json.Unmarshal(raw, &text); err != nil {
 			continue
 		}
-		rewritten, changed := rewriteModelIdentityText(text)
+		rewritten, changed, stripped := rewriteModelIdentityText(text)
 		if !changed {
 			continue
 		}
 		encoded, err := json.Marshal(rewritten)
 		if err != nil {
-			return nil, 0, fmt.Errorf("encode system prompt block: %w", err)
+			return nil, stats, fmt.Errorf("encode system prompt block: %w", err)
 		}
 		block["text"] = encoded
-		rewrites++
+		stats.BlocksRewritten++
+		stats.ParagraphsStopped += stripped
 	}
-	if rewrites == 0 {
-		return system, 0, nil
+	if stats.BlocksRewritten == 0 {
+		return system, stats, nil
 	}
 
 	// Re-encoding a map would sort members, so rewritten blocks go back out in
@@ -253,13 +305,13 @@ func normalizeSystemModelIdentity(system json.RawMessage) (json.RawMessage, int6
 	for _, block := range blocks {
 		encoded, err := marshalOrderedObject(block, anthropicBlockKeyOrder["text"])
 		if err != nil {
-			return nil, 0, fmt.Errorf("encode system prompt block: %w", err)
+			return nil, stats, fmt.Errorf("encode system prompt block: %w", err)
 		}
 		ordered = append(ordered, encoded)
 	}
 	encoded, err := json.Marshal(ordered)
 	if err != nil {
-		return nil, 0, fmt.Errorf("encode system prompt blocks: %w", err)
+		return nil, stats, fmt.Errorf("encode system prompt blocks: %w", err)
 	}
-	return encoded, rewrites, nil
+	return encoded, stats, nil
 }

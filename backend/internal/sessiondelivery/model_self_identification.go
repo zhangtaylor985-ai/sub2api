@@ -66,18 +66,26 @@ func hasForeignModelSelfClaim(text string) bool {
 	return false
 }
 
-// countForeignModelTierProse reports conversation turns carrying Anthropic's
-// model-tier paragraph for a model other than the delivered one.
+// countForeignModelTierProse reports model-tier paragraphs introducing a model
+// other than the delivered one that survive normalization.
 //
-// normalizeSystemModelIdentity drops that paragraph from request.system, where
-// it is inert template text. A client can also send it as a conversation turn,
-// and the assistant then answers it on its own terms, restating the named model
-// as the active one. Dropping the turn would leave that reply answering nothing
-// and rewriting the reply would fabricate model output, so the record is held
-// back for the same reason a self-claim is.
+// Two cases reach here. A client can send the paragraph as a conversation turn,
+// which the assistant then answers on its own terms, restating the named model
+// as the active one; dropping the turn would leave that reply answering nothing
+// and rewriting the reply would fabricate model output. And a paragraph left in
+// request.system is one that did not match any measured literal, so removing it
+// would mean deleting unverified text by pattern.
+//
+// Both are held back rather than edited: an unrecognized variant costs one
+// record, while guessing at its extent would silently damage the rest.
+//
+// It runs after normalizeSystemModelIdentity, so recognized paragraphs are gone
+// by this point and only genuine leftovers are counted.
 func countForeignModelTierProse(request, response map[string]json.RawMessage) int64 {
+	texts := conversationProse(request, response)
+	texts = append(texts, systemPromptTexts(request["system"])...)
 	var hits int64
-	for _, text := range conversationProse(request, response) {
+	for _, text := range texts {
 		for _, paragraph := range modelTierParagraphPattern.FindAllString(text, -1) {
 			if !tierParagraphNamesPublicModel(paragraph) {
 				hits++

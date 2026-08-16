@@ -25,7 +25,7 @@ func TestNormalizeSystemModelIdentityRewritesForeignModels(t *testing.T) {
 			prompt := testCase.line + "\n - Assistant knowledge cutoff is January 2026.\n - Claude Code is available as a CLI."
 			system, rewrites, err := normalizeSystemModelIdentity(mustJSON(prompt))
 			require.NoError(t, err)
-			require.Equal(t, int64(1), rewrites)
+			require.Equal(t, int64(1), rewrites.BlocksRewritten)
 
 			var got string
 			require.NoError(t, json.Unmarshal(system, &got))
@@ -48,7 +48,7 @@ func TestNormalizeSystemModelIdentityKeepsOpus5Variants(t *testing.T) {
 		prompt := line + "\n - Assistant knowledge cutoff is May 2026."
 		system, rewrites, err := normalizeSystemModelIdentity(mustJSON(prompt))
 		require.NoError(t, err)
-		require.Zero(t, rewrites)
+		require.Zero(t, rewrites.BlocksRewritten)
 		require.JSONEq(t, string(mustJSON(prompt)), string(system))
 		require.NoError(t, validateSystemModelIdentity(system))
 	}
@@ -69,7 +69,7 @@ func TestNormalizeSystemModelIdentityRewritesBlockArraysInAnthropicOrder(t *test
 
 	normalized, rewrites, err := normalizeSystemModelIdentity(system)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), rewrites)
+	require.Equal(t, int64(1), rewrites.BlocksRewritten)
 	require.NoError(t, validateSystemModelIdentity(normalized))
 
 	texts := systemPromptTexts(normalized)
@@ -92,11 +92,11 @@ func TestNormalizeSystemModelIdentityIsIdempotent(t *testing.T) {
 
 	first, rewrites, err := normalizeSystemModelIdentity(system)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), rewrites)
+	require.Equal(t, int64(1), rewrites.BlocksRewritten)
 
 	second, again, err := normalizeSystemModelIdentity(first)
 	require.NoError(t, err)
-	require.Zero(t, again)
+	require.Zero(t, again.BlocksRewritten)
 	require.Equal(t, string(first), string(second))
 }
 
@@ -116,7 +116,7 @@ func TestNormalizeSystemModelIdentityRepairsStaleCutoffOnOpus5(t *testing.T) {
 
 	normalized, rewrites, err := normalizeSystemModelIdentity(mustJSON(prompt))
 	require.NoError(t, err)
-	require.Equal(t, int64(1), rewrites)
+	require.Equal(t, int64(1), rewrites.BlocksRewritten)
 	require.Contains(t, string(normalized), "May 2026")
 	require.NoError(t, validateSystemModelIdentity(normalized))
 }
@@ -126,21 +126,23 @@ func TestNormalizeSystemModelIdentityIgnoresPromptsWithoutModelLine(t *testing.T
 	system := mustJSON("You are Claude Code, Anthropic's official CLI for Claude.")
 	normalized, rewrites, err := normalizeSystemModelIdentity(system)
 	require.NoError(t, err)
-	require.Zero(t, rewrites)
+	require.Zero(t, rewrites.BlocksRewritten)
 	require.Equal(t, string(system), string(normalized))
 	require.NoError(t, validateSystemModelIdentity(system))
 }
 
-// foreignTierParagraph is the model-tier paragraph as captured, verbatim.
-const foreignTierParagraph = "This iteration of Claude is Claude Fable 5, the first model in " +
-	"Anthropic's new Claude 5 family and part of a new Mythos-class model tier that sits above " +
-	"Claude Opus in capability. Claude Fable 5 and Claude Mythos 5 share the same underlying " +
-	"model. Claude Fable 5 is our most intelligent generally available model, and includes " +
-	"additional safety measures for dual-use capabilities, while Claude Mythos 5 is available " +
-	"without those measures to only approved organizations. Fable 5 is the most advanced " +
-	"generally available Claude model. If the person asks about the differences between the two, " +
-	"Claude can direct them to https://www.anthropic.com/news/claude-fable-5-mythos-5 for more " +
-	"information."
+// Exercising the shipped literal keeps the fixture from drifting away from
+// what removal actually matches.
+var foreignTierParagraph = foreignModelTierParagraphs[0]
+
+// The literal has to stay byte-identical to what was measured, since removal
+// matches it exactly and a stray edit would silently stop removing anything.
+func TestForeignModelTierParagraphLiteralIsTheMeasuredText(t *testing.T) {
+	require.Len(t, foreignModelTierParagraphs, 1)
+	require.Len(t, foreignModelTierParagraphs[0], 694)
+	require.True(t, strings.HasPrefix(foreignModelTierParagraphs[0], "This iteration of Claude is Claude Fable 5,"))
+	require.True(t, strings.HasSuffix(foreignModelTierParagraphs[0], "claude-fable-5-mythos-5 for more information."))
+}
 
 // tierPrompt reproduces the captured layout: prose, then the tier paragraph,
 // then a following section, all separated by blank lines.
@@ -159,7 +161,7 @@ func TestNormalizeSystemModelIdentityStripsForeignModelTierParagraph(t *testing.
 
 	normalized, rewrites, err := normalizeSystemModelIdentity(system)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), rewrites)
+	require.Equal(t, int64(1), rewrites.BlocksRewritten)
 
 	var got string
 	require.NoError(t, json.Unmarshal(normalized, &got))
@@ -189,7 +191,7 @@ func TestNormalizeSystemModelIdentityKeepsAuthenticOpus5TierParagraph(t *testing
 
 	normalized, rewrites, err := normalizeSystemModelIdentity(mustJSON(prompt))
 	require.NoError(t, err)
-	require.Zero(t, rewrites)
+	require.Zero(t, rewrites.BlocksRewritten)
 	require.JSONEq(t, string(mustJSON(prompt)), string(normalized))
 	require.NoError(t, validateSystemModelIdentity(normalized))
 }
@@ -207,7 +209,7 @@ func TestValidateSystemModelIdentityRejectsForeignTierParagraph(t *testing.T) {
 
 	stripped, rewrites, err := normalizeSystemModelIdentity(alone)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), rewrites)
+	require.Equal(t, int64(1), rewrites.BlocksRewritten)
 	require.NoError(t, validateSystemModelIdentity(stripped))
 }
 
@@ -216,12 +218,68 @@ func TestNormalizeSystemModelIdentityTierParagraphIsIdempotent(t *testing.T) {
 
 	first, rewrites, err := normalizeSystemModelIdentity(system)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), rewrites)
+	require.Equal(t, int64(1), rewrites.BlocksRewritten)
 
 	second, again, err := normalizeSystemModelIdentity(first)
 	require.NoError(t, err)
-	require.Zero(t, again)
+	require.Zero(t, again.BlocksRewritten)
 	require.Equal(t, string(first), string(second))
+}
+
+// Removal matches measured text exactly. A variant is left in place so the
+// record is held back, rather than having an unverified span deleted from it.
+func TestNormalizeSystemModelIdentityHoldsBackUnknownTierParagraphVariants(t *testing.T) {
+	variants := map[string]string{
+		"unknown model":   "This iteration of Claude is Claude Aurora 7, a model that did not exist when this was measured.",
+		"reworded":        "This iteration of Claude is Claude Fable 5, the newest model in the Claude 5 family.",
+		"truncated":       foreignTierParagraph[:400],
+		"extra sentence":  foreignTierParagraph + " An additional sentence Anthropic added later.",
+		"no blank before": "Report outcomes faithfully.\n" + foreignTierParagraph,
+	}
+	for name, variant := range variants {
+		t.Run(name, func(t *testing.T) {
+			prompt := "Report outcomes faithfully.\n\n" + variant + "\n\n# Session-specific guidance"
+			normalized, rewrites, err := normalizeSystemModelIdentity(mustJSON(prompt))
+			require.NoError(t, err)
+			require.Zero(t, rewrites.ParagraphsStopped, "an unmeasured variant must not be removed")
+
+			var got string
+			if rewrites.BlocksRewritten > 0 {
+				require.NoError(t, json.Unmarshal(normalized, &got))
+			} else {
+				got = prompt
+			}
+			// Nothing was cut out of the surrounding prompt.
+			require.Contains(t, got, "Report outcomes faithfully.")
+			require.Contains(t, got, "# Session-specific guidance")
+			require.Contains(t, got, variant)
+
+			// The record cannot ship, so the leftover has to be visible to both
+			// the hold-back count and the validator.
+			request := map[string]json.RawMessage{"system": mustJSON(got)}
+			require.Positive(t, countForeignModelTierProse(request, nil))
+			require.ErrorContains(t, validateSystemModelIdentity(mustJSON(got)), "foreign model")
+		})
+	}
+}
+
+// The removal pattern is anchored to the measured text, so it cannot run past
+// the paragraph even when no blank line follows for a long stretch.
+func TestNormalizeSystemModelIdentityRemovalStaysWithinTheParagraph(t *testing.T) {
+	tail := strings.Repeat("Ordinary prompt guidance that must survive. ", 200)
+	prompt := "Report outcomes faithfully.\n\n" + foreignTierParagraph + "\n" + tail
+
+	normalized, rewrites, err := normalizeSystemModelIdentity(mustJSON(prompt))
+	require.NoError(t, err)
+	// One newline is not a paragraph break, so this occurrence is not the
+	// measured shape and is held back rather than guessed at.
+	require.Zero(t, rewrites.ParagraphsStopped)
+
+	got := prompt
+	if rewrites.BlocksRewritten > 0 {
+		require.NoError(t, json.Unmarshal(normalized, &got))
+	}
+	require.Contains(t, got, tail)
 }
 
 // The paragraph is inert in request.system, but as a conversation turn the
@@ -267,7 +325,7 @@ func TestNormalizeSystemModelIdentityStripsTierParagraphAtPromptEnd(t *testing.T
 
 	normalized, rewrites, err := normalizeSystemModelIdentity(system)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), rewrites)
+	require.Equal(t, int64(1), rewrites.BlocksRewritten)
 
 	var got string
 	require.NoError(t, json.Unmarshal(normalized, &got))

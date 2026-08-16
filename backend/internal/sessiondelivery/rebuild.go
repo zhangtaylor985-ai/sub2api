@@ -45,6 +45,7 @@ type RebuildChangeStats struct {
 	SystemModelIdentityRewritten    int64 `json:"system_model_identity_rewritten"`
 	ModelTierParagraphsStripped     int64 `json:"model_tier_paragraphs_stripped"`
 	ClientIdentityScrubbed          int64 `json:"client_identity_scrubbed"`
+	SecretsRedacted                 int64 `json:"secrets_redacted"`
 	RequestTokenBudgetRaised        int64 `json:"request_token_budget_raised"`
 	ClientRequestMembersDropped     int64 `json:"client_request_members_dropped"`
 	ForeignToolsConverted           int64 `json:"foreign_tools_converted"`
@@ -476,6 +477,7 @@ func buildReprojectedArchive(
 			changes.SystemModelIdentityRewritten += fidelityStats.SystemModelIdentityRewritten
 			changes.ModelTierParagraphsStripped += fidelityStats.ModelTierParagraphsStripped
 			changes.ClientIdentityScrubbed += fidelityStats.ClientIdentityScrubbed
+			changes.SecretsRedacted += fidelityStats.SecretsRedacted
 			changes.RequestTokenBudgetRaised += fidelityStats.RequestTokenBudgetRaised
 			changes.ClientRequestMembersDropped += fidelityStats.ClientRequestMembersDropped
 			changes.ForeignToolsConverted += fidelityStats.ForeignToolsConverted
@@ -882,6 +884,7 @@ func addRebuildStats(total *RebuildChangeStats, value RebuildChangeStats) {
 	total.SystemModelIdentityRewritten += value.SystemModelIdentityRewritten
 	total.ModelTierParagraphsStripped += value.ModelTierParagraphsStripped
 	total.ClientIdentityScrubbed += value.ClientIdentityScrubbed
+	total.SecretsRedacted += value.SecretsRedacted
 	total.RequestTokenBudgetRaised += value.RequestTokenBudgetRaised
 	total.ClientRequestMembersDropped += value.ClientRequestMembersDropped
 	total.ForeignToolsConverted += value.ForeignToolsConverted

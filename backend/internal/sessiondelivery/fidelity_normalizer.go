@@ -28,6 +28,7 @@ type fidelityNormalizationStats struct {
 	SystemModelIdentityRewritten  int64
 	ModelTierParagraphsStripped   int64
 	ClientIdentityScrubbed        int64
+	SecretsRedacted               int64
 	RequestTokenBudgetRaised      int64
 	ClientRequestMembersDropped   int64
 	ForeignToolsConverted         int64
@@ -242,6 +243,15 @@ func normalizeProjectionFidelity(
 	requestRaw, responseRaw json.RawMessage,
 	options fidelityNormalizationOptions,
 ) (json.RawMessage, json.RawMessage, fidelityNormalizationStats, error) {
+	var stats fidelityNormalizationStats
+
+	// Redaction runs before anything decodes the document, so every later pass
+	// and every validator sees the masked text, and a credential cannot survive
+	// in a corner one of them does not reach.
+	requestRaw, requestSecrets := redactSecrets(requestRaw)
+	responseRaw, responseSecrets := redactSecrets(responseRaw)
+	stats.SecretsRedacted += requestSecrets + responseSecrets
+
 	request, err := decodeJSONObject(requestRaw, "request")
 	if err != nil {
 		return nil, nil, fidelityNormalizationStats{}, err
@@ -250,8 +260,6 @@ func normalizeProjectionFidelity(
 	if err != nil {
 		return nil, nil, fidelityNormalizationStats{}, err
 	}
-
-	var stats fidelityNormalizationStats
 
 	// Folding runs first so the later passes see only user and assistant turns.
 	folded, err := foldSystemRoleMessages(request)

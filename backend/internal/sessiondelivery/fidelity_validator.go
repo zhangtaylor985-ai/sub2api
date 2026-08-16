@@ -56,6 +56,9 @@ func ValidateDeliveryFidelity(record *DeliveryRecord, publicModel string) error 
 	if err := validateClientIdentity(request); err != nil {
 		return err
 	}
+	if err := validateNoSecrets(record.Request, record.Response.ResponseData); err != nil {
+		return err
+	}
 	if err := validateRequestTokenBudget(request, response); err != nil {
 		return err
 	}

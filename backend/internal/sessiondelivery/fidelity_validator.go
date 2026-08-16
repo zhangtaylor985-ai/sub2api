@@ -56,6 +56,9 @@ func ValidateDeliveryFidelity(record *DeliveryRecord, publicModel string) error 
 	if err := validateRequestTokenBudget(request, response); err != nil {
 		return err
 	}
+	if err := validateClientRequestShape(request); err != nil {
+		return err
+	}
 	if err := validateRequestHistoryFidelity(request["messages"], publicModel); err != nil {
 		return err
 	}

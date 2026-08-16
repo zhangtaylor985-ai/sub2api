@@ -167,6 +167,11 @@ var (
 	anthropicCacheCreationKeyOrder  = []string{"ephemeral_1h_input_tokens", "ephemeral_5m_input_tokens"}
 	anthropicServerToolUseKeyOrder  = []string{"web_search_requests", "web_fetch_requests"}
 	anthropicRequestMessageKeyOrder = []string{"role", "content"}
+	// MEASURED 8951/8951 captured tool declarations carry name, description and
+	// input_schema in that order. Server tools declare "type" instead of a
+	// description and lead with it, per the Anthropic reference; listing both
+	// leading members lets one order serve either shape.
+	anthropicToolKeyOrder = []string{"type", "name", "description", "input_schema"}
 
 	// DOCUMENTED. No local capture of a raw Claude Code request body exists,
 	// but alphabetical ordering is certainly wrong, and both the vendor
@@ -334,6 +339,13 @@ func finalizeDeliveryRecord(record *DeliveryRecord) error {
 			}
 			request["system"] = reordered
 		}
+		if raw := request["tools"]; isJSONArray(raw) {
+			reordered, err := reorderAnthropicToolDeclarations(raw)
+			if err != nil {
+				return err
+			}
+			request["tools"] = reordered
+		}
 		encoded, err := marshalOrderedObject(request, anthropicRequestKeyOrder)
 		if err != nil {
 			return fmt.Errorf("re-encode request for member ordering: %w", err)
@@ -475,6 +487,41 @@ func reorderAnthropicResponse(response map[string]json.RawMessage) (json.RawMess
 		response["content"] = reordered
 	}
 	return marshalOrderedObject(response, anthropicResponseKeyOrder)
+}
+
+// reorderAnthropicToolDeclarations puts tool members back into the measured
+// order. Foreign tools rebuilt during conversion come back out of a Go map in
+// alphabetical order, which leaves a request declaring most of its tools in one
+// member order and the converted ones in another.
+func reorderAnthropicToolDeclarations(raw json.RawMessage) (json.RawMessage, error) {
+	var tools []json.RawMessage
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		return raw, nil
+	}
+	changed := false
+	for index, rawTool := range tools {
+		tool, err := decodeJSONObject(rawTool, "tool declaration")
+		if err != nil {
+			continue
+		}
+		reordered, err := marshalOrderedObject(tool, anthropicToolKeyOrder)
+		if err != nil {
+			return nil, fmt.Errorf("re-encode tool declaration for member ordering: %w", err)
+		}
+		if bytes.Equal(reordered, rawTool) {
+			continue
+		}
+		tools[index] = reordered
+		changed = true
+	}
+	if !changed {
+		return raw, nil
+	}
+	encoded, err := json.Marshal(tools)
+	if err != nil {
+		return nil, fmt.Errorf("re-encode request tools for member ordering: %w", err)
+	}
+	return encoded, nil
 }
 
 func reorderAnthropicMessage(message map[string]json.RawMessage) (json.RawMessage, error) {

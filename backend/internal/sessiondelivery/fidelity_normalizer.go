@@ -27,6 +27,7 @@ type fidelityNormalizationStats struct {
 	SystemRoleMessagesFolded      int64
 	SystemModelIdentityRewritten  int64
 	RequestTokenBudgetRaised      int64
+	ClientRequestMembersDropped   int64
 	ForeignToolsConverted         int64
 	ForeignToolsDropped           int64
 	// ForeignSystemPromptTools is non-zero when the system prompt still names a
@@ -295,6 +296,12 @@ func normalizeProjectionFidelity(
 		return nil, nil, fidelityNormalizationStats{}, err
 	}
 	stats.RequestTokenBudgetRaised += budgetRaised
+
+	shapeDropped, err := normalizeClientRequestShape(request)
+	if err != nil {
+		return nil, nil, fidelityNormalizationStats{}, err
+	}
+	stats.ClientRequestMembersDropped += shapeDropped
 
 	_, toolIDs, openAIBlocks, requestTrackingStripped, requestToolTrackingStripped, err := normalizeRequestFidelity(request, options.CodexProjection)
 	if err != nil {

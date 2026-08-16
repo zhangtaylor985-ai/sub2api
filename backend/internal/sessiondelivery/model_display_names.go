@@ -5,10 +5,6 @@ import (
 	"fmt"
 )
 
-// anthropicToolKeyOrder is the member order of a tool declaration.
-// MEASURED 8951/9026 captured tool objects.
-var anthropicToolKeyOrder = []string{"name", "description", "input_schema"}
-
 // normalizeModelDisplayNames aligns model display-name references that sit
 // outside request.system with the delivered model.
 //

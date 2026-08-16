@@ -44,6 +44,7 @@ type RebuildChangeStats struct {
 	SystemRoleMessagesFolded        int64 `json:"system_role_messages_folded"`
 	SystemModelIdentityRewritten    int64 `json:"system_model_identity_rewritten"`
 	RequestTokenBudgetRaised        int64 `json:"request_token_budget_raised"`
+	ClientRequestMembersDropped     int64 `json:"client_request_members_dropped"`
 	ForeignToolsConverted           int64 `json:"foreign_tools_converted"`
 	ForeignToolsDropped             int64 `json:"foreign_tools_dropped"`
 	ForeignSystemPromptExcluded     int64 `json:"foreign_system_prompt_excluded"`
@@ -472,6 +473,7 @@ func buildReprojectedArchive(
 			changes.SystemRoleMessagesFolded += fidelityStats.SystemRoleMessagesFolded
 			changes.SystemModelIdentityRewritten += fidelityStats.SystemModelIdentityRewritten
 			changes.RequestTokenBudgetRaised += fidelityStats.RequestTokenBudgetRaised
+			changes.ClientRequestMembersDropped += fidelityStats.ClientRequestMembersDropped
 			changes.ForeignToolsConverted += fidelityStats.ForeignToolsConverted
 			changes.ForeignToolsDropped += fidelityStats.ForeignToolsDropped
 			if responseCompleted {
@@ -875,6 +877,7 @@ func addRebuildStats(total *RebuildChangeStats, value RebuildChangeStats) {
 	total.SystemRoleMessagesFolded += value.SystemRoleMessagesFolded
 	total.SystemModelIdentityRewritten += value.SystemModelIdentityRewritten
 	total.RequestTokenBudgetRaised += value.RequestTokenBudgetRaised
+	total.ClientRequestMembersDropped += value.ClientRequestMembersDropped
 	total.ForeignToolsConverted += value.ForeignToolsConverted
 	total.ForeignToolsDropped += value.ForeignToolsDropped
 	total.ForeignSystemPromptExcluded += value.ForeignSystemPromptExcluded

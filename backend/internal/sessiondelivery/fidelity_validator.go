@@ -53,7 +53,7 @@ func ValidateDeliveryFidelity(record *DeliveryRecord, publicModel string) error 
 	if err := validateModelDisplayNames(request); err != nil {
 		return err
 	}
-	if err := validateClientIdentity(request); err != nil {
+	if err := validateClientIdentity(record.Request, record.Response.ResponseData); err != nil {
 		return err
 	}
 	if err := validateNoSecrets(record.Request, record.Response.ResponseData); err != nil {

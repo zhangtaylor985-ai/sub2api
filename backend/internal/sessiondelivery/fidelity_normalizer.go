@@ -33,6 +33,10 @@ type fidelityNormalizationStats struct {
 	ClientRequestMembersDropped   int64
 	ForeignToolsConverted         int64
 	ForeignToolsDropped           int64
+	// UndeclaredResponseTools is non-zero when the response calls a tool while
+	// the request declared no tools at all, which cannot be repaired from what
+	// the record contains.
+	UndeclaredResponseTools int64
 	// ForeignSystemPromptTools is non-zero when the system prompt still names a
 	// tool the conversion removed, which leaves the record unable to be
 	// delivered consistently.
@@ -245,12 +249,17 @@ func normalizeProjectionFidelity(
 ) (json.RawMessage, json.RawMessage, fidelityNormalizationStats, error) {
 	var stats fidelityNormalizationStats
 
-	// Redaction runs before anything decodes the document, so every later pass
-	// and every validator sees the masked text, and a credential cannot survive
-	// in a corner one of them does not reach.
+	// Both byte-level passes run before anything decodes the document, so every
+	// later pass and every validator sees the rewritten text, and neither a
+	// credential nor a client fingerprint can survive in a corner one of them
+	// does not reach.
 	requestRaw, requestSecrets := redactSecrets(requestRaw)
 	responseRaw, responseSecrets := redactSecrets(responseRaw)
 	stats.SecretsRedacted += requestSecrets + responseSecrets
+
+	requestRaw, requestScrubs := scrubClientIdentity(requestRaw)
+	responseRaw, responseScrubs := scrubClientIdentity(responseRaw)
+	stats.ClientIdentityScrubbed += requestScrubs + responseScrubs
 
 	request, err := decodeJSONObject(requestRaw, "request")
 	if err != nil {
@@ -277,6 +286,7 @@ func normalizeProjectionFidelity(
 	stats.ForeignToolsConverted += int64(toolConversion.ToolsConverted)
 	stats.ForeignToolsDropped += int64(toolConversion.ToolsDropped)
 	stats.ForeignSystemPromptTools += int64(toolConversion.SystemPromptTools)
+	stats.UndeclaredResponseTools += countUndeclaredResponseTools(request, response)
 
 	system, systemRewrites, err := normalizeSystemModelIdentity(request["system"])
 	if err != nil {
@@ -295,12 +305,6 @@ func normalizeProjectionFidelity(
 		return nil, nil, fidelityNormalizationStats{}, err
 	}
 	stats.SystemModelIdentityRewritten += displayNameRewrites
-
-	clientScrubs, err := scrubClientIdentity(request)
-	if err != nil {
-		return nil, nil, fidelityNormalizationStats{}, err
-	}
-	stats.ClientIdentityScrubbed += clientScrubs
 
 	// Prose that names a foreign model or the originating client cannot be
 	// repaired without rewriting what someone actually said, so every case

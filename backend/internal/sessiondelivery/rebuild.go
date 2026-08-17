@@ -52,6 +52,7 @@ type RebuildChangeStats struct {
 	ForeignToolsDropped             int64 `json:"foreign_tools_dropped"`
 	ForeignSystemPromptExcluded     int64 `json:"foreign_system_prompt_excluded"`
 	ForeignModelSelfClaimExcluded   int64 `json:"foreign_model_self_claim_excluded"`
+	UndeclaredResponseToolExcluded  int64 `json:"undeclared_response_tool_excluded"`
 }
 
 // RebuildArchiveResult describes one validated input and its independently
@@ -280,7 +281,8 @@ func rebuildArchive(
 	if validation.Manifest.RecordCount+validation.Manifest.ExcludedCount !=
 		input.validation.Manifest.RecordCount+input.validation.Manifest.ExcludedCount ||
 		validation.Manifest.RecordCount != input.validation.Manifest.RecordCount-
-			changes.ForeignSystemPromptExcluded-changes.ForeignModelSelfClaimExcluded {
+			changes.ForeignSystemPromptExcluded-changes.ForeignModelSelfClaimExcluded-
+			changes.UndeclaredResponseToolExcluded {
 		return RebuildArchiveResult{}, errors.New("rebuilt archive counts differ from validated input manifest")
 	}
 	stagedSHA, _, err := fileSHA256(stagedPath)
@@ -415,6 +417,12 @@ func buildReprojectedArchive(
 				changes.ForeignModelSelfClaimExcluded++
 				continue
 			}
+			// A response that calls a tool the request never offered cannot be
+			// reconciled either: the call has no declaration to match.
+			if fidelityStats.UndeclaredResponseTools > 0 {
+				changes.UndeclaredResponseToolExcluded++
+				continue
+			}
 			record.Request = normalizedRequest
 			record.Response.ResponseData = normalizedResponse
 			requestChanged, bootstrapFragmentsRemoved, responseCompleted, err := normalizeHistoricalDelivery(record)
@@ -515,7 +523,8 @@ func buildReprojectedArchive(
 	manifest.DeliveryCount = changes.Records
 	// A held-back record moves from the delivered side to the excluded side; the
 	// total the input manifest accounted for is conserved.
-	manifest.ExcludedCount += changes.ForeignSystemPromptExcluded + changes.ForeignModelSelfClaimExcluded
+	manifest.ExcludedCount += changes.ForeignSystemPromptExcluded + changes.ForeignModelSelfClaimExcluded +
+		changes.UndeclaredResponseToolExcluded
 	manifest.TokenUsage = &tokenUsage
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
@@ -891,4 +900,5 @@ func addRebuildStats(total *RebuildChangeStats, value RebuildChangeStats) {
 	total.ForeignToolsDropped += value.ForeignToolsDropped
 	total.ForeignSystemPromptExcluded += value.ForeignSystemPromptExcluded
 	total.ForeignModelSelfClaimExcluded += value.ForeignModelSelfClaimExcluded
+	total.UndeclaredResponseToolExcluded += value.UndeclaredResponseToolExcluded
 }

@@ -364,6 +364,13 @@ func (e *Exporter) buildArchive(
 			stats.ForeignModelSelfClaimExcluded++
 			return nil
 		}
+		// A response that calls a tool the request never offered has no
+		// declaration to match, so it is held back for the same reason.
+		if fidelityStats.UndeclaredResponseTools > 0 {
+			stats.Rejected++
+			stats.UndeclaredResponseToolExcluded++
+			return nil
+		}
 		delivery.Request = normalizedRequest
 		delivery.Response.ResponseData = normalizedResponse
 		// The offline rebuild path also upgrades legacy thinking request shapes

@@ -46,6 +46,9 @@ type HourStats struct {
 	// assistant prose identified the model as something other than the one the
 	// record is delivered under.
 	ForeignModelSelfClaimExcluded int64 `json:"foreign_model_self_claim_excluded"`
+	// UndeclaredResponseToolExcluded is the subset of Rejected held back because
+	// the response called a tool while the request declared none.
+	UndeclaredResponseToolExcluded int64 `json:"undeclared_response_tool_excluded"`
 	// NormalizationFailed is the subset of Rejected held back because fidelity
 	// normalization could not reshape the record at all.
 	NormalizationFailed int64                `json:"normalization_failed"`

@@ -8,28 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func turnRequest(text string) map[string]json.RawMessage {
-	return map[string]json.RawMessage{
-		"messages": mustJSON([]any{map[string]any{
-			"role":    "user",
-			"content": []any{map[string]any{"type": "text", "text": text}},
-		}}),
-	}
-}
-
-func firstTurnText(t *testing.T, request map[string]json.RawMessage) string {
-	t.Helper()
-	var messages []struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	require.NoError(t, json.Unmarshal(request["messages"], &messages))
-	require.NotEmpty(t, messages)
-	require.NotEmpty(t, messages[0].Content)
-	return messages[0].Content[0].Text
-}
-
 // Each phrasing below was measured in the captured corpus.
 func TestScrubClientIdentityRemovesHarnessScaffolding(t *testing.T) {
 	cases := []struct{ before, after string }{
@@ -39,82 +17,74 @@ func TestScrubClientIdentityRemovesHarnessScaffolding(t *testing.T) {
 			"The agent has requested the following next action:"},
 		{"Reviewed Codex session id: 019ecb42-17a4-7993-a074-be",
 			"Reviewed session id: 019ecb42-17a4-7993-a074-be"},
-		{"## My request for Codex:\n今天的操作",
-			"## My request:\n今天的操作"},
-		{"# Files m…77 tokens truncated…r Codex:\n",
-			"# Files m…77 tokens truncated…r:\n"},
-		{"## codex-clipboard-97467026-2044.jpg: /var/folders/T/codex-clipboard-97467026-2044.jpg",
-			"## clipboard-97467026-2044.jpg: /var/folders/T/clipboard-97467026-2044.jpg"},
+		{"## My request for Codex:\n今天的操作", "## My request:\n今天的操作"},
+		{"# Files m…77 tokens truncated…r Codex:\n", "# Files m…77 tokens truncated…r:\n"},
+		{"## codex-clipboard-97467026.jpg: /var/T/codex-clipboard-97467026.jpg",
+			"## clipboard-97467026.jpg: /var/T/clipboard-97467026.jpg"},
+		{"# Selected Browser - Name: Codex In-app Browser - Type: iab",
+			"# Selected Browser - Name: In-app Browser - Type: iab"},
+		{"Apply a patch using the Codex apply_patch format or unified git diff",
+			"Apply a patch using the apply_patch format or unified git diff"},
 	}
 	for _, testCase := range cases {
-		request := turnRequest(testCase.before)
-		require.ErrorContains(t, validateClientIdentity(request), "client fingerprint")
+		require.Error(t, validateClientIdentity([]byte(testCase.before)), testCase.before)
 
-		scrubs, err := scrubClientIdentity(request)
-		require.NoError(t, err)
-		require.Equal(t, int64(1), scrubs)
-		require.Equal(t, testCase.after, firstTurnText(t, request))
-		require.NoError(t, validateClientIdentity(request))
+		scrubbed, count := scrubClientIdentity([]byte(testCase.before))
+		require.Positive(t, count)
+		require.Equal(t, testCase.after, string(scrubbed))
+		require.NoError(t, validateClientIdentity(scrubbed))
 	}
 }
 
-// A filename referenced twice in one record has to come out the same both
-// times, or the turn stops referring to the file it names.
+// The fingerprints reach tool-call inputs and tool results, which the earlier
+// text-block traversal never visited. Scrubbing the encoded bytes reaches every
+// one, and reaches exactly what the validator inspects.
+func TestScrubClientIdentityReachesToolInputsAndResults(t *testing.T) {
+	document := []byte(`{"messages":[{"role":"assistant","content":[` +
+		`{"type":"tool_use","name":"Bash","input":{"command":"cat C:\\Users\\a\\plugins\\cache\\openai-bundled\\browser\\x.js"}}]},` +
+		`{"role":"user","content":[{"type":"tool_result","content":"# Selected Browser - Name: Codex In-app Browser"}]}]}`)
+	require.Error(t, validateClientIdentity(document))
+
+	scrubbed, count := scrubClientIdentity(document)
+	require.Equal(t, int64(2), count)
+	require.NoError(t, validateClientIdentity(scrubbed))
+	require.Contains(t, string(scrubbed), `cache\\bundled\\browser`)
+	require.Contains(t, string(scrubbed), "Name: In-app Browser")
+}
+
+// A filename referenced several times has to come out the same every time, or
+// the turn stops referring to the file it names.
 func TestScrubClientIdentityRenamesEveryOccurrenceConsistently(t *testing.T) {
-	text := "## codex-clipboard-abc.jpg: /tmp/codex-clipboard-abc.jpg\nRead /tmp/codex-clipboard-abc.jpg"
-	request := turnRequest(text)
-
-	_, err := scrubClientIdentity(request)
-	require.NoError(t, err)
-
-	got := firstTurnText(t, request)
-	require.Equal(t, 3, strings.Count(got, "clipboard-abc.jpg"))
-	require.NotContains(t, got, "codex-clipboard")
+	document := []byte("## codex-clipboard-abc.jpg: /tmp/codex-clipboard-abc.jpg\nRead /tmp/codex-clipboard-abc.jpg")
+	scrubbed, count := scrubClientIdentity(document)
+	require.Equal(t, int64(3), count)
+	require.Equal(t, 3, strings.Count(string(scrubbed), "clipboard-abc.jpg"))
+	require.NotContains(t, string(scrubbed), "codex-clipboard")
 }
 
-func TestScrubClientIdentityCleansToolDescriptions(t *testing.T) {
-	request := map[string]json.RawMessage{
-		"tools": mustJSON([]any{map[string]any{
-			"name":         "mcp__idea__apply_patch",
-			"description":  "Apply a patch using the Codex apply_patch format or unified git diff format.",
-			"input_schema": map[string]any{"type": "object"},
-		}}),
-	}
-	require.ErrorContains(t, validateClientIdentity(request), "client fingerprint")
-
-	scrubs, err := scrubClientIdentity(request)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), scrubs)
-	require.NoError(t, validateClientIdentity(request))
-	require.Contains(t, toolDescription(t, request), "Apply a patch using the apply_patch format")
-}
-
-// A user directory called Codex appears in genuine Claude Code records, and a
-// Claude Code skill catalogue lists a skill for delegating to Codex. Neither
-// says which client sent the request.
-func TestScrubClientIdentityLeavesNeutralMentionsAlone(t *testing.T) {
+// MEASURED: .codex/ occurs in 185 records carrying a claude-cli user agent, so
+// it reports which tools are installed rather than which one sent the request.
+// A user directory called Codex and a Claude Code skill catalogue listing a
+// Codex-delegation skill are neutral for the same reason.
+func TestScrubClientIdentityLeavesUserEnvironmentAndClaudeCodeContextAlone(t *testing.T) {
 	neutral := []string{
+		"sed -n '1,320p' /Users/xiazhi/.codex/skills/brainstorming/SKILL.md",
+		"rollout_path=/Users/xiazhi/.codex/sessions/2026/08/13/rollout-2026-08-13T19-54-39",
+		`C:\Users\Administrator\.codex\generated_images\abc`,
 		"/Users/x/Documents/ObsidianVaults/Codex/.claude/settings.json",
 		"- codex:codex-rescue: Proactively use when Claude Code is stuck, or should hand a " +
 			"substantial coding task to Codex through the shared runtime (Tools: Bash)",
 		"- codebase-design\n- codex\n- design-an-interface",
-		"- codex:codex-cli-runtime\n- codex:codex-result-handling\n- codex:gpt-5-4-prompting",
-		"codex-build: Hand a frozen spec (PLAN.md) to OpenAI Codex to IMPLEMENT with full write access",
+		"codex-build: Hand a frozen spec (PLAN.md) to OpenAI Codex to IMPLEMENT",
 		"iterates fixes via the SAME Codex session up to MAX_FIX_ROUNDS before taking over",
-		"the exact role-flip of /codex-review. Codex builds from the spec in a --yolo sandbox",
 		"Claude Code (builder) and OpenAI Codex (read-only critic) tag-team an implementation",
-		"right after a plan survives /grill-me-codex, /grill-with-docs-codex, or /codex-review",
-		// A skill that checks for the client is not the client speaking.
 		"- codex:setup: Check whether the local Codex CLI is ready and optionally toggle the review",
-		"- codex:rescue: hand the task back to the Codex rescue subagent",
 	}
 	for _, text := range neutral {
-		request := turnRequest(text)
-		scrubs, err := scrubClientIdentity(request)
-		require.NoError(t, err)
-		require.Zero(t, scrubs, text)
-		require.Equal(t, text, firstTurnText(t, request))
-		require.NoError(t, validateClientIdentity(request), text)
+		scrubbed, count := scrubClientIdentity([]byte(text))
+		require.Zero(t, count, text)
+		require.Equal(t, text, string(scrubbed))
+		require.NoError(t, validateClientIdentity([]byte(text)), text)
 	}
 }
 
@@ -130,42 +100,81 @@ func TestCountHumanClientMentionsHoldsBackUserProse(t *testing.T) {
 
 	// The prose is left exactly as the user wrote it.
 	before := string(request["messages"])
-	_, err := scrubClientIdentity(request)
-	require.NoError(t, err)
-	require.Equal(t, before, string(request["messages"]))
+	scrubbed, count := scrubClientIdentity(request["messages"])
+	require.Zero(t, count)
+	require.Equal(t, before, string(scrubbed))
 
-	clean := turnRequest("帮我看一下这个文档")
+	clean := map[string]json.RawMessage{
+		"messages": mustJSON([]any{map[string]any{"role": "user", "content": "帮我看一下这个文档"}}),
+	}
 	require.Zero(t, countHumanClientMentions(clean, nil))
 }
 
-// A wording inside the measured family that the replacement table does not
-// cover survives to hold the record back, rather than being guessed at.
+// A wording inside the measured family that the table does not cover survives
+// to hold the record back, rather than being guessed at.
 func TestValidateClientIdentityCatchesUnknownFingerprints(t *testing.T) {
 	for _, text := range []string{
-		"Opened the Codex In-app Browser to continue",
-		"Loaded /Users/x/.codex/plugins/cache/bundled/browser",
 		"The Codex agent history format changed in this build",
 		"Restored Codex session id 019ecb42 from disk",
+		"Opened the Codex In-app Viewer instead",
+		"Uses Codex apply_patch semantics",
+		"awaiting a request for Codex to continue",
 	} {
-		request := turnRequest(text)
-		scrubs, err := scrubClientIdentity(request)
-		require.NoError(t, err)
-		require.Zero(t, scrubs, "an unmeasured wording must not be rewritten: %s", text)
-		require.ErrorContains(t, validateClientIdentity(request), "client fingerprint", text)
+		scrubbed, count := scrubClientIdentity([]byte(text))
+		require.Zero(t, count, "an unmeasured wording must not be rewritten: %s", text)
+		require.ErrorContains(t, validateClientIdentity(scrubbed), "client fingerprint", text)
 	}
 }
 
+// A literal that appears inside a longer token is still the client's name, so
+// replacing the substring is the intended outcome.
+func TestScrubClientIdentityHandlesLiteralsInsideLongerTokens(t *testing.T) {
+	scrubbed, count := scrubClientIdentity([]byte("loaded from openai-bundled-v2 cache"))
+	require.Equal(t, int64(1), count)
+	require.Equal(t, "loaded from bundled-v2 cache", string(scrubbed))
+	require.NoError(t, validateClientIdentity(scrubbed))
+}
+
 func TestScrubClientIdentityIsIdempotent(t *testing.T) {
-	request := turnRequest("The Codex agent has requested the following next action:\n" +
-		"## My request for Codex:\n## codex-clipboard-abc.jpg")
+	document := []byte("The Codex agent has requested the following next action:\n" +
+		"## My request for Codex:\n## codex-clipboard-abc.jpg\nName: Codex In-app Browser")
 
-	scrubs, err := scrubClientIdentity(request)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), scrubs)
-	first := string(request["messages"])
+	first, count := scrubClientIdentity(document)
+	require.Equal(t, int64(4), count)
 
-	scrubs, err = scrubClientIdentity(request)
+	second, again := scrubClientIdentity(first)
+	require.Zero(t, again)
+	require.Equal(t, string(first), string(second))
+	require.NoError(t, validateClientIdentity(second))
+}
+
+// End to end through the normalizer, covering both sides of the record.
+func TestNormalizeProjectionFidelityScrubsClientIdentity(t *testing.T) {
+	request := mustJSON(map[string]any{
+		"model":      DefaultPublicModel,
+		"max_tokens": 64000,
+		"thinking":   map[string]any{"type": "adaptive", "display": "omitted"},
+		"messages": []any{map[string]any{
+			"role":    "user",
+			"content": []any{map[string]any{"type": "text", "text": "The Codex agent has requested a review"}},
+		}},
+	})
+	response := mustJSON(map[string]any{
+		"id":          "msg_01" + "abcdefghijklmnopqrstuv",
+		"type":        "message",
+		"role":        "assistant",
+		"model":       DefaultPublicModel,
+		"content":     []any{map[string]any{"type": "text", "text": "Opened the Codex In-app Browser"}},
+		"stop_reason": "end_turn",
+		"usage":       map[string]any{"input_tokens": 10, "output_tokens": 20},
+	})
+
+	normalizedRequest, normalizedResponse, stats, err := normalizeProjectionFidelity(
+		request, response, fidelityNormalizationOptions{},
+	)
 	require.NoError(t, err)
-	require.Zero(t, scrubs)
-	require.Equal(t, first, string(request["messages"]))
+	require.Equal(t, int64(2), stats.ClientIdentityScrubbed)
+	require.NoError(t, validateClientIdentity(normalizedRequest, normalizedResponse))
+	require.Contains(t, string(normalizedRequest), "The agent has requested a review")
+	require.Contains(t, string(normalizedResponse), "Opened the In-app Browser")
 }

@@ -313,6 +313,7 @@ func normalizeProjectionFidelity(
 	// client in their own words.
 	stats.ForeignModelSelfClaims += countForeignModelSelfClaims(request, response) +
 		countForeignModelTierProse(request, response) +
+		countForeignModelTrailerProse(request, response) +
 		countHumanClientMentions(request, response)
 
 	budgetRaised, err := alignRequestTokenBudget(request, response)

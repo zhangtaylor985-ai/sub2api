@@ -142,6 +142,56 @@ func TestNormalizeModelDisplayNamesRewritesEnvironmentTurn(t *testing.T) {
 	}
 }
 
+// The model repeats the trailer when a project rule tells it which one to use.
+// That is its own prose, so the record is held back rather than edited.
+func TestCountForeignModelTrailerProseHoldsBackModelAuthoredTrailers(t *testing.T) {
+	response := map[string]json.RawMessage{
+		"content": mustJSON([]any{map[string]any{
+			"type": "text",
+			"text": "用户授权提交时，commit 尾行：\n`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`",
+		}}),
+	}
+	require.Equal(t, int64(1), countForeignModelTrailerProse(nil, response))
+
+	// An assistant turn echoed in request history counts the same way.
+	request := map[string]json.RawMessage{
+		"messages": mustJSON([]any{map[string]any{
+			"role":    "assistant",
+			"content": []any{map[string]any{"type": "text", "text": "Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"}},
+		}}),
+	}
+	require.Equal(t, int64(1), countForeignModelTrailerProse(request, nil))
+}
+
+// A trailer naming the delivered model, a bare trailer, and a user's own
+// document read back by a tool are all left alone.
+func TestCountForeignModelTrailerProseIgnoresAlignedAndToolResults(t *testing.T) {
+	for _, text := range []string{
+		"Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>",
+		"Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+		"Co-Authored-By: Claude <noreply@anthropic.com>",
+	} {
+		response := map[string]json.RawMessage{
+			"content": mustJSON([]any{map[string]any{"type": "text", "text": text}}),
+		}
+		require.Zero(t, countForeignModelTrailerProse(nil, response), text)
+	}
+
+	// MEASURED: 503 of 507 occurrences sit in tool results, which are the
+	// user's own file read back rather than anything the model wrote.
+	request := map[string]json.RawMessage{
+		"messages": mustJSON([]any{map[string]any{
+			"role": "user",
+			"content": []any{map[string]any{
+				"type":        "tool_result",
+				"tool_use_id": "toolu_01abcdefghijklmnopqrstuv",
+				"content":     "91\t### Co-Authored-By\n93\tCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>",
+			}},
+		}}),
+	}
+	require.Zero(t, countForeignModelTrailerProse(request, nil))
+}
+
 // Tool inputs and results are not client template text and must pass through.
 func TestNormalizeModelDisplayNamesLeavesNonTextBlocks(t *testing.T) {
 	request := map[string]json.RawMessage{

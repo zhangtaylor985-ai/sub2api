@@ -66,6 +66,30 @@ func hasForeignModelSelfClaim(text string) bool {
 	return false
 }
 
+// countForeignModelTrailerProse reports model-authored text that credits a
+// commit to a model other than the delivered one.
+//
+// The trailer is rewritten wherever the client wrote it — tool descriptions and
+// the environment block — but the model also repeats it when a project rule
+// tells it which trailer to use. That repetition is the model's own prose, so
+// the record is held back rather than edited. MEASURED: 1 of 10365 captured
+// records, quoting a CLAUDE.md that still names Opus 4.8.
+//
+// Tool results are not model output and are not examined here: 503 of the 507
+// captured occurrences are a user's own document read back by a tool, which a
+// real session would carry regardless of which model served it.
+func countForeignModelTrailerProse(request, response map[string]json.RawMessage) int64 {
+	var claims int64
+	for _, text := range assistantProse(request, response) {
+		for _, trailer := range coAuthorTrailerPattern.FindAllString(text, -1) {
+			if !trailerNamesPublicModel(trailer) {
+				claims++
+			}
+		}
+	}
+	return claims
+}
+
 // countForeignModelTierProse reports model-tier paragraphs introducing a model
 // other than the delivered one that survive normalization.
 //

@@ -1453,3 +1453,13 @@ Claude Code 会把当前模型写进自己的 system prompt。交付件统一以
 | 规范第 5 章 `response.error` | 0 出现 |
 | 规范第 6 章 thinking.signature 占比 | 89.5%（建议 ≥30%） |
 | 交付量 | 2,007 → 2,005（排除 2 条自称泄露） |
+
+# 2026-08-18 七提交边界收敛最终结论
+
+- 固定代码候选为 `50260191bc2ea0f20e3945578da9b09c4ba40912`；相对远端保留模型身份、精确 694 字符段落删除、结构化客户端模板清洗、凭据脱敏、未声明工具 fail-closed 与助手外来模型自称 fail-closed，同时撤回合法 Anthropic `tool_choice`/`context_management` 删除和任意正文改写。
+- `signature.go` 与实时响应链路无差异；所有业务代码改动均限定在 `backend/internal/sessiondelivery`。
+- 第一轮读取 47 个历史归档：输入交付 10,634 条，新增 fail-closed 排除 280 条，最终交付 10,354 条；原有排除 8,008 条增至 8,288 条，总数 18,642 守恒。新增排除占输入交付约 2.63%，其中未声明工具仅 10 条，约 0.09%。
+- 最终交付 Token 为 1,047,313,458：总输入 1,038,846,541（含 cache creation/read），输出 8,466,917；`counted_deliveries=10,354` 与交付记录数一致。
+- 第一轮和第二轮独立 fidelity audit 均为 47 个归档、266 个会话、10,354 条记录、0 违规，公开模型均为 `claude-opus-5`。
+- 第二轮全部变更计数为 0；47/47 归档逐文件 `cmp` 一致，两个 `SHA256SUMS` 文件逐字节一致，证明全序列重建幂等。
+- 当前结论是“Session 交付代码候选可进入发布门禁”；本轮未部署、未上传 Google Drive、未 reseed/purge，也未触碰生产数据库。

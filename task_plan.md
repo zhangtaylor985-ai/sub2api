@@ -8,11 +8,11 @@
 
 | 阶段 | 状态 | 验收输出 |
 | --- | --- | --- |
-| 1. 基线与边界复核 | in_progress | 干净 worktree、HEAD/远端差异、七提交逐项去留、既有全量重建基线 |
-| 2. 实现收敛 | pending | 字段/角色感知清洗；合法 Anthropic 成员保留；已实测 token 探针窄修；Opus 5 精确匹配 |
-| 3. 代码级回归 | pending | gofmt、Session 包 `-race`、后端全量 test/vet；`signature.go` 与实时路径无 diff |
-| 4. 全量归档验收 | pending | 固定提交、新目录重建、独立 fidelity audit、二次重建逐字节一致 |
-| 5. 最终只读复核 | pending | 交付量/排除原因/凭据/客户端指纹/模型身份/manifest 守恒证据与上线结论 |
+| 1. 基线与边界复核 | completed | 干净 worktree、HEAD/远端差异、七提交逐项去留、既有全量重建基线 |
+| 2. 实现收敛 | completed | 字段/角色感知清洗；合法 Anthropic 成员保留；已实测 token 探针窄修；Opus 5 精确匹配 |
+| 3. 代码级回归 | completed | gofmt、Session 包 `-race`、后端全量 test/vet；`signature.go` 与实时路径无 diff |
+| 4. 全量归档验收 | completed | 固定提交、新目录重建、独立 fidelity audit、二次重建逐字节一致 |
+| 5. 最终只读复核 | completed | 交付量/排除原因/凭据/客户端指纹/模型身份/manifest 守恒证据与上线结论 |
 
 ### 决策边界
 

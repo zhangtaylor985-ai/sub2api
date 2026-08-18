@@ -1253,3 +1253,13 @@
 - 说明：该用例带 `//go:build integration`，不在无 tag 的 `go test ./...` 里，此前"全量通过"的口径只覆盖了无 tag 套件，未覆盖集成套件。
 - 本轮回归口径（已全绿）：`gofmt -l internal/sessiondelivery/` 干净、`go build ./...`、`go vet ./...`、`go test ./... -count=1`、以及 `DOCKER_HOST=unix:///Users/taylor/.orbstack/run/docker.sock go test -tags integration ./internal/sessiondelivery/ -count=1`（testcontainers 需显式指定 OrbStack socket，否则报 `MustExtractDockerHost` panic）。
 - V15 交付包不受本轮改动影响：改的是 `export.go`，交付包由 `rebuild.go` 产出，未重建。
+
+# 2026-08-18 七提交边界收敛与正式回归
+
+- 在干净 worktree `/Users/taylor/sdk/sub2api-session-delivery-v2-hourly` 完成七提交逐项复核，并提交 `50260191b`：`fix(session-delivery): preserve authentic request and prose boundaries`。
+- 代码回归通过：`gofmt -l internal/sessiondelivery cmd/sessionctl cmd/sessiond` 无输出；`go test -count=1 -race ./internal/sessiondelivery ./cmd/sessionctl ./cmd/sessiond` 通过；`go test -count=1 ./...` 通过；`go vet ./...` 通过。
+- 固定提交构建的本机 `sessionctl` SHA-256 为 `01f462a770e3e38d3f22f581b39a7616ba554238abc81633d03896dc838dde59`。
+- 第一轮全量重建目录：`/private/tmp/sub2api-session-rebuild-runs-20260818/session-delivery-rebuild-20260818T022540Z-opus5-boundary-v10-50260191b-01f462a7`；47 个归档、10,354 条交付、266 个会话，内置与独立审计均 0 违规。
+- 第二轮幂等重建目录：`/private/tmp/sub2api-session-rebuild-runs-20260818/session-delivery-rebuild-20260818T035620Z-opus5-boundary-v10-idempotence-50260191b-01f462a7`；`changed_records=0` 且所有其他变更计数为 0，47/47 文件逐字节一致，独立审计 0 违规。
+- 已明确隔离仓库级 `go test -race ./...` 的既有非 Session 测试并发夹具问题；本次改动覆盖的 Session 三包 race 与普通全包测试均为绿色。
+- 本轮按用户要求只完成代码与上线前回归，没有执行生产发布、Drive 上传、历史对象替换、projection reseed 或数据库 purge。

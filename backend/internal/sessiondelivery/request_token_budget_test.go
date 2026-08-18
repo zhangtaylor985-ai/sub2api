@@ -95,11 +95,13 @@ func TestRequestTokenBudgetToleratesAbsentAndMalformedBudgets(t *testing.T) {
 	require.ErrorContains(t, validateRequestTokenBudget(request, response), "decode request max_tokens")
 }
 
-// End to end through the normalizer, the pass the exporter and rebuild share.
-func TestNormalizeProjectionFidelityRaisesOutrunTokenBudget(t *testing.T) {
+// The 2026-08-16 failed hour carried max_tokens=8 with usage.output_tokens=11.
+// Exercise the shared exporter/rebuild pass and its second replay so the
+// repair is exact and archive rebuilds remain byte-idempotent.
+func TestNormalizeProjectionFidelityRepairsHistoricalEightTokenContradictionIdempotently(t *testing.T) {
 	request := mustJSON(map[string]any{
 		"model":      DefaultPublicModel,
-		"max_tokens": 1,
+		"max_tokens": 8,
 		"thinking":   map[string]any{"type": "adaptive", "display": "omitted"},
 		"messages": []any{
 			map[string]any{"role": "user", "content": "count"},
@@ -112,10 +114,10 @@ func TestNormalizeProjectionFidelityRaisesOutrunTokenBudget(t *testing.T) {
 		"model":       DefaultPublicModel,
 		"content":     []any{map[string]any{"type": "text", "text": "What would you like me to count?"}},
 		"stop_reason": "end_turn",
-		"usage":       map[string]any{"input_tokens": 2, "output_tokens": 37},
+		"usage":       map[string]any{"input_tokens": 2, "output_tokens": 11},
 	})
 
-	normalizedRequest, _, stats, err := normalizeProjectionFidelity(
+	normalizedRequest, normalizedResponse, stats, err := normalizeProjectionFidelity(
 		request, response, fidelityNormalizationOptions{},
 	)
 	require.NoError(t, err)
@@ -124,4 +126,15 @@ func TestNormalizeProjectionFidelityRaisesOutrunTokenBudget(t *testing.T) {
 	var decoded map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(normalizedRequest, &decoded))
 	require.JSONEq(t, `64000`, string(decoded["max_tokens"]))
+	normalizedResponseObject, err := decodeJSONObject(normalizedResponse, "response.response_data")
+	require.NoError(t, err)
+	require.NoError(t, validateRequestTokenBudget(decoded, normalizedResponseObject))
+
+	replayedRequest, replayedResponse, replayedStats, err := normalizeProjectionFidelity(
+		normalizedRequest, normalizedResponse, fidelityNormalizationOptions{},
+	)
+	require.NoError(t, err)
+	require.Zero(t, replayedStats.RequestTokenBudgetRaised)
+	require.Equal(t, normalizedRequest, replayedRequest)
+	require.Equal(t, normalizedResponse, replayedResponse)
 }

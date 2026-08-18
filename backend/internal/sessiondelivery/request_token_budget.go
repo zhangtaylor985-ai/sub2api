@@ -20,7 +20,7 @@ const claudeCodeTokenBudget = 64000
 // than an observed quantity, raising it to the Claude Code value removes the
 // contradiction without altering what the exchange says.
 //
-// Only the three contradictory budgets observed in the captured corpus are
+// Only the four contradictory budgets observed in the captured corpus are
 // repaired. An unknown future value is left for validateRequestTokenBudget to
 // reject rather than generalized into a rewrite rule without evidence. A
 // response that outran even the Claude Code ceiling is handled the same way.
@@ -39,7 +39,7 @@ func alignRequestTokenBudget(request, response map[string]json.RawMessage) (int6
 
 func isMeasuredOutrunTokenBudget(budget int64) bool {
 	switch budget {
-	case 1, 64, 8192:
+	case 1, 8, 64, 8192:
 		return true
 	default:
 		return false

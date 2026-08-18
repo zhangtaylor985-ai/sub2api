@@ -231,6 +231,75 @@ func TestStoreExportVerifyAndPurgeLifecycle(t *testing.T) {
 	require.Zero(t, storeStatus.DatabaseTokenVolume.UncountedDeliveries)
 }
 
+// The hourly exporter can spend most of an hour inside its callback. Its read
+// cursor must therefore lock only the completed hour's child partition, not
+// session_records, so the first insert after the boundary can create and use
+// the next partition without waiting for the export to drain.
+func TestForEachHourProjectionAllowsNextPartitionCreationAndInsert(t *testing.T) {
+	ctx := context.Background()
+	store := startSessionDeliveryPostgres(t, ctx)
+	require.NoError(t, store.Migrate(ctx))
+
+	completedHour := time.Date(2026, 8, 10, 8, 0, 0, 0, time.UTC)
+	nextHour := completedHour.Add(time.Hour)
+	canonicalizer := newTestCanonicalizer(t)
+
+	store.now = func() time.Time { return completedHour.Add(30 * time.Minute) }
+	completed := buildIntegrationAnthropicEnvelope(t, canonicalizer, completedHour.Add(5*time.Minute), "completed-hour", 200)
+	inserted, err := store.Insert(ctx, completed)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	callbackStarted := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	defer func() {
+		select {
+		case <-releaseCallback:
+		default:
+			close(releaseCallback)
+		}
+	}()
+	iterateDone := make(chan error, 1)
+	go func() {
+		iterateDone <- store.ForEachHourProjection(ctx, completedHour, func(string, *DeliveryRecord, *Rejection) error {
+			close(callbackStarted)
+			<-releaseCallback
+			return nil
+		})
+	}()
+
+	select {
+	case <-callbackStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("hour projection did not begin its callback")
+	}
+
+	// Before the fix this DDL waited for the iterator's AccessShareLock on the
+	// parent relation. A deadline turns that regression into a deterministic
+	// failure instead of leaving the integration test stuck.
+	partitionCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	require.NoError(t, store.EnsurePartition(partitionCtx, nextHour))
+
+	store.now = func() time.Time { return nextHour.Add(time.Minute) }
+	next := buildIntegrationAnthropicEnvelope(t, canonicalizer, nextHour.Add(time.Minute), "next-hour", 200)
+	inserted, err = store.Insert(ctx, next)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	close(releaseCallback)
+	select {
+	case err := <-iterateDone:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("hour projection did not finish after callback release")
+	}
+
+	nextStats, err := store.StatsForHour(ctx, nextHour)
+	require.NoError(t, err)
+	require.Equal(t, HourStats{Records: 1, Deliverable: 1}, nextStats)
+}
+
 func TestExportUpgradesOpaqueRequestHistorySignature(t *testing.T) {
 	ctx := context.Background()
 	store := startSessionDeliveryPostgres(t, ctx)

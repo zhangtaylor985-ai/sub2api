@@ -305,11 +305,18 @@ func (s *Store) ForEachHour(ctx context.Context, hour time.Time, fn func(*Envelo
 	}
 	start := hourUTC(hour)
 	end := start.Add(time.Hour)
-	rows, err := s.db.QueryContext(ctx, `
+	partition, found, err := s.hourPartitionForRead(ctx, start)
+	if err != nil {
+		return fmt.Errorf("find Session hour partition: %w", err)
+	}
+	if !found {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
         SELECT payload_zstd, payload_sha256
-        FROM session_records
+		FROM %s
 		WHERE ingested_at >= $1 AND ingested_at < $2
-        ORDER BY session_id, occurred_at, request_id`, start, end)
+		ORDER BY session_id, occurred_at, request_id`, partition), start, end)
 	if err != nil {
 		return fmt.Errorf("query Session hour: %w", err)
 	}
@@ -363,11 +370,18 @@ func (s *Store) ForEachHourProjection(
 	}
 	start := hourUTC(hour)
 	end := start.Add(time.Hour)
-	rows, err := s.db.QueryContext(ctx, `
+	partition, found, err := s.hourPartitionForRead(ctx, start)
+	if err != nil {
+		return fmt.Errorf("find Session projection hour partition: %w", err)
+	}
+	if !found {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT payload_zstd, payload_sha256
-		FROM session_records
+		FROM %s
 		WHERE ingested_at >= $1 AND ingested_at < $2
-		ORDER BY session_id, occurred_at, request_id`, start, end)
+		ORDER BY session_id, occurred_at, request_id`, partition), start, end)
 	if err != nil {
 		return fmt.Errorf("query Session projection hour: %w", err)
 	}
@@ -408,11 +422,18 @@ type storedProjectionEnvelope struct {
 func (s *Store) StatsForHour(ctx context.Context, hour time.Time) (HourStats, error) {
 	start := hourUTC(hour)
 	end := start.Add(time.Hour)
+	partition, found, err := s.hourPartitionForRead(ctx, start)
+	if err != nil {
+		return HourStats{}, fmt.Errorf("find Session statistics hour partition: %w", err)
+	}
+	if !found {
+		return HourStats{}, nil
+	}
 	var stats HourStats
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, fmt.Sprintf(`
         SELECT COUNT(*), COUNT(*) FILTER (WHERE deliverable), COUNT(*) FILTER (WHERE NOT deliverable)
-        FROM session_records
-		WHERE ingested_at >= $1 AND ingested_at < $2`, start, end).
+		FROM %s
+		WHERE ingested_at >= $1 AND ingested_at < $2`, partition), start, end).
 		Scan(&stats.Records, &stats.Deliverable, &stats.Rejected)
 	if err != nil {
 		return HourStats{}, fmt.Errorf("count Session hour: %w", err)
@@ -1020,6 +1041,27 @@ func hourUTC(value time.Time) time.Time {
 
 func partitionName(hour time.Time) string {
 	return "session_records_" + hourUTC(hour).Format("20060102_15")
+}
+
+// hourPartitionForRead resolves a single known ingest hour to its concrete
+// partition. Long-running exporter callbacks must not scan session_records:
+// PostgreSQL holds an AccessShareLock on that parent for the cursor lifetime,
+// which blocks the next hour's CREATE TABLE ... PARTITION OF at the boundary.
+//
+// A missing partition represents an empty hour and retains the former parent
+// query behavior without creating a partition from a read path. The returned
+// identifier is derived solely from hourUTC and is quoted before interpolation.
+func (s *Store) hourPartitionForRead(ctx context.Context, hour time.Time) (string, bool, error) {
+	hour = hourUTC(hour)
+	name := partitionName(hour)
+	var found bool
+	if err := s.db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NOT NULL`, name).Scan(&found); err != nil {
+		return "", false, err
+	}
+	if !found {
+		return "", false, nil
+	}
+	return quoteIdentifier(name), true, nil
 }
 
 func quoteIdentifier(value string) string {

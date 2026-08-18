@@ -1463,3 +1463,11 @@ Claude Code 会把当前模型写进自己的 system prompt。交付件统一以
 - 第一轮和第二轮独立 fidelity audit 均为 47 个归档、266 个会话、10,354 条记录、0 违规，公开模型均为 `claude-opus-5`。
 - 第二轮全部变更计数为 0；47/47 归档逐文件 `cmp` 一致，两个 `SHA256SUMS` 文件逐字节一致，证明全序列重建幂等。
 - 当前结论是“Session 交付代码候选可进入发布门禁”；本轮未部署、未上传 Google Drive、未 reseed/purge，也未触碰生产数据库。
+
+# 2026-08-19 小时归档阻塞根因与修复
+
+- `2026-08-16 10:00Z` 的旧失败不是数据库损坏，而是已投影记录出现 `max_tokens=8 / output_tokens=11`；严格 validator 正确 fail-closed。修复只把实测预算 8 加入确定性提升到 64000 的白名单，未知预算矛盾继续拒绝。
+- 长小时 exporter 原先通过父分区表 `session_records` 保持逐记录 cursor；跨 UTC 整点时，该 `AccessShareLock` 会阻塞 sessiond 执行下一小时 `CREATE TABLE ... PARTITION OF`，从而触发 App spool 回流。修复把 `ForEachHour`、`ForEachHourProjection` 与 `StatsForHour` 改为先确认分区存在，再只读确定的小时 child partition。
+- PostgreSQL 集成回归在旧小时 projection callback 故意阻塞时，证明下一小时 `EnsurePartition` 与 `Insert` 均能在 2 秒内完成；生产上 exporter 运行期间预建 19Z 分区耗时约 0.6 秒，跨 19:00 后锁仍只落在当前小时子分区，未授权锁为 0。
+- App 与 forwarder 的 systemd 环境曾显式保留 2 GiB spool 上限，而脱离 systemd 环境执行的状态命令展示 4 GiB 默认值，造成观测偏差。两处运行环境已统一为 4 GiB，并回读进程环境确认；`disk_guard` 仍保持 DB 75% 安全阈值，不为追赶任务调高。
+- 新增不可恢复缺口：2 GiB 上限在 `2026-08-18 16:41:28Z` 至 `18:15:41Z` 造成 246 次 spool-full 捕获失败；不得用 usage 元数据伪造 Session 补回。

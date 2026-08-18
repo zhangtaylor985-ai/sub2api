@@ -920,3 +920,25 @@
 - 实际请求模型仅保留在内部 usage/运维证据；交付文件只出现公开模型 `claude-opus-5`。
 - Session 数据库只监听 loopback；公网入口保留 HMAC 验证，主传输使用只能转发指定端口、不能登录 shell 的专用 SSH Key。
 - Google OAuth/rclone、数据库、HMAC、API Key 与 SSH 私钥均不进入 Git、文档或日志。
+
+---
+
+## 2026-08-19 Session 小时归档恢复
+
+### 阶段
+
+| 阶段 | 状态 | 验收口径 |
+| --- | --- | --- |
+| `max_tokens=8` 兼容 | complete | 未知预算仍 fail-closed；Session 包、race、全后端、vet、47 归档双重幂等回归通过 |
+| 小时分区锁修复 | complete | PostgreSQL 锁回归通过；生产 exporter 只持有 child lock，跨整点建分区与入库不阻塞 |
+| 固定二进制发布 | complete | ARM64 app/embed 与两架构 sessionctl 已备份、校验 SHA、原子替换并完成健康检查 |
+| 积压小时追赶 | complete | 旧失败小时与 07Z–14Z 均完成 Drive 回读后 purge；手动 exporter exit 0 |
+| 自动 timer 恢复 | complete | timer active/enabled；自然触发 16Z 成功 purge，当前 waiting 且 next trigger 明确 |
+| 历史 Drive 全量替换 | paused | 按用户要求等待后续代码稳定，不覆盖或删除现有历史目录 |
+
+### 发布边界
+
+- 不修改 `signature.go`、实时响应链路或用户/助手自由文本。
+- 不提高 DB `disk_guard` 阈值，不提高 2 GiB DB 主机的 decode concurrency。
+- 不删除生产 spool、旧二进制、release、数据库备份或 Drive 对象。
+- timer 恢复前必须满足无 failed/exporting batch、Drive 抽样 SHA 一致、App spool 可排空且 quarantine 为 0；本轮均已满足。

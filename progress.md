@@ -1263,3 +1263,28 @@
 - 第二轮幂等重建目录：`/private/tmp/sub2api-session-rebuild-runs-20260818/session-delivery-rebuild-20260818T035620Z-opus5-boundary-v10-idempotence-50260191b-01f462a7`；`changed_records=0` 且所有其他变更计数为 0，47/47 文件逐字节一致，独立审计 0 违规。
 - 已明确隔离仓库级 `go test -race ./...` 的既有非 Session 测试并发夹具问题；本次改动覆盖的 Session 三包 race 与普通全包测试均为绿色。
 - 本轮按用户要求只完成代码与上线前回归，没有执行生产发布、Drive 上传、历史对象替换、projection reseed 或数据库 purge。
+
+# 2026-08-19 max_tokens=8 生产恢复（完成）
+
+- 已提交并推送 `a7c99c9cba5bee1551f185c14b0b4804087b6015`：仅把实测可修复预算白名单从 `{1,64,8192}` 扩为 `{1,8,64,8192}`，未知预算矛盾继续 fail-closed；未改 `signature.go` 或实时响应链路。
+- 上线前完整后端测试、Session race、vet、47 归档双重重建与幂等回归全部通过；47/47 SHA 一致，10,354 条交付记录的内置与独立审计均为 0 违规。
+- 首个 ARM64 app 候选因遗漏 `-tags=embed` 导致管理后台 404；门禁在继续部署前发现，立即恢复上一版 app/sessionctl，恢复后本机与公网管理后台均为 200。该错误没有触达 DB exporter 或 Session 数据。
+- 随后从同一固定提交用 `-tags=embed` 重建 ARM64 app，SHA-256=`b16d2c86b39f642fb2c0da9022b6649fcd4e9f871b68cf5cd7eaf242343ea368`；ARM64 sessionctl SHA-256=`c3ddf677514c2b5353ff575d31c94292e21950f27b69f5deef2dd153e12c43b3`；AMD64 sessionctl SHA-256=`ccfcf487747669790f6e300a204e54cd5e85c845aee42e613abc91231d2f85eb`。
+- 正式 app/forwarder 重启后，本机与公网 health、管理后台均为 200，未认证 `/v1/models` 为 401，`NRestarts=0`；DB sessiond 未重启。
+- app 回滚件：`/opt/sub2api/backups/sub2api.bak.20260818T163600Z-before-max-token8-embed` 与 `/opt/sub2api/backups/sessionctl-arm64.bak.20260818T163600Z-before-max-token8-embed`；DB 回滚件：`/opt/sub2api/backups/sessionctl-amd64.bak.20260818T163120Z-before-max-token8`。
+- 旧 exporter 的 `max_tokens=8/output_tokens=11` 失败小时 `2026-08-16 10:00Z` 已由新二进制成功恢复：705 条原始记录、591 条交付、114 条排除、6,609,379 bytes，Drive 对象 SHA-256=`cc7cadfc71c3fc79f1a6f360c20f674e6821aa679728fae59820d2f238742942`；上传回读后状态 `purged`，独立 `rclone cat | sha256sum` 与本机重新下载 SHA 均一致，单文件 validator 通过。
+- timer 冻结期间曾以单实例手动 exporter 追赶积压；`2026-08-18 07:00Z` 大批次 5,077/3,118/1,959 已完成 Drive 回读与 purge，DB 磁盘从 74% 回落；完整追赶与 timer 恢复结果见下方最终记录。
+- `2026-08-18 08:00Z` 大批次已完成 Drive 回读与 purge：6,768 条原始记录、4,809 条交付、1,959 条排除、98,277,183 bytes，SHA-256=`a98e14f4de46b122104f1b201f76a32373f426f4e0e4546c22f95c1ebb12769d`；DB 磁盘随后回落到 69%。
+- 生产观察发现 App 与 forwarder 环境仍显式覆盖为 2 GiB spool，状态 CLI 因未加载 systemd 环境而按 4 GiB 默认值展示，形成错误观测。2 GiB 在 `2026-08-18 16:41:28Z` 至 `18:15:41Z` 共造成 246 次 `spool is full` 捕获失败；这些记录无法事后恢复，必须在最终缺口中披露。
+- 已备份 `/etc/sub2api/sub2api.env` 与 `/etc/sub2api/session-delivery.env`，把两处 `SESSION_DELIVERY_SPOOL_MAX_BYTES` 统一为 4 GiB，并仅重启 App/forwarder。两个实际进程环境均回读为 `4294967296`；本机/公网 health 与管理后台均 200，未认证 models 401，二进制 SHA 不变，修改后 spool-full 与 fatal/OOM 均为 0。
+- `09:00Z` exporter 长查询跨越 UTC 整点后持有父分区表关系锁，阻塞 sessiond 创建 `18:00Z` 新分区，导致 App spool 再次增长。为优先保护新会话，已主动停止 exporter；09Z 安全标记 `failed/context canceled`、未上传/未 purge，DB 锁等待归零，18Z 分区成功创建并开始入库，forwarder 随后连续每轮插入 100 条并开始排空。
+- 已提交并推送 `78d2c2c2a`：三个小时级读取改为确定的 child partition；PostgreSQL 回归证明旧小时 projection 未结束时下一小时仍可在 2 秒内建分区并写入。全后端测试、Session race、vet 与相关集成回归通过，未改 purge、签名或实时链路。
+- 新 AMD64 sessionctl SHA-256=`fa86c886bd14b4cdbaae289a82206549c7ea4eb50df0a515087fad4b1a9ed496`；release `/opt/sub2api/releases/session-partition-lockfix-78d2c2c2a-20260818T184016Z`，回滚件 `/opt/sub2api/backups/sessionctl-amd64.bak.20260818T184016Z-before-partition-lockfix`。
+- 生产 exporter 运行时仅持有当前小时 child partition 的 `AccessShareLock`，父表无锁且未授权锁为 0；同一运行期预建 19Z 分区约 0.6 秒完成，跨 19:00 后继续入库，确认阻塞根因已修复。
+- 手动追赶最终以 exit 0 完成：09Z–14Z 全部 Drive 回读后 purge；09Z 为 1,119/989/130，10Z 24/24/0，11Z 779/760/19，12Z 341/328/13，13Z 204/192/12，14Z 59/58/1。DB 磁盘由峰值约 73% 回落到 60%。
+- 对 09Z Drive 对象独立执行代理通道 `rclone cat | sha256sum`，回读 SHA-256=`5754c5940d201c8c14281ce771a453f142232f056a2fec51c91922796052b086`，与数据库一致。
+- 已恢复 `sub2api-session-export.timer` 为 active/enabled；timer 随即自然触发 16Z 并成功完成 203/197/6、Drive 回读与 purge。最终 timer 为 active/waiting，下次触发 `2026-08-19 04:01:47 CST`，exporter 最近结果 success/exit 0。
+- 本轮最终新增完成 7 个小时批次（09Z–14Z、16Z）：2,729 条原始记录、2,548 条交付、181 条排除、96,794,151 bytes；交付 Token 总量 344,994,106（input 5,096、cache-create 70,011,633、cache-read 272,724,365、output 2,253,012）。
+- 最终生产状态：批次仅 `purged=82`，无 failed/exporting；App/forwarder/tunnel/sessiond 均 active 且 `NRestarts=0`；App 磁盘 80%、DB 磁盘 60%；spool 约 0.5MB、pending 1、quarantine 0；修改 4 GiB 上限后 spool-full=0，最近实际 exporter/forwarder/sessiond 严重错误=0。
+- 当前生产 SHA：app=`b16d2c86b39f642fb2c0da9022b6649fcd4e9f871b68cf5cd7eaf242343ea368`，App host sessionctl=`c3ddf677514c2b5353ff575d31c94292e21950f27b69f5deef2dd153e12c43b3`，DB host sessionctl=`fa86c886bd14b4cdbaae289a82206549c7ea4eb50df0a515087fad4b1a9ed496`。
+- 历史 Google Drive 全量重建与旧目录替换仍按用户要求暂停；本轮只恢复线上增量小时归档，不覆盖或删除任何历史对象。

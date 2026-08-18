@@ -18,6 +18,7 @@ func TestNormalizeSystemModelIdentityRewritesForeignModels(t *testing.T) {
 		{"fable", "You are powered by the model named Fable 5. The exact model ID is claude-fable-5."},
 		{"opus48", "You are powered by the model named Opus 4.8. The exact model ID is claude-opus-4-8."},
 		{"opus48_1m", "You are powered by the model named Opus 4.8 (1M context). The exact model ID is claude-opus-4-8[1m]."},
+		{"opus56", "You are powered by the model named Opus 5.6. The exact model ID is claude-opus-5-6."},
 		{"gpt", "You are powered by the model gpt-5.5."},
 	}
 	for _, testCase := range cases {
@@ -211,6 +212,13 @@ func TestValidateSystemModelIdentityRejectsForeignTierParagraph(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), rewrites.BlocksRewritten)
 	require.NoError(t, validateSystemModelIdentity(stripped))
+
+	for _, text := range []string{
+		"This iteration of Claude is Claude Opus 5.6, a different model.",
+		"This iteration of Claude is Claude Opus 5 Pro, a different model.",
+	} {
+		require.ErrorContains(t, validateSystemModelIdentity(mustJSON(text)), "introduces a foreign model", text)
+	}
 }
 
 func TestNormalizeSystemModelIdentityTierParagraphIsIdempotent(t *testing.T) {

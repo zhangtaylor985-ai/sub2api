@@ -148,8 +148,9 @@ func TestScrubClientIdentityIsIdempotent(t *testing.T) {
 	require.NoError(t, validateClientIdentity(second))
 }
 
-// End to end through the normalizer, covering both sides of the record.
-func TestNormalizeProjectionFidelityScrubsClientIdentity(t *testing.T) {
+// End to end through the normalizer: measured user-side scaffolding is cleaned,
+// but assistant prose is preserved and the record is marked for hold-back.
+func TestNormalizeProjectionFidelityScopesClientIdentityCleanup(t *testing.T) {
 	request := mustJSON(map[string]any{
 		"model":      DefaultPublicModel,
 		"max_tokens": 64000,
@@ -173,8 +174,44 @@ func TestNormalizeProjectionFidelityScrubsClientIdentity(t *testing.T) {
 		request, response, fidelityNormalizationOptions{},
 	)
 	require.NoError(t, err)
-	require.Equal(t, int64(2), stats.ClientIdentityScrubbed)
-	require.NoError(t, validateClientIdentity(normalizedRequest, normalizedResponse))
+	require.Equal(t, int64(1), stats.ClientIdentityScrubbed)
+	require.Positive(t, stats.ForeignModelSelfClaims)
 	require.Contains(t, string(normalizedRequest), "The agent has requested a review")
-	require.Contains(t, string(normalizedResponse), "Opened the In-app Browser")
+	require.Contains(t, string(normalizedResponse), "Opened the Codex In-app Browser")
+	require.Error(t, validateClientIdentity(normalizedRequest, normalizedResponse))
+}
+
+func TestNormalizeClientIdentityCleansClientArtifactsWithoutRewritingAssistantText(t *testing.T) {
+	request := map[string]json.RawMessage{
+		"system": mustJSON("The following is the Codex agent history"),
+		"tools": mustJSON([]any{map[string]any{
+			"name":         "Browser",
+			"description":  "Uses the Codex In-app Browser",
+			"input_schema": map[string]any{"type": "object"},
+		}}),
+		"messages": mustJSON([]any{
+			map[string]any{"role": "user", "content": "## My request for Codex:\nread codex-clipboard-a.png"},
+			map[string]any{"role": "assistant", "content": []any{
+				map[string]any{"type": "text", "text": "Opened the Codex In-app Browser"},
+				map[string]any{"type": "tool_use", "id": "toolu_x", "name": "Bash", "input": map[string]any{"command": "cat /tmp/codex-clipboard-a.png"}},
+			}},
+		}),
+	}
+	response := map[string]json.RawMessage{
+		"content": mustJSON([]any{
+			map[string]any{"type": "text", "text": "The Codex agent has requested approval"},
+			map[string]any{"type": "tool_use", "id": "toolu_y", "name": "Bash", "input": map[string]any{"command": "ls openai-bundled"}},
+		}),
+	}
+
+	scrubbed, err := normalizeClientIdentity(request, response)
+	require.NoError(t, err)
+	require.Equal(t, int64(6), scrubbed)
+	require.NotContains(t, string(request["system"]), "Codex agent history")
+	require.NotContains(t, string(request["tools"]), "Codex In-app")
+	require.Contains(t, string(request["messages"]), "Opened the Codex In-app Browser")
+	require.Contains(t, string(request["messages"]), "/tmp/clipboard-a.png")
+	require.Contains(t, string(response["content"]), "The Codex agent has requested approval")
+	require.Contains(t, string(response["content"]), "ls bundled")
+	require.Equal(t, int64(2), countClientIdentityFingerprints(request, response))
 }

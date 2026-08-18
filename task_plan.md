@@ -1,5 +1,27 @@
 # Session Delivery 可观测性实施计划
 
+## 2026-08-18 七提交边界收敛与上线前回归
+
+### 目标
+
+在不触碰实时响应链路和 `signature.go` 的前提下，收敛当前本地七个 Session 交付提交：保留 Opus 5 身份一致性、凭据脱敏、精确客户端模板清洗、未声明工具与助手外来模型自称的 fail-closed；撤回把合法 Anthropic 请求强行裁成 Claude Code 请求形态、全文件无角色清洗和改写人/模型正文的过度处理。
+
+| 阶段 | 状态 | 验收输出 |
+| --- | --- | --- |
+| 1. 基线与边界复核 | in_progress | 干净 worktree、HEAD/远端差异、七提交逐项去留、既有全量重建基线 |
+| 2. 实现收敛 | pending | 字段/角色感知清洗；合法 Anthropic 成员保留；已实测 token 探针窄修；Opus 5 精确匹配 |
+| 3. 代码级回归 | pending | gofmt、Session 包 `-race`、后端全量 test/vet；`signature.go` 与实时路径无 diff |
+| 4. 全量归档验收 | pending | 固定提交、新目录重建、独立 fidelity audit、二次重建逐字节一致 |
+| 5. 最终只读复核 | pending | 交付量/排除原因/凭据/客户端指纹/模型身份/manifest 守恒证据与上线结论 |
+
+### 决策边界
+
+- 交付件统一为 `claude-opus-5`；模型字段、固定 system 自述、知识截止与客户端工具模板中的模型署名必须一致。
+- 直接 Anthropic API 请求是合法样本，不要求每条都伪装成 Claude Code；保留 `tool_choice`、`context_management` 等合法请求成员。
+- 精确、已实测的客户端脚手架、临时文件名、插件缓存名可归一；用户正文和助手自由正文不改。正文形成 Codex 来源或外来模型自称时整条排除。
+- `.codex/`、用户目录名、第三方技能描述等中立文本保留；未知变体 fail-closed，不用宽泛正则猜测删除边界。
+- 不部署生产、不上传 Google Drive、不 reseed/purge；这些仍是独立写入门禁。
+
 ## 2026-08-15 最新保真代码复核、生产发布与历史归档收尾
 
 ### 目标

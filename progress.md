@@ -1,5 +1,16 @@
 # Session Delivery 可观测性进度记录
 
+## 2026-08-18
+
+- 用户授权收敛七个本地提交并回归到可上线状态；本轮明确不部署、不上传 Drive。
+- 已读取并采用 `planning-with-files`、`sub2api-session-delivery-ops` 与 Sol Advisor 路由约束。因当前主会话为 Sol/Max、插件要求严格 Sol/High，本轮声明 solo，由主会话直接负责，未启用 Terra/Luna 子代理。
+- 已复核干净 hourly worktree、七提交日志、核心 normalizer/validator 与既有全量统计；确认主要风险是角色无关正文改写、整份 JSON 客户端清洗、删除合法 Anthropic 请求成员和过宽预算修复。
+- 当前进入实现收敛阶段；所有改动限定在 `backend/internal/sessiondelivery` 及三份过程记录。
+- 已完成第一轮实现收敛：删除 `client_request_shape.go` 的过度 Claude Code 成员裁剪；客户端身份改为字段/角色感知；模型显示名只改 system、工具描述和实测 `<env>` 包装；助手模板自述转为排除；token 预算只修实测 1/64/8192；Opus 5 精确匹配拒绝 5.6/Pro。
+- 定向 `go test -count=1 -race ./internal/sessiondelivery` 通过（7.208s）；`git diff --check` 通过；`signature.go` 零 diff。
+- 后端 `go test -count=1 ./...` 全绿，`go vet ./...` 全绿；变更面 `go test -count=1 -race ./cmd/sessionctl ./cmd/sessiond ./internal/sessiondelivery` 全绿。
+- 全包 `go test -count=1 -race ./...` 唯一失败包为未修改的 `internal/service`：既有测试并发写 Gin 全局 mode，且 usage cleanup 测试异步读写未同步 stub 字段；即使 `-parallel=1` 仍可复现后者。普通全量与 Session/CLI race 均通过，本轮不越界修改实时 service 测试。
+
 ## 2026-08-15
 
 - 用户确认最新 Session 保真代码已完成，并一次性授权代码 review、完整回归、生产发布、历史 Drive 全量重建、数据库阻塞修复和最终生产验收。

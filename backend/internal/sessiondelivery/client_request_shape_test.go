@@ -7,62 +7,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The captured values: tool_choice "auto" and a context edit keeping everything.
-func TestNormalizeClientRequestShapeDropsInertMembers(t *testing.T) {
-	request := map[string]json.RawMessage{
-		"model":              mustJSON(DefaultPublicModel),
-		"tool_choice":        json.RawMessage(`{"type":"auto"}`),
-		"context_management": json.RawMessage(`{"edits":[{"keep":"all","type":"clear_thinking_20251015"}]}`),
-	}
-	require.ErrorContains(t, validateClientRequestShape(request), "tool_choice")
+// Direct Anthropic API clients legitimately send these members. Delivery is a
+// model-level Opus 5 contract, not a requirement that every request imitate the
+// narrower Claude Code sample envelope.
+func TestNormalizeProjectionFidelityPreservesLegitimateAnthropicRequestMembers(t *testing.T) {
+	request := mustJSON(map[string]any{
+		"model":              DefaultPublicModel,
+		"max_tokens":         64000,
+		"thinking":           map[string]any{"type": "adaptive", "display": "omitted"},
+		"tool_choice":        map[string]any{"type": "auto"},
+		"context_management": map[string]any{"edits": []any{map[string]any{"keep": "all", "type": "clear_thinking_20251015"}}},
+		"messages":           []any{map[string]any{"role": "user", "content": "hello"}},
+	})
+	response := mustJSON(map[string]any{
+		"id":          "msg_01abcdefghijklmnopqrstuv",
+		"type":        "message",
+		"role":        "assistant",
+		"model":       DefaultPublicModel,
+		"content":     []any{map[string]any{"type": "thinking", "thinking": "consider", "signature": "sig"}, map[string]any{"type": "text", "text": "hello"}},
+		"stop_reason": "end_turn",
+		"usage":       map[string]any{"input_tokens": 1, "output_tokens": 2},
+	})
 
-	dropped, err := normalizeClientRequestShape(request)
+	normalized, _, _, err := normalizeProjectionFidelity(request, response, fidelityNormalizationOptions{})
 	require.NoError(t, err)
-	require.Equal(t, int64(2), dropped)
-	require.NotContains(t, request, "tool_choice")
-	require.NotContains(t, request, "context_management")
-	require.Contains(t, request, "model")
-	require.NoError(t, validateClientRequestShape(request))
-
-	dropped, err = normalizeClientRequestShape(request)
-	require.NoError(t, err)
-	require.Zero(t, dropped)
-}
-
-// A value that steered the response has to stay, or the record stops explaining
-// itself.
-func TestNormalizeClientRequestShapeKeepsMembersThatShapedTheResponse(t *testing.T) {
-	cases := []struct {
-		name  string
-		key   string
-		value string
-	}{
-		{"forced tool", "tool_choice", `{"name":"Bash","type":"tool"}`},
-		{"any tool", "tool_choice", `{"type":"any"}`},
-		{"no tools", "tool_choice", `{"type":"none"}`},
-		{"auto with modifier", "tool_choice", `{"disable_parallel_tool_use":true,"type":"auto"}`},
-		{"clearing edit", "context_management", `{"edits":[{"keep":"3","type":"clear_thinking_20251015"}]}`},
-		{"trimming edit", "context_management", `{"edits":[{"clear_at_least":{"type":"input_tokens","value":100},"keep":"all","type":"clear_tool_uses_20250919"}]}`},
-		{"unknown member", "context_management", `{"edits":[{"keep":"all","type":"x"}],"trigger":{"type":"input_tokens","value":1}}`},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			request := map[string]json.RawMessage{testCase.key: json.RawMessage(testCase.value)}
-			dropped, err := normalizeClientRequestShape(request)
-			require.NoError(t, err)
-			require.Zero(t, dropped)
-			require.JSONEq(t, testCase.value, string(request[testCase.key]))
-			require.NoError(t, validateClientRequestShape(request))
-		})
-	}
-}
-
-func TestNormalizeClientRequestShapeIgnoresAbsentMembers(t *testing.T) {
-	request := map[string]json.RawMessage{"model": mustJSON(DefaultPublicModel)}
-	dropped, err := normalizeClientRequestShape(request)
-	require.NoError(t, err)
-	require.Zero(t, dropped)
-	require.NoError(t, validateClientRequestShape(request))
+	var decoded map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(normalized, &decoded))
+	require.JSONEq(t, `{"type":"auto"}`, string(decoded["tool_choice"]))
+	require.JSONEq(t,
+		`{"edits":[{"keep":"all","type":"clear_thinking_20251015"}]}`,
+		string(decoded["context_management"]))
 }
 
 // Foreign tools rebuilt during conversion come back in alphabetical order,

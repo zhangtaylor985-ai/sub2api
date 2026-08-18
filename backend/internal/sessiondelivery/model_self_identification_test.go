@@ -38,6 +38,12 @@ func TestCountForeignModelSelfClaimsDetectsDisclosureEchoedInHistory(t *testing.
 	require.Equal(t, int64(1), countForeignModelSelfClaims(request, response))
 }
 
+func TestCountForeignModelSelfClaimsDetectsForeignIdentityTemplateInAssistantProse(t *testing.T) {
+	request, response := selfClaimRecord(t,
+		"You are powered by the model named Fable 5. The exact model ID is claude-fable-5.", "")
+	require.Equal(t, int64(1), countForeignModelSelfClaims(request, response))
+}
+
 func TestCountForeignModelSelfClaimsDetectsEnglishDisclosures(t *testing.T) {
 	for _, text := range []string{
 		"I'm ChatGPT, a large language model.",

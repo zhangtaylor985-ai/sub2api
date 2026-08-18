@@ -68,6 +68,18 @@ func TestAlignRequestTokenBudgetLeavesResponsesBeyondClaudeCodeCeiling(t *testin
 	require.ErrorContains(t, validateRequestTokenBudget(request, response), "exceeds request max_tokens")
 }
 
+// Unknown future budgets are not rewritten on a guess. The validator keeps the
+// fail-closed boundary until that exact shape has been measured and approved.
+func TestAlignRequestTokenBudgetLeavesUnmeasuredContradictions(t *testing.T) {
+	request, response := budgetFixture(32, 49)
+
+	raised, err := alignRequestTokenBudget(request, response)
+	require.NoError(t, err)
+	require.Zero(t, raised)
+	require.JSONEq(t, `32`, string(request["max_tokens"]))
+	require.ErrorContains(t, validateRequestTokenBudget(request, response), "exceeds request max_tokens")
+}
+
 // A request without a budget declares no ceiling to contradict.
 func TestRequestTokenBudgetToleratesAbsentAndMalformedBudgets(t *testing.T) {
 	request := map[string]json.RawMessage{"model": mustJSON(DefaultPublicModel)}

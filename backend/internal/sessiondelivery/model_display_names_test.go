@@ -30,7 +30,7 @@ func toolRequest(description string) map[string]json.RawMessage {
 }
 
 func TestNormalizeModelDisplayNamesRewritesCommitTrailer(t *testing.T) {
-	for _, name := range []string{"Fable 5", "Sonnet 5", "Opus 4.8"} {
+	for _, name := range []string{"Fable 5", "Sonnet 5", "Opus 4.8", "Opus 5.6"} {
 		request := toolRequest(strings.Replace(bashDescriptionTemplate, "%s", name, 1))
 		require.ErrorContains(t, validateModelDisplayNames(request), "credits a foreign model")
 
@@ -216,7 +216,9 @@ func TestNormalizeModelDisplayNamesLeavesNonTextBlocks(t *testing.T) {
 	require.Equal(t, before, string(request["messages"]))
 }
 
-func TestNormalizeModelDisplayNamesIsIdempotent(t *testing.T) {
+// A person may quote a model identity line as subject matter. It is not a
+// measured client environment block and must not be rewritten or rejected.
+func TestNormalizeModelDisplayNamesLeavesFreeFormConversationProse(t *testing.T) {
 	request := toolRequest(strings.Replace(bashDescriptionTemplate, "%s", "Fable 5", 1))
 	request["messages"] = mustJSON([]any{map[string]any{
 		"role":    "user",
@@ -225,7 +227,10 @@ func TestNormalizeModelDisplayNamesIsIdempotent(t *testing.T) {
 
 	rewrites, err := normalizeModelDisplayNames(request)
 	require.NoError(t, err)
-	require.Equal(t, int64(2), rewrites)
+	require.Equal(t, int64(1), rewrites)
+	require.Contains(t, string(request["messages"]), "named Fable 5")
+	require.NoError(t, validateModelDisplayNames(request))
+
 	first := string(request["tools"]) + "|" + string(request["messages"])
 
 	rewrites, err = normalizeModelDisplayNames(request)

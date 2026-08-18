@@ -29,9 +29,6 @@ var (
 	// driven by knownForeignTierParagraphPattern instead, and anything this
 	// finds afterwards holds the whole record back.
 	modelTierParagraphPattern = regexp.MustCompile(`(?s)(\A|\n)This iteration of Claude is .*?(?:\n\n|\z)`)
-	// publicModelTierParagraph recognizes the paragraph as already describing
-	// the delivered model, in which case it is authentic client text.
-	publicModelTierParagraph = regexp.MustCompile(`\AThis iteration of Claude is Claude ` + publicModelDisplayName + `\b`)
 	// knownForeignTierParagraphPattern REMOVES only paragraphs matching a
 	// measured literal exactly, bounded by paragraph breaks on both sides.
 	knownForeignTierParagraphPattern = compileKnownTierParagraphs()
@@ -41,9 +38,6 @@ var (
 	// "Co-Authored-By: Claude Opus 5 (1M context)", so the display name is the
 	// active model rather than a bare "Claude".
 	coAuthorTrailerPattern = regexp.MustCompile(`Co-Authored-By: Claude([^\n<]*)<`)
-	// publicModelTrailerName accepts both the plain and 1M-context display
-	// names, which denote the same delivered model.
-	publicModelTrailerName = regexp.MustCompile(`\A` + publicModelDisplayName + `\b`)
 )
 
 const coAuthorTrailerPrefix = "Co-Authored-By: Claude"
@@ -57,7 +51,7 @@ func canonicalCoAuthorTrailer() string {
 // left alone.
 func trailerNamesPublicModel(match string) bool {
 	inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(match, coAuthorTrailerPrefix), "<"))
-	return inner == "" || publicModelTrailerName.MatchString(inner)
+	return inner == "" || inner == publicModelDisplayName || inner == publicModelDisplayName+" (1M context)"
 }
 
 func canonicalModelIdentityLine() string {
@@ -79,7 +73,22 @@ func namesPublicModel(line string) bool {
 // already introduces the delivered model. The match may carry the newline that
 // separates it from the preceding paragraph.
 func tierParagraphNamesPublicModel(match string) bool {
-	return publicModelTierParagraph.MatchString(strings.TrimLeft(match, "\n"))
+	text := strings.TrimLeft(match, "\n")
+	prefix := "This iteration of Claude is Claude " + publicModelDisplayName
+	if !strings.HasPrefix(text, prefix) {
+		return false
+	}
+	remainder := text[len(prefix):]
+	if remainder == "" {
+		return true
+	}
+	// A delimiter must end the display name. In particular, reject lookalikes
+	// such as "Opus 5.6", which regexp word boundaries incorrectly accept.
+	return strings.HasPrefix(remainder, ",") ||
+		strings.HasPrefix(remainder, "\n") ||
+		remainder == "." ||
+		strings.HasPrefix(remainder, ". ") ||
+		strings.HasPrefix(remainder, ".\n")
 }
 
 // foreignModelTierParagraphs holds each model-tier paragraph exactly as

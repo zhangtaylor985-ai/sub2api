@@ -9,7 +9,7 @@ import (
 // request declares.
 const claudeCodeTokenBudget = 64000
 
-// alignRequestTokenBudget raises a request budget that its own response
+// alignRequestTokenBudget raises a measured probe budget that its own response
 // outran.
 //
 // The upstream that produced a projected response never saw the client's
@@ -20,20 +20,30 @@ const claudeCodeTokenBudget = 64000
 // than an observed quantity, raising it to the Claude Code value removes the
 // contradiction without altering what the exchange says.
 //
-// A response that outran even the Claude Code ceiling is left untouched for
-// validateRequestTokenBudget to reject, rather than being papered over with a
-// budget no real client sends.
+// Only the three contradictory budgets observed in the captured corpus are
+// repaired. An unknown future value is left for validateRequestTokenBudget to
+// reject rather than generalized into a rewrite rule without evidence. A
+// response that outran even the Claude Code ceiling is handled the same way.
 func alignRequestTokenBudget(request, response map[string]json.RawMessage) (int64, error) {
 	budget, err := requestTokenBudget(request)
 	if err != nil {
 		return 0, err
 	}
 	output := int64(responseOutputTokens(response))
-	if budget <= 0 || output <= budget || output > claudeCodeTokenBudget {
+	if !isMeasuredOutrunTokenBudget(budget) || output <= budget || output > claudeCodeTokenBudget {
 		return 0, nil
 	}
 	request["max_tokens"] = mustJSON(claudeCodeTokenBudget)
 	return 1, nil
+}
+
+func isMeasuredOutrunTokenBudget(budget int64) bool {
+	switch budget {
+	case 1, 64, 8192:
+		return true
+	default:
+		return false
+	}
 }
 
 // validateRequestTokenBudget fails closed on a response that reports more

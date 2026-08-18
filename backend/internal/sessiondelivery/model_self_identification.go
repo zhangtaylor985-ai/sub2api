@@ -51,6 +51,11 @@ func countForeignModelSelfClaims(request, response map[string]json.RawMessage) i
 		if hasForeignModelSelfClaim(text) {
 			claims++
 		}
+		for _, line := range modelIdentityLinePattern.FindAllString(text, -1) {
+			if !namesPublicModel(line) {
+				claims++
+			}
+		}
 	}
 	return claims
 }

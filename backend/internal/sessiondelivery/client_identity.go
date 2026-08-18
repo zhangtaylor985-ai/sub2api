@@ -27,11 +27,11 @@ import (
 // home directory says which tools are installed, not which one sent the
 // request. Treating it as a fingerprint produced 1016 false violations.
 //
-// Scrubbing and detection both run over the encoded bytes. The shapes below
-// contain no character JSON escapes, so a byte replacement reaches tool
-// results, tool-call inputs and assistant text alike — and, just as
-// importantly, the two run over identical text, so nothing can be flagged in a
-// place the scrubber never visits.
+// Detection still covers the final encoded documents, but rewriting is
+// structure-aware. Exact replacements are allowed only in client-owned system
+// text, tool descriptions, user-side harness/tool-result content and tool-call
+// inputs that carry client temporary paths. Assistant text and thinking are
+// never rewritten; a remaining fingerprint holds the record back instead.
 
 // clientIdentityReplacements are measured literals. Replacing exact text keeps
 // removal from reaching further than what was verified, and keeps the sentence
@@ -68,8 +68,8 @@ var (
 	humanClientMention = regexp.MustCompile(`(?i)codex\s*对话框|codex\s*(?:dialog|chat) box`)
 )
 
-// scrubClientIdentity removes the client's name from its own scaffolding across
-// an encoded document.
+// scrubClientIdentity is the exact-literal primitive used only after the caller
+// has established that the byte slice belongs to an allowed structural field.
 func scrubClientIdentity(encoded []byte) ([]byte, int64) {
 	var scrubbed int64
 	for _, replacement := range clientIdentityReplacements {
@@ -84,7 +84,194 @@ func scrubClientIdentity(encoded []byte) ([]byte, int64) {
 	return encoded, scrubbed
 }
 
-// countHumanClientMentions reports turns where a person named the client.
+// normalizeClientIdentity cleans measured client-owned fields without touching
+// assistant prose. It returns the number of exact literal occurrences removed.
+func normalizeClientIdentity(request, response map[string]json.RawMessage) (int64, error) {
+	var scrubbed int64
+
+	if raw := request["system"]; len(raw) > 0 {
+		rewritten, count := scrubClientIdentity(raw)
+		if count > 0 {
+			request["system"] = rewritten
+			scrubbed += count
+		}
+	}
+
+	tools, count, err := scrubToolDescriptionClientIdentity(request["tools"])
+	if err != nil {
+		return 0, err
+	}
+	if count > 0 {
+		request["tools"] = tools
+		scrubbed += count
+	}
+
+	messages, count, err := scrubRequestMessageClientIdentity(request["messages"])
+	if err != nil {
+		return 0, err
+	}
+	if count > 0 {
+		request["messages"] = messages
+		scrubbed += count
+	}
+
+	content, count, err := scrubToolInputClientIdentity(response["content"])
+	if err != nil {
+		return 0, err
+	}
+	if count > 0 {
+		response["content"] = content
+		scrubbed += count
+	}
+	return scrubbed, nil
+}
+
+func scrubToolDescriptionClientIdentity(raw json.RawMessage) (json.RawMessage, int64, error) {
+	if !isJSONArray(raw) {
+		return raw, 0, nil
+	}
+	var tools []json.RawMessage
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		return nil, 0, fmt.Errorf("decode request tools for client identity: %w", err)
+	}
+	var scrubbed int64
+	for index, rawTool := range tools {
+		var tool map[string]json.RawMessage
+		if err := json.Unmarshal(rawTool, &tool); err != nil {
+			continue
+		}
+		description, count := scrubClientIdentity(tool["description"])
+		if count == 0 {
+			continue
+		}
+		tool["description"] = description
+		encoded, err := marshalOrderedObject(tool, anthropicToolKeyOrder)
+		if err != nil {
+			return nil, 0, fmt.Errorf("encode tool after client identity scrub: %w", err)
+		}
+		tools[index] = encoded
+		scrubbed += count
+	}
+	if scrubbed == 0 {
+		return raw, 0, nil
+	}
+	encoded, err := json.Marshal(tools)
+	if err != nil {
+		return nil, 0, fmt.Errorf("encode request tools after client identity scrub: %w", err)
+	}
+	return encoded, scrubbed, nil
+}
+
+func scrubRequestMessageClientIdentity(raw json.RawMessage) (json.RawMessage, int64, error) {
+	if !isJSONArray(raw) {
+		return raw, 0, nil
+	}
+	var messages []json.RawMessage
+	if err := json.Unmarshal(raw, &messages); err != nil {
+		return nil, 0, fmt.Errorf("decode request messages for client identity: %w", err)
+	}
+	var scrubbed int64
+	for index, rawMessage := range messages {
+		var message map[string]json.RawMessage
+		if err := json.Unmarshal(rawMessage, &message); err != nil {
+			continue
+		}
+		var (
+			content json.RawMessage
+			count   int64
+			err     error
+		)
+		switch rawString(message["role"]) {
+		case "user":
+			// User-side content carries both measured harness wrappers and tool
+			// results. Only exact literals are replaced; ordinary prose is not.
+			content, count = scrubClientIdentity(message["content"])
+		case "assistant":
+			// Assistant text/thinking is model output and must remain authentic.
+			// Tool inputs may carry client-generated paths and filenames.
+			content, count, err = scrubToolInputClientIdentity(message["content"])
+		}
+		if err != nil {
+			return nil, 0, err
+		}
+		if count == 0 {
+			continue
+		}
+		message["content"] = content
+		encoded, err := marshalOrderedObject(message, anthropicRequestMessageKeyOrder)
+		if err != nil {
+			return nil, 0, fmt.Errorf("encode request message after client identity scrub: %w", err)
+		}
+		messages[index] = encoded
+		scrubbed += count
+	}
+	if scrubbed == 0 {
+		return raw, 0, nil
+	}
+	encoded, err := json.Marshal(messages)
+	if err != nil {
+		return nil, 0, fmt.Errorf("encode request messages after client identity scrub: %w", err)
+	}
+	return encoded, scrubbed, nil
+}
+
+func scrubToolInputClientIdentity(raw json.RawMessage) (json.RawMessage, int64, error) {
+	if !isJSONArray(raw) {
+		return raw, 0, nil
+	}
+	var blocks []json.RawMessage
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return nil, 0, fmt.Errorf("decode content for client identity: %w", err)
+	}
+	var scrubbed int64
+	for index, rawBlock := range blocks {
+		var block map[string]json.RawMessage
+		if err := json.Unmarshal(rawBlock, &block); err != nil {
+			continue
+		}
+		blockType := rawString(block["type"])
+		if blockType != "tool_use" && blockType != "server_tool_use" {
+			continue
+		}
+		input, count := scrubClientIdentity(block["input"])
+		if count == 0 {
+			continue
+		}
+		block["input"] = input
+		encoded, err := marshalOrderedObject(block, anthropicBlockKeyOrder[blockType])
+		if err != nil {
+			return nil, 0, fmt.Errorf("encode tool input after client identity scrub: %w", err)
+		}
+		blocks[index] = encoded
+		scrubbed += count
+	}
+	if scrubbed == 0 {
+		return raw, 0, nil
+	}
+	encoded, err := json.Marshal(blocks)
+	if err != nil {
+		return nil, 0, fmt.Errorf("encode content after client identity scrub: %w", err)
+	}
+	return encoded, scrubbed, nil
+}
+
+// countClientIdentityFingerprints reports any measured or unknown client
+// fingerprint left after scoped normalization. Such a record is held back
+// before final fidelity validation rather than repaired by rewriting prose.
+func countClientIdentityFingerprints(values ...map[string]json.RawMessage) int64 {
+	var fingerprints int64
+	for _, value := range values {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			continue
+		}
+		fingerprints += int64(len(clientIdentityPattern.FindAll(encoded, -1)))
+	}
+	return fingerprints
+}
+
+// countHumanClientMentions reports conversation prose that explicitly names
+// the client. The text is never edited; the record is held back.
 func countHumanClientMentions(request, response map[string]json.RawMessage) int64 {
 	var mentions int64
 	for _, text := range conversationProse(request, response) {

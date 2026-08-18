@@ -3,39 +3,32 @@ package sessiondelivery
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // normalizeModelDisplayNames aligns model display-name references that sit
-// outside request.system with the delivered model.
+// outside request.system in measured client templates.
 //
 // Claude Code writes the active model's display name into more than its system
 // prompt: the Bash tool description carries the git commit trailer it instructs
-// the model to append, and the environment block arrives as a conversation turn.
-// Leaving those behind reproduces the contradiction the system prompt pass
-// exists to remove — a record delivered as Opus 5 telling the model to credit
-// commits to a different model.
+// the model to append, and one measured client environment block arrives as a
+// user turn. Free-form user and assistant prose is deliberately excluded from
+// this pass: changing it would fabricate the conversation rather than normalize
+// client scaffolding.
 func normalizeModelDisplayNames(request map[string]json.RawMessage) (int64, error) {
-	return rewriteRequestText(request, rewriteModelDisplayNames)
+	tools, err := normalizeToolDescriptionModelNames(request, rewriteModelDisplayNames)
+	if err != nil {
+		return 0, err
+	}
+	environments, err := normalizeClientEnvironmentModelNames(request, rewriteModelDisplayNames)
+	if err != nil {
+		return 0, err
+	}
+	return tools + environments, nil
 }
 
 // textRewriter reports the rewritten text and whether it changed.
 type textRewriter func(string) (string, bool)
-
-// rewriteRequestText applies a rewriter to the two places client-authored text
-// reaches the request: tool descriptions and conversation turns. Tool inputs
-// and tool results are left alone, so neither model output nor command text is
-// edited.
-func rewriteRequestText(request map[string]json.RawMessage, rewrite textRewriter) (int64, error) {
-	tools, err := normalizeToolDescriptionModelNames(request, rewrite)
-	if err != nil {
-		return 0, err
-	}
-	messages, err := normalizeMessageModelNames(request, rewrite)
-	if err != nil {
-		return 0, err
-	}
-	return tools + messages, nil
-}
 
 func normalizeToolDescriptionModelNames(request map[string]json.RawMessage, rewrite textRewriter) (int64, error) {
 	raw := request["tools"]
@@ -81,7 +74,7 @@ func normalizeToolDescriptionModelNames(request map[string]json.RawMessage, rewr
 	return rewrites, nil
 }
 
-func normalizeMessageModelNames(request map[string]json.RawMessage, rewrite textRewriter) (int64, error) {
+func normalizeClientEnvironmentModelNames(request map[string]json.RawMessage, rewrite textRewriter) (int64, error) {
 	raw := request["messages"]
 	if !isJSONArray(raw) {
 		return 0, nil
@@ -96,7 +89,10 @@ func normalizeMessageModelNames(request map[string]json.RawMessage, rewrite text
 		if err := json.Unmarshal(rawMessage, &message); err != nil {
 			continue
 		}
-		content, changed, err := rewriteContentModelNames(message["content"], rewrite)
+		if rawString(message["role"]) != "user" {
+			continue
+		}
+		content, changed, err := rewriteClientEnvironmentContent(message["content"], rewrite)
 		if err != nil {
 			return 0, err
 		}
@@ -122,14 +118,18 @@ func normalizeMessageModelNames(request map[string]json.RawMessage, rewrite text
 	return rewrites, nil
 }
 
-// rewriteContentModelNames handles both message content shapes, rewriting only
-// text so tool inputs and results pass through untouched.
-func rewriteContentModelNames(raw json.RawMessage, rewrite textRewriter) (json.RawMessage, bool, error) {
+// rewriteClientEnvironmentContent handles both message content shapes, but
+// rewrites only a measured <env> client block. Ordinary user text, tool results
+// and every assistant turn remain byte-for-byte untouched.
+func rewriteClientEnvironmentContent(raw json.RawMessage, rewrite textRewriter) (json.RawMessage, bool, error) {
 	if len(raw) == 0 {
 		return raw, false, nil
 	}
 	var asText string
 	if err := json.Unmarshal(raw, &asText); err == nil {
+		if !isMeasuredClientEnvironment(asText) {
+			return raw, false, nil
+		}
 		rewritten, changed := rewrite(asText)
 		if !changed {
 			return raw, false, nil
@@ -156,6 +156,9 @@ func rewriteContentModelNames(raw json.RawMessage, rewrite textRewriter) (json.R
 		if err := json.Unmarshal(block["text"], &text); err != nil {
 			continue
 		}
+		if !isMeasuredClientEnvironment(text) {
+			continue
+		}
 		rewritten, blockChanged := rewrite(text)
 		if !blockChanged {
 			continue
@@ -178,10 +181,18 @@ func rewriteContentModelNames(raw json.RawMessage, rewrite textRewriter) (json.R
 	return encoded, true, nil
 }
 
-// validateModelDisplayNames fails closed when any request text still credits or
-// names a model other than the one the record is delivered under.
+func isMeasuredClientEnvironment(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	return strings.HasPrefix(trimmed, "<env>\n") &&
+		strings.HasSuffix(trimmed, "\n</env>") &&
+		modelIdentityLinePattern.MatchString(trimmed)
+}
+
+// validateModelDisplayNames fails closed when a measured client template still
+// credits or names a model other than the one the record is delivered under.
+// It intentionally does not scan arbitrary conversation prose.
 func validateModelDisplayNames(request map[string]json.RawMessage) error {
-	for _, text := range requestModelNameTexts(request) {
+	for _, text := range requestTemplateModelNameTexts(request) {
 		for _, line := range modelIdentityLinePattern.FindAllString(text, -1) {
 			if !namesPublicModel(line) {
 				return fmt.Errorf("request text names a foreign model: %q", line)
@@ -201,10 +212,9 @@ func validateModelDisplayNames(request map[string]json.RawMessage) error {
 	return nil
 }
 
-// requestModelNameTexts returns the request text that carries client-authored
-// model references: tool descriptions and conversation turns. The system prompt
-// has its own validator.
-func requestModelNameTexts(request map[string]json.RawMessage) []string {
+// requestTemplateModelNameTexts returns only measured client-authored model
+// templates. The system prompt has its own validator.
+func requestTemplateModelNameTexts(request map[string]json.RawMessage) []string {
 	var texts []string
 	if raw := request["tools"]; isJSONArray(raw) {
 		var tools []map[string]json.RawMessage
@@ -220,13 +230,22 @@ func requestModelNameTexts(request map[string]json.RawMessage) []string {
 		var messages []map[string]json.RawMessage
 		if json.Unmarshal(raw, &messages) == nil {
 			for _, message := range messages {
+				if rawString(message["role"]) != "user" {
+					continue
+				}
 				content := message["content"]
 				var asText string
 				if json.Unmarshal(content, &asText) == nil {
-					texts = append(texts, asText)
+					if isMeasuredClientEnvironment(asText) {
+						texts = append(texts, asText)
+					}
 					continue
 				}
-				texts = append(texts, contentBlockProse(content)...)
+				for _, text := range contentBlockProse(content) {
+					if isMeasuredClientEnvironment(text) {
+						texts = append(texts, text)
+					}
+				}
 			}
 		}
 	}

@@ -1,5 +1,17 @@
 # Session Delivery 可观测性发现记录
 
+## 2026-08-18 七提交边界复核
+
+- 当前目标 worktree 为 `/Users/taylor/sdk/sub2api-session-delivery-v2-hourly`，分支 `codex/session-delivery-v2-rollout`，HEAD `3e9b2eff1`，相对远端 `c8115d611` ahead 7，工作区开始时干净。
+- 七提交中的凭据脱敏、精确 Fable/Mythos 固定段落删除、未声明工具排除和助手外来模型自称排除属于必要门禁，应保留。
+- `tool_choice:auto` 与惰性 `context_management` 是合法 Anthropic 请求成员；仅因真实 Claude Code 样本没出现就删除，会把“模型级 Opus 5 交付”错误收窄成“所有记录必须伪装成 Claude Code”，应撤回。
+- 当前模型显示名归一会遍历所有 request message 文本，客户端身份清洗会对 request/response 整份 JSON 做字节替换；两者都会改写用户或助手正文，越过项目规定边界。
+- 客户端身份应按结构分层：system、工具声明、用户侧已实测包装、tool input/result 中的精确客户端工件可清洗；助手正文不得改写，残留可识别指纹应计数并整条排除。
+- `max_tokens` 修复目前对任意小预算都统一改为 64000。现有语料只实测到 1、64、8192 三组矛盾预算；实现应限制在实测集合，未知预算矛盾留给 validator fail-closed。
+- `Opus 5\\b` 会把 `Opus 5.6` 误判为 Opus 5，因为点号形成单词边界；需改为允许明确分隔符、拒绝数字后缀的精确判断。
+- 既有全量基线 Z1/Z2 为 47 个归档、10,354 条交付、266 个会话、audit 0 violations、二次重建全零变更；本轮必须在新目录重新独立复现，不能沿用该结论。
+- 全包 race 基线存在两类与本次 diff 无关的 `internal/service` 测试竞争：并行 `gin.SetMode` 写全局状态，以及 usage cleanup 测试对异步 stub 计数的无锁读写。前者串行可避，后者 `-parallel=1` 仍复现；本次改动未触达 `internal/service`，Session/CLI 变更面 race 全绿。
+
 ## 2026-08-15 最新候选与截图要求
 
 - 用户确认代码调整完成并授权 review、回归、生产发布、历史 Google Drive 全量重建及数据库阻塞修复全流程。

@@ -30,7 +30,6 @@ type fidelityNormalizationStats struct {
 	ClientIdentityScrubbed        int64
 	SecretsRedacted               int64
 	RequestTokenBudgetRaised      int64
-	ClientRequestMembersDropped   int64
 	ForeignToolsConverted         int64
 	ForeignToolsDropped           int64
 	// UndeclaredResponseTools is non-zero when the response calls a tool while
@@ -249,17 +248,12 @@ func normalizeProjectionFidelity(
 ) (json.RawMessage, json.RawMessage, fidelityNormalizationStats, error) {
 	var stats fidelityNormalizationStats
 
-	// Both byte-level passes run before anything decodes the document, so every
-	// later pass and every validator sees the rewritten text, and neither a
-	// credential nor a client fingerprint can survive in a corner one of them
-	// does not reach.
+	// Credential redaction is explicitly authorized across the full delivery
+	// document. Client identity cleanup is different: it runs later with field
+	// and role awareness so it cannot rewrite conversation prose.
 	requestRaw, requestSecrets := redactSecrets(requestRaw)
 	responseRaw, responseSecrets := redactSecrets(responseRaw)
 	stats.SecretsRedacted += requestSecrets + responseSecrets
-
-	requestRaw, requestScrubs := scrubClientIdentity(requestRaw)
-	responseRaw, responseScrubs := scrubClientIdentity(responseRaw)
-	stats.ClientIdentityScrubbed += requestScrubs + responseScrubs
 
 	request, err := decodeJSONObject(requestRaw, "request")
 	if err != nil {
@@ -288,6 +282,12 @@ func normalizeProjectionFidelity(
 	stats.ForeignSystemPromptTools += int64(toolConversion.SystemPromptTools)
 	stats.UndeclaredResponseTools += countUndeclaredResponseTools(request, response)
 
+	clientScrubs, err := normalizeClientIdentity(request, response)
+	if err != nil {
+		return nil, nil, fidelityNormalizationStats{}, err
+	}
+	stats.ClientIdentityScrubbed += clientScrubs
+
 	system, systemRewrites, err := normalizeSystemModelIdentity(request["system"])
 	if err != nil {
 		return nil, nil, fidelityNormalizationStats{}, err
@@ -314,19 +314,14 @@ func normalizeProjectionFidelity(
 	stats.ForeignModelSelfClaims += countForeignModelSelfClaims(request, response) +
 		countForeignModelTierProse(request, response) +
 		countForeignModelTrailerProse(request, response) +
-		countHumanClientMentions(request, response)
+		countHumanClientMentions(request, response) +
+		countClientIdentityFingerprints(request, response)
 
 	budgetRaised, err := alignRequestTokenBudget(request, response)
 	if err != nil {
 		return nil, nil, fidelityNormalizationStats{}, err
 	}
 	stats.RequestTokenBudgetRaised += budgetRaised
-
-	shapeDropped, err := normalizeClientRequestShape(request)
-	if err != nil {
-		return nil, nil, fidelityNormalizationStats{}, err
-	}
-	stats.ClientRequestMembersDropped += shapeDropped
 
 	_, toolIDs, openAIBlocks, requestTrackingStripped, requestToolTrackingStripped, err := normalizeRequestFidelity(request, options.CodexProjection)
 	if err != nil {

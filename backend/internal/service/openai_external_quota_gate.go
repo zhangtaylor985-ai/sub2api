@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
@@ -226,6 +227,7 @@ type OpenAIExternalQuotaGateService struct {
 	stopOnce  sync.Once
 	stopCh    chan struct{}
 	wg        sync.WaitGroup
+	evalLocks sync.Map
 }
 
 func NewOpenAIExternalQuotaGateService(
@@ -316,19 +318,100 @@ func (s *OpenAIExternalQuotaGateService) runOnce(ctx context.Context) {
 	var wg sync.WaitGroup
 	workerSlots := make(chan struct{}, defaultOpenAIExternalQuotaGateWorkers)
 	for index := range accounts {
-		account := accounts[index]
+		accountID := accounts[index].ID
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			workerSlots <- struct{}{}
 			defer func() { <-workerSlots }()
-			s.evaluateAccount(ctx, &account)
+			if _, err := s.RefreshAccount(ctx, accountID); err != nil {
+				slog.Warn("openai_external_quota_gate_refresh_failed", "account_id", accountID, "error", err)
+			}
 		}()
 	}
 	wg.Wait()
 }
 
+// ConfigureAccount enables or disables external quota gate management for one OpenAI OAuth account.
+// Both transitions fail closed. Enabling also performs an immediate baseline observation.
+func (s *OpenAIExternalQuotaGateService) ConfigureAccount(ctx context.Context, accountID int64, enabled bool) (*Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, infraerrors.ServiceUnavailable("OPENAI_EXTERNAL_QUOTA_GATE_UNAVAILABLE", "external quota gate is unavailable")
+	}
+
+	lock := s.evaluationLock(accountID)
+	lock.Lock()
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		lock.Unlock()
+		return nil, err
+	}
+	if !account.IsOpenAIOAuth() {
+		lock.Unlock()
+		return nil, infraerrors.BadRequest("OPENAI_EXTERNAL_QUOTA_GATE_UNSUPPORTED_ACCOUNT", "external quota gate only supports OpenAI OAuth accounts")
+	}
+
+	// Close scheduling before changing gate ownership so partial failures remain safe.
+	if err := s.accountRepo.SetSchedulable(ctx, accountID, false); err != nil {
+		lock.Unlock()
+		return nil, err
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
+		openAIExternalQuotaGateEnabledKey: enabled,
+		openAIExternalQuotaGateStateKey:   nil,
+	}); err != nil {
+		lock.Unlock()
+		return nil, err
+	}
+	lock.Unlock()
+
+	if enabled {
+		return s.RefreshAccount(ctx, accountID)
+	}
+	return s.accountRepo.GetByID(ctx, accountID)
+}
+
+// RefreshAccount immediately evaluates one gate-enabled account and returns its persisted state.
+func (s *OpenAIExternalQuotaGateService) RefreshAccount(ctx context.Context, accountID int64) (*Account, error) {
+	if s == nil || s.accountRepo == nil || s.usageRepo == nil || s.reader == nil {
+		return nil, infraerrors.ServiceUnavailable("OPENAI_EXTERNAL_QUOTA_GATE_UNAVAILABLE", "external quota gate is unavailable")
+	}
+
+	lock := s.evaluationLock(accountID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if !account.IsOpenAIOAuth() {
+		return nil, infraerrors.BadRequest("OPENAI_EXTERNAL_QUOTA_GATE_UNSUPPORTED_ACCOUNT", "external quota gate only supports OpenAI OAuth accounts")
+	}
+	if !IsOpenAIExternalQuotaGateEnabled(account) {
+		return nil, infraerrors.Conflict("OPENAI_EXTERNAL_QUOTA_GATE_DISABLED", "external quota gate is disabled for this account")
+	}
+
+	s.evaluateAccountUnlocked(ctx, account)
+	return s.accountRepo.GetByID(ctx, accountID)
+}
+
+func (s *OpenAIExternalQuotaGateService) evaluationLock(accountID int64) *sync.Mutex {
+	lock, _ := s.evalLocks.LoadOrStore(accountID, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
 func (s *OpenAIExternalQuotaGateService) evaluateAccount(ctx context.Context, account *Account) {
+	if account == nil {
+		return
+	}
+	lock := s.evaluationLock(account.ID)
+	lock.Lock()
+	defer lock.Unlock()
+	s.evaluateAccountUnlocked(ctx, account)
+}
+
+func (s *OpenAIExternalQuotaGateService) evaluateAccountUnlocked(ctx context.Context, account *Account) {
 	now := s.now().UTC()
 	previous := readOpenAIExternalQuotaGateState(account)
 
@@ -411,6 +494,15 @@ func (s *OpenAIExternalQuotaGateService) evaluateAccount(ctx context.Context, ac
 	current.LeaseUntil = &leaseUntil
 	current.Decision = "external_decrease_detected"
 	s.persistDecision(ctx, account, current, true)
+}
+
+// IsOpenAIExternalQuotaGateEnabled reports whether account schedulability is owned by the gate.
+func IsOpenAIExternalQuotaGateEnabled(account *Account) bool {
+	if account == nil || account.Extra == nil {
+		return false
+	}
+	enabled, ok := account.Extra[openAIExternalQuotaGateEnabledKey].(bool)
+	return ok && enabled
 }
 
 func externalQuotaWindowsStable(previous, current openAIExternalQuotaGateState) bool {

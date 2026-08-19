@@ -248,6 +248,18 @@
                 <span :class="['h-1.5 w-1.5 rounded-full', getOpenAICompactMeta(row)?.dotClass]" />
                 <span>{{ getOpenAICompactMeta(row)?.label }}</span>
               </div>
+              <div
+                v-if="isExternalQuotaGateEnabled(row)"
+                :class="[
+                  'inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                  getExternalQuotaGateBadge(row).className
+                ]"
+                :title="getExternalQuotaGateBadge(row).title"
+              >
+                <span :class="['h-1.5 w-1.5 rounded-full', getExternalQuotaGateBadge(row).dotClass]" />
+                <span>{{ getExternalQuotaGateBadge(row).label }}</span>
+                <span v-if="getExternalQuotaGateUsage(row)" class="font-mono opacity-80">{{ getExternalQuotaGateUsage(row) }}</span>
+              </div>
             </div>
           </template>
           <template #cell-capacity="{ row }">
@@ -259,7 +271,7 @@
             </div>
           </template>
           <template #cell-schedulable="{ row }">
-            <button @click="handleToggleSchedulable(row)" :disabled="togglingSchedulable === row.id" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800" :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']" :title="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')">
+            <button @click="handleToggleSchedulable(row)" :disabled="togglingSchedulable === row.id || isExternalQuotaGateEnabled(row)" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800" :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']" :title="isExternalQuotaGateEnabled(row) ? t('admin.accounts.externalQuotaGate.schedulableManaged') : row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')">
               <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
             </button>
           </template>
@@ -1133,6 +1145,42 @@ const allColumns = computed(() => {
   )
   return c
 })
+
+const isExternalQuotaGateEnabled = (account: Account) =>
+  account.platform === 'openai' &&
+  account.type === 'oauth' &&
+  account.extra?.openai_external_quota_gate_enabled === true
+
+const getExternalQuotaGateUsage = (account: Account) => {
+  const usedPercent = account.extra?.openai_external_quota_gate_state?.primary_window?.used_percent
+  return typeof usedPercent === 'number' ? `${usedPercent.toFixed(1)}%` : ''
+}
+
+const getExternalQuotaGateBadge = (account: Account) => {
+  const state = account.extra?.openai_external_quota_gate_state
+  if (account.schedulable) {
+    return {
+      label: t('admin.accounts.externalQuotaGate.badgeAvailable'),
+      title: t('admin.accounts.externalQuotaGate.badgeAvailableTitle'),
+      className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+      dotClass: 'bg-emerald-500'
+    }
+  }
+  if (state?.decision === 'upstream_error' || state?.decision === 'local_usage_error' || state?.decision === 'invalid_account') {
+    return {
+      label: t('admin.accounts.externalQuotaGate.badgeError'),
+      title: t('admin.accounts.externalQuotaGate.badgeErrorTitle'),
+      className: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+      dotClass: 'bg-rose-500'
+    }
+  }
+  return {
+    label: t('admin.accounts.externalQuotaGate.badgeUnavailable'),
+    title: t('admin.accounts.externalQuotaGate.badgeUnavailableTitle'),
+    className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    dotClass: 'bg-amber-500'
+  }
+}
 
 // Columns that can be toggled (exclude select, name, and actions)
 const toggleableColumns = computed(() =>

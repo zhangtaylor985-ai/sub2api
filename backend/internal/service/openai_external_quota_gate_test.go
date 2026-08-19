@@ -17,10 +17,18 @@ type openAIExternalQuotaGateAccountRepoStub struct {
 	AccountRepository
 
 	mu           sync.Mutex
+	account      *Account
+	getErr       error
 	extraUpdates []openAIExternalQuotaGateState
 	setValues    []bool
 	updateErr    error
 	setErr       error
+}
+
+func (s *openAIExternalQuotaGateAccountRepoStub) GetByID(_ context.Context, _ int64) (*Account, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.account, s.getErr
 }
 
 func (s *openAIExternalQuotaGateAccountRepoStub) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -29,6 +37,14 @@ func (s *openAIExternalQuotaGateAccountRepoStub) UpdateExtra(_ context.Context, 
 	if state, ok := updates[openAIExternalQuotaGateStateKey].(openAIExternalQuotaGateState); ok {
 		s.extraUpdates = append(s.extraUpdates, state)
 	}
+	if s.account != nil {
+		if s.account.Extra == nil {
+			s.account.Extra = map[string]any{}
+		}
+		for key, value := range updates {
+			s.account.Extra[key] = value
+		}
+	}
 	return s.updateErr
 }
 
@@ -36,6 +52,9 @@ func (s *openAIExternalQuotaGateAccountRepoStub) SetSchedulable(_ context.Contex
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.setValues = append(s.setValues, value)
+	if s.account != nil {
+		s.account.Schedulable = value
+	}
 	return s.setErr
 }
 
@@ -307,6 +326,60 @@ func TestOpenAIExternalQuotaGateStateWriteFailureCannotOpenAccount(t *testing.T)
 	service.evaluateAccount(context.Background(), account)
 
 	require.Empty(t, repo.setValues)
+}
+
+func TestOpenAIExternalQuotaGateConfigureAccountEnablesWithImmediateBaseline(t *testing.T) {
+	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	account := newOpenAIExternalQuotaGateTestAccount(true)
+	repo := &openAIExternalQuotaGateAccountRepoStub{account: account}
+	service := newOpenAIExternalQuotaGateTestService(
+		repo,
+		&openAIExternalQuotaGateUsageRepoStub{},
+		&openAIExternalQuotaGateReaderStub{snapshot: quotaSnapshot(12.5, 100)},
+		now,
+	)
+
+	updated, err := service.ConfigureAccount(context.Background(), account.ID, true)
+
+	require.NoError(t, err)
+	require.False(t, updated.Schedulable)
+	require.True(t, IsOpenAIExternalQuotaGateEnabled(updated))
+	require.Equal(t, "baseline_created", readOpenAIExternalQuotaGateState(updated).Decision)
+}
+
+func TestOpenAIExternalQuotaGateConfigureAccountDisablesFailClosed(t *testing.T) {
+	account := newOpenAIExternalQuotaGateTestAccount(true)
+	account.Extra[openAIExternalQuotaGateEnabledKey] = true
+	account.Extra[openAIExternalQuotaGateStateKey] = quotaState(time.Now(), 10, 100)
+	repo := &openAIExternalQuotaGateAccountRepoStub{account: account}
+	service := newOpenAIExternalQuotaGateTestService(
+		repo,
+		&openAIExternalQuotaGateUsageRepoStub{},
+		&openAIExternalQuotaGateReaderStub{},
+		time.Now(),
+	)
+
+	updated, err := service.ConfigureAccount(context.Background(), account.ID, false)
+
+	require.NoError(t, err)
+	require.False(t, updated.Schedulable)
+	require.False(t, IsOpenAIExternalQuotaGateEnabled(updated))
+	require.Nil(t, updated.Extra[openAIExternalQuotaGateStateKey])
+}
+
+func TestOpenAIExternalQuotaGateRefreshRejectsDisabledAccount(t *testing.T) {
+	account := newOpenAIExternalQuotaGateTestAccount(false)
+	repo := &openAIExternalQuotaGateAccountRepoStub{account: account}
+	service := newOpenAIExternalQuotaGateTestService(
+		repo,
+		&openAIExternalQuotaGateUsageRepoStub{},
+		&openAIExternalQuotaGateReaderStub{},
+		time.Now(),
+	)
+
+	_, err := service.RefreshAccount(context.Background(), account.ID)
+
+	require.Error(t, err)
 }
 
 func newOpenAIExternalQuotaGateTestService(

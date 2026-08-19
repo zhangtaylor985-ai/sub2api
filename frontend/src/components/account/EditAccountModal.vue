@@ -2151,6 +2151,12 @@
         </div>
       </div>
 
+      <OpenAIExternalQuotaGatePanel
+        v-if="account.platform === 'openai' && account.type === 'oauth'"
+        :account="account"
+        @updated="emit('updated', $event)"
+      />
+
       <!-- Group Selection - 仅标准模式显示 -->
       <GroupSelector
         v-if="!authStore.isSimpleMode"
@@ -2231,6 +2237,7 @@ import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import OpenAIExternalQuotaGatePanel from '@/components/account/OpenAIExternalQuotaGatePanel.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'

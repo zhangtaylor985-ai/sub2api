@@ -41,7 +41,9 @@ func ProvideAdminHandlers(
 	contentModerationHandler *admin.ContentModerationHandler,
 	paymentHandler *admin.PaymentHandler,
 	affiliateHandler *admin.AffiliateHandler,
+	externalQuotaGate *service.OpenAIExternalQuotaGateService,
 ) *AdminHandlers {
+	accountHandler.SetExternalQuotaGateService(externalQuotaGate)
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,

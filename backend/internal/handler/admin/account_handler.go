@@ -58,6 +58,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	externalQuotaGate       *service.OpenAIExternalQuotaGateService
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -90,6 +91,13 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+	}
+}
+
+// SetExternalQuotaGateService attaches the optional admin control service.
+func (h *AccountHandler) SetExternalQuotaGateService(externalQuotaGate *service.OpenAIExternalQuotaGateService) {
+	if h != nil {
+		h.externalQuotaGate = externalQuotaGate
 	}
 }
 
@@ -1943,6 +1951,15 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	managedAccount, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if service.IsOpenAIExternalQuotaGateEnabled(managedAccount) {
+		response.ErrorFrom(c, infraerrors.Conflict("OPENAI_EXTERNAL_QUOTA_GATE_MANAGED", "account schedulability is managed by the external quota gate"))
+		return
+	}
 
 	account, err := h.adminService.SetAccountSchedulable(c.Request.Context(), accountID, req.Schedulable)
 	if err != nil {
@@ -1950,6 +1967,55 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 		return
 	}
 
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+type ConfigureExternalQuotaGateRequest struct {
+	Enabled *bool `json:"enabled" binding:"required"`
+}
+
+// ConfigureExternalQuotaGate enables or disables automatic scheduling based on external quota use.
+// PUT /api/v1/admin/accounts/:id/external-quota-gate
+func (h *AccountHandler) ConfigureExternalQuotaGate(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	var req ConfigureExternalQuotaGateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if h.externalQuotaGate == nil {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("OPENAI_EXTERNAL_QUOTA_GATE_UNAVAILABLE", "external quota gate is unavailable"))
+		return
+	}
+	account, err := h.externalQuotaGate.ConfigureAccount(c.Request.Context(), accountID, *req.Enabled)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+// RefreshExternalQuotaGate performs an immediate external quota observation.
+// POST /api/v1/admin/accounts/:id/external-quota-gate/refresh
+func (h *AccountHandler) RefreshExternalQuotaGate(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.externalQuotaGate == nil {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("OPENAI_EXTERNAL_QUOTA_GATE_UNAVAILABLE", "external quota gate is unavailable"))
+		return
+	}
+	account, err := h.externalQuotaGate.RefreshAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 

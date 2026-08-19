@@ -822,6 +822,25 @@ export interface TempUnschedulableStatus {
   state?: TempUnschedulableState
 }
 
+export interface OpenAIExternalQuotaWindow {
+  used_percent: number
+  limit_window_seconds: number
+  reset_at: number
+}
+
+export interface OpenAIExternalQuotaGateState {
+  observed_at?: string
+  last_attempt_at?: string
+  allowed: boolean
+  limit_reached: boolean
+  primary_window?: OpenAIExternalQuotaWindow
+  secondary_window?: OpenAIExternalQuotaWindow
+  lease_until?: string
+  decision: string
+  external_delta_percent?: number
+  local_requests?: number
+}
+
 export interface Account {
   id: number
   name: string
@@ -838,6 +857,8 @@ export interface Account {
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
+    openai_external_quota_gate_enabled?: boolean
+    openai_external_quota_gate_state?: OpenAIExternalQuotaGateState | null
   } & Record<string, unknown>)
   proxy_id: number | null
   concurrency: number

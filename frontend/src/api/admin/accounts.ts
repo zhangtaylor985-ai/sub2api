@@ -176,6 +176,18 @@ export async function toggleStatus(id: number, status: 'active' | 'inactive'): P
   return update(id, { status })
 }
 
+export async function configureExternalQuotaGate(id: number, enabled: boolean): Promise<Account> {
+  const { data } = await apiClient.put<Account>(`/admin/accounts/${id}/external-quota-gate`, {
+    enabled
+  })
+  return data
+}
+
+export async function refreshExternalQuotaGate(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/external-quota-gate/refresh`)
+  return data
+}
+
 /**
  * Test account connectivity
  * @param id - Account ID
@@ -687,6 +699,8 @@ export const accountsAPI = {
   checkMixedChannelRisk,
   delete: deleteAccount,
   toggleStatus,
+  configureExternalQuotaGate,
+  refreshExternalQuotaGate,
   testAccount,
   refreshCredentials,
   applyOAuthCredentials,

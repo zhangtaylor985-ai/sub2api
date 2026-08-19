@@ -23,3 +23,13 @@ func TestShouldEnqueueSchedulerOutboxForExtraUpdates_OpenAIResponsesCapabilityKe
 		t.Fatalf("expected responses capability updates to enqueue scheduler outbox")
 	}
 }
+
+func TestShouldEnqueueSchedulerOutboxForExtraUpdates_ExternalQuotaGateStateIsNeutral(t *testing.T) {
+	updates := map[string]any{
+		"openai_external_quota_gate_state": map[string]any{"decision": "baseline_created"},
+	}
+
+	if shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {
+		t.Fatalf("expected external quota observation state to avoid scheduler outbox rebuilds")
+	}
+}

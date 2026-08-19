@@ -525,6 +525,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
 	ProvideAccountExpiryService,
+	ProvideOpenAIExternalQuotaGateService,
 	ProvideSubscriptionExpiryService,
 	ProvidePrivateSubscriptionReminderService,
 	ProvideBusinessSnapshotScheduler,

@@ -81,6 +81,7 @@ func provideCleanup(
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
+	openAIExternalQuotaGate *service.OpenAIExternalQuotaGateService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	privateSubscriptionReminder *service.PrivateSubscriptionReminderService,
 	businessSnapshotScheduler *service.BusinessSnapshotScheduler,
@@ -173,6 +174,10 @@ func provideCleanup(
 			}},
 			{"AccountExpiryService", func() error {
 				accountExpiry.Stop()
+				return nil
+			}},
+			{"OpenAIExternalQuotaGateService", func() error {
+				openAIExternalQuotaGate.Stop()
 				return nil
 			}},
 			{"SubscriptionExpiryService", func() error {

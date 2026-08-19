@@ -56,6 +56,7 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_secondary_",
 	"codex_5h_",
 	"codex_7d_",
+	"openai_external_quota_gate_",
 	"passive_usage_",
 }
 

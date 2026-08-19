@@ -40,6 +40,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil,
 	)
 	accountExpirySvc := service.NewAccountExpiryService(nil, time.Second)
+	openAIExternalQuotaGateSvc := service.NewOpenAIExternalQuotaGateService(nil, nil, nil, time.Second, time.Second, 1)
 	subscriptionExpirySvc := service.NewSubscriptionExpiryService(nil, time.Second)
 	privateSubscriptionReminderSvc := service.NewPrivateSubscriptionReminderService(nil, nil, time.Second)
 	businessSnapshotScheduler := service.NewBusinessSnapshotScheduler(nil, time.Second)
@@ -63,6 +64,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		schedulerSnapshotSvc,
 		tokenRefreshSvc,
 		accountExpirySvc,
+		openAIExternalQuotaGateSvc,
 		subscriptionExpirySvc,
 		privateSubscriptionReminderSvc,
 		businessSnapshotScheduler,

@@ -1,54 +1,45 @@
 ---
 name: sub2api-session-delivery-ops
-description: 用于 Sub2API Session V2 交付链路的历史归档本地重建、Claude Opus 5 黑盒保真审计、Google Drive 版本化上传与 SHA-256 回读、projection reseed、Token 指标回填、小时 exporter 故障恢复和上线验收。用户提到 Session 交付文件重建、归档补跑、Drive 上传、fidelity audit、reseed、Token 回填、sessionctl 或 Session 交付运维时使用。
+description: 用于 Sub2API Session V2 的生产发布、双机二进制部署、exporter 积压恢复、spool 与磁盘监控、timer 恢复、Drive SHA 回读和上线验收。用户提到 Session 代码上线、sessionctl/sessiond 发布、小时归档失败、数据库阻塞、spool 堆积、timer/exporter、生产回滚或 Session 生产验收时使用。历史 Drive 文件离线重建改用 sub2api-session-history-rebuild。
 ---
 
-# Sub2API Session 交付运维
+# Sub2API Session 生产发布
 
-## 核心原则
+## 先确定任务边界
 
-先读取项目 `AGENTS.md` 和当前执行记录，再确定代码版本、生产拓扑与授权边界。复杂任务继续维护 `task_plan.md`、`findings.md`、`progress.md`。
+读取项目 `AGENTS.md`、当前 Git 状态和 [references/production-rollout.md](references/production-rollout.md)。生产写操作必须已有用户明确授权；本 Skill 自带脚本只负责固定提交构建和只读观测，不会替换远端二进制、重启服务、恢复 timer、修改数据库或清理文件。
 
-始终遵守以下门禁：
+历史归档重建、幂等审计和版本化上传使用 `$sub2api-session-history-rebuild`，不要和实时小时追赶混在一次命令中。
 
-- 只从已提交的固定 Git commit 构建 `sessionctl`；不得从脏工作区重建正式历史文件。
-- 输入归档只读，输出写入全新空目录；不得原位重建或覆盖 Google Drive 正式目录。
-- 历史重建、Drive 上传、projection reseed、Token 回填和数据库清理是独立阶段；不得把后四项隐含在重建中。
-- 上传前必须通过逐文件 validator 和全序列 fidelity audit；上传后必须从 Drive 下载字节流重算 SHA-256。
-- reseed 与 Token 回填先 dry-run，只有用户明确批准后才 apply；purge 只允许针对已完成持久化回读验证的小时。
-- 不回显 DSN、OAuth token、rclone token、API Key 或私钥。实际 GPT 上游与公开 `claude-opus-5` 投影必须如实区分。
-- 保真改动只进入 `backend/internal/sessiondelivery` 的保存/导出链路；不得顺带修改实时响应链路，也不得改动用户要求保留的 `signature.go`。
+## 标准流程
 
-## 任务路由
+1. 用 `$sub2api-production-inspection` 确认当前生产拓扑、服务和磁盘；不要凭旧记录选择主机。
+2. 用 `$sub2api-production-regression` 完成 Session 专项、全包、race、vet、PostgreSQL integration 和必要黑盒回归。保真改动只能进入 `backend/internal/sessiondelivery`，不得顺带改变实时响应。
+3. 固定并推送一个已提交 commit，先 `git fetch origin`；构建脚本会拒绝不在已 fetch `origin/*` refs 中的 commit。确认本地不落后远端后，运行 `scripts/build_session_release.sh` 从 Git archive 构建前端 embed 的 Linux ARM64 app、两架构 `sessionctl` 和 Linux AMD64 `sessiond`，保存 manifest 与 SHA。
+4. 运行 `scripts/session_production_status.py --json` 获取同一时间点的双机只读快照。Exporter 运行时禁止对父表做精确 `session_records` count/size 查询。
+5. 按参考文档做 timer 冻结、回滚件、远端 staging、SHA 校验和原子替换。主应用使用 `$sub2api-local-binary-deploy` 或 `$sub2api-deploy`；Session DB 二进制只替换实际发生改动的组件。
+6. 发布后先验证 app/forwarder/tunnel/sessiond、健康接口、管理 UI、mode/owner、binary SHA 和 `NRestarts`，再启动最早失败小时追赶。
+7. 用 `scripts/session_production_status.py --watch` 有界观察批次、spool、quarantine、磁盘与服务；异常时保留原始记录并停止扩散，不跳过 validator、不提前 purge。
+8. 每个完成小时核对批次计数、Token 覆盖、Drive 对象大小和数据库 SHA；再从 exporter 的 systemd 环境独立执行 `rclone cat | sha256sum`，但绝不打印环境文件或 OAuth 配置。
+9. 追赶完成后恢复 timer，并观察一次自然触发成功。最终快照必须无 failed/exporting 批次、quarantine 为 0、spool 回到安全水位。
 
-- **历史归档重建或重新上传**：完整读取 [references/historical-rebuild.md](references/historical-rebuild.md)，使用本 Skill 的三个脚本。
-- **线上小时归档失败、积压、磁盘或服务异常**：完整读取 [references/live-operations.md](references/live-operations.md)，并结合项目的 `$sub2api-production-inspection`、`$sub2api-production-regression`、`$sub2api-deploy` 或 `$sub2api-local-binary-deploy`。
-- **仅审计现有文件**：运行 `sessionctl validate` 逐文件校验，再运行 `sessionctl audit-fidelity` 做完整时间序列校验；不要重建。
-- **仅查看 Token 指标**：优先读取管理 API/数据库已有精确聚合；不得按文件大小估算 Token。
+## 必须保留的门禁
 
-## 标准历史重建流程
+- App 必须用 `-tags=embed` 构建；缺少管理 UI 即发布失败，不接受“API 健康所以可继续”。
+- 生产 spool 路径固定核对 `/opt/sub2api/data/session-delivery/spool`；容量上限必须读取 forwarder 进程的实际环境值，读取不到即 fail-closed，不用 CLI 默认值猜测。
+- 隔离机 `sessiond` 的磁盘拒绝阈值必须从实际 systemd 参数或运行进程环境读取；读取不到即 fail-closed。当前基线是 75%，70% 开始预警。
+- 单次快照把非零累计 `NRestarts` 标为警告；watch 期间任何服务重启次数增长都立即失败，不能只看当前 active。
+- 2GB DB 主机不盲目提高解码并发；先靠小时 purge 释放空间。
+- 长时间 exporter 需同时看 CPU、I/O、批次状态与锁等待，不能只凭耗时判定卡死。
+- Drive durable read-back 成功前不得 purge；独立回读 SHA 成功前不得宣布交付完成。
+- 不回显 DSN、API Key、HMAC、OAuth/rclone token、私钥或 Session payload。
 
-1. 获得用户“代码已冻结，可以重建”的明确指示；记录 Git commit、输入 Drive 文件夹、小时范围和旧目录状态。
-2. 下载完整且连续的输入归档到本地只读目录，记录输入文件清单与 SHA-256。
-3. 运行 `scripts/build_sessionctl.sh`，从固定 commit 构建原生 `sessionctl`。
-4. 先用 `scripts/run_historical_rebuild.sh --plan-only` 核对范围、磁盘和目标路径。
-5. 执行本地重建。脚本自动完成输入 audit、重建、逐文件 validate、输出全序列 audit 和 SHA 清单。
-6. 人工抽样 Claude Code/Codex、多轮 thinking 回声、cache、tool use/web search/citations、Token usage；确认 `thinking.signature` 与历史回声连续。
-7. 只有前述门禁全部通过，才运行 `scripts/upload_verified_run.sh`，把同一 run 上传到全新版本目录。保留旧目录作为回滚证据。
-8. 使用脚本生成的 `REMOTE_SHA256SUMS` 与本地 `SHA256SUMS` 比对；再独立抽一个或多个对象执行 `rclone cat | shasum -a 256`。
-9. 若需要延续线上投影状态，先 dry-run `reseed-projection`，单独取得 apply 授权后再执行；Token 历史回填同理。
-10. 恢复并观察小时 timer，至少验证一次无工作成功运行或一个真实闭合小时归档。
+## 完成证据
 
-## 完成交付证据
-
-最终报告至少包含：固定 commit 与二进制 SHA、输入/输出小时范围、记录数、Token 数、全序列 audit 违规数、Drive 路径、每个对象本地/远端 SHA、DB 是否 reseed/backfill/purge、服务状态、定时器下一触发时间、磁盘余量、不可恢复的数据缺口。
-
-不得用“文件已生成”代替完整验收，也不得把尚未回填的历史 Token 显示为 0；应显示为未知或覆盖率不足。
+最终报告至少包含：固定 commit、四个构建产物 SHA、远端替换前后 SHA、回滚件路径、回归结果、服务与 restart 状态、失败/追赶批次、spool 水位、quarantine、双机磁盘、Drive 独立回读 SHA、timer 下一触发和自然触发结果。
 
 ## 资源
 
-- `scripts/build_sessionctl.sh`：从固定 Git commit 隔离构建本机 `sessionctl`。
-- `scripts/run_historical_rebuild.sh`：以不可覆盖方式执行一次本地重建与完整审计。
-- `scripts/upload_verified_run.sh`：重新验证既有 run 后上传到全新 Drive 目录并逐对象回读。
-- `references/historical-rebuild.md`：历史重建、上传、reseed 与 Token 回填细节。
-- `references/live-operations.md`：小时 exporter 故障恢复与生产验收清单。
+- `scripts/build_session_release.sh`：从固定提交生成不可覆盖的生产 release 与 SHA manifest。
+- `scripts/session_production_status.py`：双机只读一次快照或有界追赶监控。
+- `references/production-rollout.md`：生产发布、回滚和验收的精确阶段门禁。

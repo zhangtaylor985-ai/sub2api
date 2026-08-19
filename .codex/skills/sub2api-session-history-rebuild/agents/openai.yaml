@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sub2API Session 历史重建"
+  short_description: "固定提交本地重建、双轮幂等审计与 Drive 版本化回读验收"
+  default_prompt: "使用 $sub2api-session-history-rebuild 从固定提交安全重建历史 Session 交付文件并完成审计。"

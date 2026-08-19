@@ -107,6 +107,8 @@
 - 临时不走 GitHub/CI 的本地构建二进制上线、zstd patch 传输、systemd binary 替换与回滚：使用 `.codex/skills/sub2api-local-binary-deploy/SKILL.md`；这是临时方案，后续恢复 GitHub 发布链路后应停用。
 - 上线前回归、Claude/OpenAI/Codex 协议兼容、Web search、streaming、cc1 黑盒：使用 `.codex/skills/sub2api-production-regression/SKILL.md`。
 - Claude Code / `cc1` / `claude2` 真实 TTY/PTY 黑盒、debug-file、settings 覆盖、连续多轮证据链：使用 `.codex/skills/sub2api-cc1-tty-blackbox-testing/SKILL.md`。
+- Session V2 生产固定提交构建、App/DB 双机发布、exporter 追赶、spool/磁盘监控、timer 恢复和上线验收：使用 `.codex/skills/sub2api-session-delivery-ops/SKILL.md`。
+- Session V2 历史 Drive 交付文件的本地双轮重建、逐字节幂等审计、版本化上传与 SHA 回读：使用 `.codex/skills/sub2api-session-history-rebuild/SKILL.md`。
 
 ## Claude -> GPT 模型映射
 

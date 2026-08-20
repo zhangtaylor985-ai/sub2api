@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -15,12 +14,12 @@ import (
 
 type GatewayCacheSuite struct {
 	IntegrationRedisSuite
-	cache service.GatewayCache
+	cache *gatewayCache
 }
 
 func (s *GatewayCacheSuite) SetupTest() {
 	s.IntegrationRedisSuite.SetupTest()
-	s.cache = NewGatewayCache(s.rdb)
+	s.cache = &gatewayCache{rdb: s.rdb}
 }
 
 func (s *GatewayCacheSuite) TestGetSessionAccountID_Missing() {
@@ -102,6 +101,66 @@ func (s *GatewayCacheSuite) TestGetSessionAccountID_CorruptedValue() {
 	_, err := s.cache.GetSessionAccountID(s.ctx, groupID, sessionID)
 	require.Error(s.T(), err, "expected error for corrupted value")
 	require.False(s.T(), errors.Is(err, redis.Nil), "expected parsing error, not redis.Nil")
+}
+
+func (s *GatewayCacheSuite) TestOpenAIStickySessionIndexTracksLifecycle() {
+	accountID := int64(103)
+	groupID := int64(1)
+	sessionID := "openai:session-index"
+
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, sessionID, accountID, 3*time.Minute))
+	count, err := s.cache.GetOpenAIActiveStickySessionCount(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, count)
+
+	require.NoError(s.T(), s.cache.RefreshSessionTTL(s.ctx, groupID, sessionID, 5*time.Minute))
+	count, err = s.cache.GetOpenAIActiveStickySessionCount(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, count)
+
+	require.NoError(s.T(), s.cache.DeleteSessionAccountID(s.ctx, groupID, sessionID))
+	count, err = s.cache.GetOpenAIActiveStickySessionCount(s.ctx, accountID)
+	require.NoError(s.T(), err)
+	require.Zero(s.T(), count)
+}
+
+func (s *GatewayCacheSuite) TestOpenAIStickySessionIndexMovesReboundSession() {
+	groupID := int64(1)
+	sessionID := "openai:session-rebound"
+
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, sessionID, 104, time.Minute))
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, sessionID, 105, time.Minute))
+
+	oldCount, err := s.cache.GetOpenAIActiveStickySessionCount(s.ctx, 104)
+	require.NoError(s.T(), err)
+	require.Zero(s.T(), oldCount)
+	newCount, err := s.cache.GetOpenAIActiveStickySessionCount(s.ctx, 105)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 1, newCount)
+}
+
+func (s *GatewayCacheSuite) TestOpenAIStickySessionIndexPrunesExpiredBinding() {
+	accountID := int64(106)
+	groupID := int64(1)
+	sessionID := "openai:session-expiring"
+
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, sessionID, accountID, 100*time.Millisecond))
+	require.Eventually(s.T(), func() bool {
+		count, err := s.cache.GetOpenAIActiveStickySessionCount(s.ctx, accountID)
+		return err == nil && count == 0
+	}, 3*time.Second, 100*time.Millisecond)
+}
+
+func (s *GatewayCacheSuite) TestOpenAIStickySessionIndexTTLIsNotShortenedByLegacyBinding() {
+	accountID := int64(107)
+	groupID := int64(1)
+
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, "openai:primary", accountID, 5*time.Minute))
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, "openai:legacy", accountID, time.Minute))
+
+	ttl, err := s.rdb.TTL(s.ctx, openAIStickyAccountIndexKey(accountID)).Result()
+	require.NoError(s.T(), err)
+	require.Greater(s.T(), ttl, 4*time.Minute)
 }
 
 func TestGatewayCacheSuite(t *testing.T) {

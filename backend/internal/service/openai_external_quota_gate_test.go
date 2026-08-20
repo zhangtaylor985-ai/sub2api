@@ -88,6 +88,40 @@ func (s *openAIExternalQuotaGateReaderStub) Fetch(_ context.Context, _ *Account)
 	return s.snapshot, s.err
 }
 
+type openAIExternalQuotaGateStickyIndexStub struct {
+	count int
+	err   error
+}
+
+func (s *openAIExternalQuotaGateStickyIndexStub) GetOpenAIActiveStickySessionCount(_ context.Context, _ int64) (int, error) {
+	return s.count, s.err
+}
+
+type openAIExternalQuotaGateConcurrencyCacheStub struct {
+	ConcurrencyCache
+	active  int
+	waiting int
+	err     error
+}
+
+func (s openAIExternalQuotaGateConcurrencyCacheStub) GetAccountConcurrencyBatch(_ context.Context, accountIDs []int64) (map[int64]int, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	result := make(map[int64]int, len(accountIDs))
+	for _, accountID := range accountIDs {
+		result[accountID] = s.active
+	}
+	return result, nil
+}
+
+func (s openAIExternalQuotaGateConcurrencyCacheStub) GetAccountWaitingCount(_ context.Context, _ int64) (int, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	return s.waiting, nil
+}
+
 func TestOpenAIExternalQuotaHTTPReaderFetch(t *testing.T) {
 	var authorization, accountID, originator, method string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +158,7 @@ func TestOpenAIExternalQuotaHTTPReaderFetch(t *testing.T) {
 	require.Nil(t, snapshot.Secondary)
 }
 
-func TestOpenAIExternalQuotaGateFirstObservationFailsClosed(t *testing.T) {
+func TestOpenAIExternalQuotaGateFirstObservationDrainsSchedulableAccount(t *testing.T) {
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 	repo := &openAIExternalQuotaGateAccountRepoStub{}
 	reader := &openAIExternalQuotaGateReaderStub{snapshot: quotaSnapshot(10, 100)}
@@ -133,13 +167,11 @@ func TestOpenAIExternalQuotaGateFirstObservationFailsClosed(t *testing.T) {
 
 	service.evaluateAccount(context.Background(), account)
 
-	require.Equal(t, []bool{false}, repo.setValues)
+	require.Empty(t, repo.setValues)
 	state := repo.lastState(t)
-	require.Equal(t, "baseline_created", state.Decision)
-	require.NotNil(t, state.BaselinePrimary)
-	require.Equal(t, 10.0, state.BaselinePrimary.UsedPercent)
-	require.NotNil(t, state.ObservationReadyAt)
-	require.Equal(t, now.Add(2*time.Minute), *state.ObservationReadyAt)
+	require.Equal(t, "draining_started", state.Decision)
+	require.NotNil(t, state.DrainStartedAt)
+	require.Equal(t, 1, state.DrainEmptyChecks)
 }
 
 func TestOpenAIExternalQuotaGateExternalDecreaseGrantsLease(t *testing.T) {
@@ -160,13 +192,31 @@ func TestOpenAIExternalQuotaGateExternalDecreaseGrantsLease(t *testing.T) {
 	require.Equal(t, "external_decrease_detected", state.Decision)
 	require.Equal(t, 1.25, state.ExternalDeltaPercent)
 	require.NotNil(t, state.LeaseUntil)
-	require.Equal(t, now.Add(time.Hour), *state.LeaseUntil)
+	require.Equal(t, now.Add(2*time.Hour), *state.LeaseUntil)
 	require.Equal(t, now, *state.ExternalDetectedAt)
-	require.Equal(t, now.Add(time.Hour), *state.LastLeaseUntil)
+	require.Equal(t, now.Add(2*time.Hour), *state.LastLeaseUntil)
 	require.Len(t, state.RecentEvents, 1)
 	require.True(t, state.RecentEvents[0].Schedulable)
 	require.Equal(t, "external_decrease_detected", state.RecentEvents[0].Decision)
-	require.Equal(t, now.Add(time.Hour), *state.RecentEvents[0].LeaseUntil)
+	require.Equal(t, now.Add(2*time.Hour), *state.RecentEvents[0].LeaseUntil)
+}
+
+func TestOpenAIExternalQuotaGateUsesPerAccountGrantDuration(t *testing.T) {
+	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	observedAt := now.Add(-time.Minute)
+	repo := &openAIExternalQuotaGateAccountRepoStub{}
+	usageRepo := &openAIExternalQuotaGateUsageRepoStub{stats: &usagestats.AccountStats{}}
+	reader := &openAIExternalQuotaGateReaderStub{snapshot: quotaSnapshot(11.25, 100)}
+	service := newOpenAIExternalQuotaGateTestService(repo, usageRepo, reader, now)
+	account := newOpenAIExternalQuotaGateTestAccount(false)
+	account.Extra[openAIExternalQuotaGateGrantMinutesKey] = 180
+	account.Extra[openAIExternalQuotaGateStateKey] = quotaObservationState(observedAt, 10, 100)
+
+	service.evaluateAccount(context.Background(), account)
+
+	state := repo.lastState(t)
+	require.Equal(t, "external_decrease_detected", state.Decision)
+	require.Equal(t, now.Add(3*time.Hour), *state.LeaseUntil)
 }
 
 func TestOpenAIExternalQuotaGateLocalTrafficBlocksExternalSignal(t *testing.T) {
@@ -310,13 +360,14 @@ func TestOpenAIExternalQuotaGateClosesSchedulableAccountWithoutLease(t *testing.
 	service.evaluateAccount(context.Background(), account)
 
 	state := repo.lastState(t)
-	require.Equal(t, []bool{false}, repo.setValues)
-	require.Equal(t, "schedulable_without_lease_closed", state.Decision)
-	require.Equal(t, 12.0, state.BaselinePrimary.UsedPercent)
+	require.Empty(t, repo.setValues)
+	require.Equal(t, "draining_without_lease", state.Decision)
+	require.NotNil(t, state.DrainStartedAt)
+	require.Equal(t, 1, state.DrainEmptyChecks)
 	require.True(t, usageRepo.startTime.IsZero())
 }
 
-func TestOpenAIExternalQuotaGateExpiredLeaseFailsClosed(t *testing.T) {
+func TestOpenAIExternalQuotaGateExpiredLeaseClosesAfterTwoEmptyDrainChecks(t *testing.T) {
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 	observedAt := now.Add(-time.Minute)
 	leaseUntil := now
@@ -328,17 +379,73 @@ func TestOpenAIExternalQuotaGateExpiredLeaseFailsClosed(t *testing.T) {
 	state := quotaState(observedAt, 10, 100)
 	state.LeaseUntil = &leaseUntil
 	account.Extra[openAIExternalQuotaGateStateKey] = state
+	repo.account = account
+
+	service.evaluateAccount(context.Background(), account)
+	first := repo.lastState(t)
+	require.Empty(t, repo.setValues)
+	require.Equal(t, "draining_started", first.Decision)
+	require.Equal(t, 1, first.DrainEmptyChecks)
+	require.True(t, account.Schedulable)
 
 	service.evaluateAccount(context.Background(), account)
 
 	require.Equal(t, []bool{false}, repo.setValues)
 	updated := repo.lastState(t)
-	require.Equal(t, "lease_expired", updated.Decision)
+	require.Equal(t, "drain_complete", updated.Decision)
 	require.Nil(t, updated.LeaseUntil)
 	require.Equal(t, leaseUntil, *updated.LastLeaseUntil)
 	require.Equal(t, 30.0, updated.BaselinePrimary.UsedPercent)
 	require.Equal(t, now.Add(2*time.Minute), *updated.ObservationReadyAt)
 	require.True(t, usageRepo.startTime.IsZero())
+}
+
+func TestOpenAIExternalQuotaGateExpiredLeaseKeepsActiveStickySession(t *testing.T) {
+	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	observedAt := now.Add(-time.Minute)
+	leaseUntil := now
+	repo := &openAIExternalQuotaGateAccountRepoStub{}
+	reader := &openAIExternalQuotaGateReaderStub{snapshot: quotaSnapshot(30, 100)}
+	service := newOpenAIExternalQuotaGateTestService(repo, &openAIExternalQuotaGateUsageRepoStub{}, reader, now)
+	service.stickySessionIndex = &openAIExternalQuotaGateStickyIndexStub{count: 1}
+	account := newOpenAIExternalQuotaGateTestAccount(true)
+	state := quotaState(observedAt, 10, 100)
+	state.LeaseUntil = &leaseUntil
+	account.Extra[openAIExternalQuotaGateStateKey] = state
+
+	service.evaluateAccount(context.Background(), account)
+
+	require.Empty(t, repo.setValues)
+	updated := repo.lastState(t)
+	require.Equal(t, "draining_started", updated.Decision)
+	require.Equal(t, 1, updated.ActiveStickySessions)
+	require.Zero(t, updated.DrainEmptyChecks)
+	require.NotNil(t, updated.DrainStartedAt)
+}
+
+func TestOpenAIExternalQuotaGateDrainCheckErrorKeepsAccountAvailableForStickyOnly(t *testing.T) {
+	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	repo := &openAIExternalQuotaGateAccountRepoStub{}
+	service := newOpenAIExternalQuotaGateTestService(
+		repo,
+		&openAIExternalQuotaGateUsageRepoStub{},
+		&openAIExternalQuotaGateReaderStub{snapshot: quotaSnapshot(30, 100)},
+		now,
+	)
+	service.stickySessionIndex = &openAIExternalQuotaGateStickyIndexStub{err: errors.New("redis unavailable")}
+	account := newOpenAIExternalQuotaGateTestAccount(true)
+	startedAt := now.Add(-time.Minute)
+	state := quotaState(startedAt, 30, 100)
+	state.DrainStartedAt = &startedAt
+	account.Extra[openAIExternalQuotaGateStateKey] = state
+	account.Extra[openAIExternalQuotaGateDrainingKey] = true
+
+	service.evaluateAccount(context.Background(), account)
+
+	require.Empty(t, repo.setValues)
+	updated := repo.lastState(t)
+	require.Equal(t, "draining_check_error", updated.Decision)
+	require.Zero(t, updated.DrainEmptyChecks)
 }
 
 func TestOpenAIExternalQuotaGateActiveLeaseClosesOnWindowReset(t *testing.T) {
@@ -356,8 +463,8 @@ func TestOpenAIExternalQuotaGateActiveLeaseClosesOnWindowReset(t *testing.T) {
 
 	service.evaluateAccount(context.Background(), account)
 
-	require.Equal(t, []bool{false}, repo.setValues)
-	require.Equal(t, "window_changed", repo.lastState(t).Decision)
+	require.Empty(t, repo.setValues)
+	require.Equal(t, "draining_window_changed", repo.lastState(t).Decision)
 	require.True(t, usageRepo.startTime.IsZero())
 }
 
@@ -373,8 +480,8 @@ func TestOpenAIExternalQuotaGateWindowChangeFailsClosed(t *testing.T) {
 
 	service.evaluateAccount(context.Background(), account)
 
-	require.Equal(t, []bool{false}, repo.setValues)
-	require.Equal(t, "window_changed", repo.lastState(t).Decision)
+	require.Empty(t, repo.setValues)
+	require.Equal(t, "draining_window_changed", repo.lastState(t).Decision)
 }
 
 func TestOpenAIExternalQuotaGateUpstreamAndDatabaseFailuresFailClosed(t *testing.T) {
@@ -391,8 +498,8 @@ func TestOpenAIExternalQuotaGateUpstreamAndDatabaseFailuresFailClosed(t *testing
 		service.evaluateAccount(context.Background(), account)
 
 		state := repo.lastState(t)
-		require.Equal(t, []bool{false}, repo.setValues)
-		require.Equal(t, "upstream_error", state.Decision)
+		require.Empty(t, repo.setValues)
+		require.Equal(t, "draining_upstream_error", state.Decision)
 		require.Equal(t, observedAt, *state.ObservedAt, "the last successful baseline must be preserved")
 	})
 
@@ -428,7 +535,7 @@ func TestOpenAIExternalQuotaGateStateWriteFailureCannotOpenAccount(t *testing.T)
 	require.Empty(t, repo.setValues)
 }
 
-func TestOpenAIExternalQuotaGateConfigureAccountEnablesWithImmediateBaseline(t *testing.T) {
+func TestOpenAIExternalQuotaGateConfigureAccountSafelyDrainsSchedulableAccount(t *testing.T) {
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 	account := newOpenAIExternalQuotaGateTestAccount(true)
 	repo := &openAIExternalQuotaGateAccountRepoStub{account: account}
@@ -439,11 +546,32 @@ func TestOpenAIExternalQuotaGateConfigureAccountEnablesWithImmediateBaseline(t *
 		now,
 	)
 
-	updated, err := service.ConfigureAccount(context.Background(), account.ID, true)
+	updated, err := service.ConfigureAccount(context.Background(), account.ID, true, nil)
+
+	require.NoError(t, err)
+	require.True(t, updated.Schedulable)
+	require.True(t, IsOpenAIExternalQuotaGateEnabled(updated))
+	require.True(t, IsOpenAIExternalQuotaGateDraining(updated))
+	require.Equal(t, "draining_started", readOpenAIExternalQuotaGateState(updated).Decision)
+}
+
+func TestOpenAIExternalQuotaGateConfigureClosedAccountCreatesImmediateBaseline(t *testing.T) {
+	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	account := newOpenAIExternalQuotaGateTestAccount(false)
+	repo := &openAIExternalQuotaGateAccountRepoStub{account: account}
+	service := newOpenAIExternalQuotaGateTestService(
+		repo,
+		&openAIExternalQuotaGateUsageRepoStub{},
+		&openAIExternalQuotaGateReaderStub{snapshot: quotaSnapshot(12.5, 100)},
+		now,
+	)
+
+	updated, err := service.ConfigureAccount(context.Background(), account.ID, true, nil)
 
 	require.NoError(t, err)
 	require.False(t, updated.Schedulable)
 	require.True(t, IsOpenAIExternalQuotaGateEnabled(updated))
+	require.False(t, IsOpenAIExternalQuotaGateDraining(updated))
 	require.Equal(t, "baseline_created", readOpenAIExternalQuotaGateState(updated).Decision)
 }
 
@@ -459,12 +587,54 @@ func TestOpenAIExternalQuotaGateConfigureAccountDisablesFailClosed(t *testing.T)
 		time.Now(),
 	)
 
-	updated, err := service.ConfigureAccount(context.Background(), account.ID, false)
+	updated, err := service.ConfigureAccount(context.Background(), account.ID, false, nil)
 
 	require.NoError(t, err)
 	require.False(t, updated.Schedulable)
 	require.False(t, IsOpenAIExternalQuotaGateEnabled(updated))
 	require.Nil(t, updated.Extra[openAIExternalQuotaGateStateKey])
+}
+
+func TestOpenAIExternalQuotaGateConfigureAccountUpdatesGrantWithoutResettingState(t *testing.T) {
+	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	account := newOpenAIExternalQuotaGateTestAccount(true)
+	account.Extra[openAIExternalQuotaGateEnabledKey] = true
+	state := quotaState(now, 10, 100)
+	leaseUntil := now.Add(time.Hour)
+	state.LeaseUntil = &leaseUntil
+	account.Extra[openAIExternalQuotaGateStateKey] = state
+	repo := &openAIExternalQuotaGateAccountRepoStub{account: account}
+	service := newOpenAIExternalQuotaGateTestService(
+		repo,
+		&openAIExternalQuotaGateUsageRepoStub{},
+		&openAIExternalQuotaGateReaderStub{},
+		now,
+	)
+	grantMinutes := 180
+
+	updated, err := service.ConfigureAccount(context.Background(), account.ID, true, &grantMinutes)
+
+	require.NoError(t, err)
+	require.Equal(t, 180, parseExtraInt(updated.Extra[openAIExternalQuotaGateGrantMinutesKey]))
+	require.Equal(t, leaseUntil, *readOpenAIExternalQuotaGateState(updated).LeaseUntil)
+	require.Empty(t, repo.setValues)
+}
+
+func TestOpenAIExternalQuotaGateConfigureAccountRejectsInvalidGrant(t *testing.T) {
+	account := newOpenAIExternalQuotaGateTestAccount(false)
+	repo := &openAIExternalQuotaGateAccountRepoStub{account: account}
+	service := newOpenAIExternalQuotaGateTestService(
+		repo,
+		&openAIExternalQuotaGateUsageRepoStub{},
+		&openAIExternalQuotaGateReaderStub{},
+		time.Now(),
+	)
+	grantMinutes := 10
+
+	_, err := service.ConfigureAccount(context.Background(), account.ID, true, &grantMinutes)
+
+	require.Error(t, err)
+	require.Empty(t, repo.setValues)
 }
 
 func TestOpenAIExternalQuotaGateRefreshRejectsDisabledAccount(t *testing.T) {
@@ -493,7 +663,7 @@ func TestOpenAIExternalQuotaGateDefaultPolicy(t *testing.T) {
 	)
 
 	require.Equal(t, time.Minute, service.interval)
-	require.Equal(t, time.Hour, service.lease)
+	require.Equal(t, 2*time.Hour, service.lease)
 	require.Equal(t, 2*time.Minute, service.quiet)
 	require.Equal(t, 0.01, service.minDelta)
 }
@@ -518,7 +688,9 @@ func newOpenAIExternalQuotaGateTestService(
 	reader openAIExternalQuotaUsageReader,
 	now time.Time,
 ) *OpenAIExternalQuotaGateService {
-	service := NewOpenAIExternalQuotaGateService(repo, usageRepo, reader, time.Minute, time.Hour, 1)
+	service := NewOpenAIExternalQuotaGateService(repo, usageRepo, reader, time.Minute, 2*time.Hour, 1)
+	service.stickySessionIndex = &openAIExternalQuotaGateStickyIndexStub{}
+	service.concurrencyService = NewConcurrencyService(openAIExternalQuotaGateConcurrencyCacheStub{})
 	service.now = func() time.Time { return now }
 	return service
 }

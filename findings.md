@@ -835,3 +835,22 @@
 - UI 视觉方向按既有管理后台收敛为“精密运维控制台”：保留 sky/emerald/amber 状态语义、紧凑信息密度和暗色主题，不引入与现有产品冲突的新字体或装饰体系。
 - 完整前端基线为 676 通过、12 失败；12项失败仍集中在既有 AccountUsageCell、分布图、EmailVerify 和持久页大小用例，本功能3项全部通过，未扩大失败面。
 - 固定放行期间的临时上游查询失败现在会保留原截止时间并继续可调度，不续期；上游明确 `allowed=false/limit_reached=true`、窗口变化、账号失效或到期仍会立即关闭。
+
+---
+
+# 2026-08-20 会话安全排空调查结论
+
+- OpenAI粘连当前是 `sticky_session:{groupID}:{sessionHash} -> accountID` 的单向Redis键，默认滚动TTL为60分钟；命中请求会刷新TTL。
+- 当前GatewayCache只能按会话查询账号，不能按账号列举或统计现存粘连，因此不能可靠判断某账号是否已排空。
+- OpenAI账号一旦 `schedulable=false`，粘连命中会清理绑定并重新选择账号；现有固定租约到期直接关闭会造成活跃会话漂移。
+- 现有 `session_limit:account:{accountID}` 活跃会话集合仅用于Anthropic OAuth/SetupToken且依赖 `max_sessions`，不能直接代表OpenAI粘连。
+- 安全实现必须新增独立的“是否接收新会话”语义：排空账号不进入普通候选池，但精确粘连命中仍可用；不能复用 `schedulable=false` 表达排空。
+- 反向索引宜使用账号级Sorted Set，member包含group与session hash，score为最后活动时间；读取时按实际粘连TTL清理过期成员。
+- 关闭条件除反向粘连数为0外，还要检查Redis并发槽位和等待队列，避免刚好在请求完成前关闭。
+- 连续两轮空闲确认用于覆盖检查与请求到达的边界竞争；进入排空后先原子阻止新会话，才允许开始计数。
+- 开放时长与粘连TTL是两个独立概念：前者决定何时停止接收新会话，后者决定旧会话多久无请求后视为不活跃。
+- `previous_response_id` 的账号绑定同样通过GatewayCache写入 `openai:response:*` 键；反向索引覆盖所有 `openai:*` 键，因而同时保护普通session粘连与WSv2续链。
+- 新旧session hash兼容期会短暂写入两个OpenAI键；反向计数可能保守地重复统计，但旧键最长10分钟，结果只会延迟排空，不会误判为空。
+- 新会话候选除在缓存候选阶段过滤排空账号外，还必须在DB最终回读后再次过滤；旧会话粘连和 `previous_response_id` 则保留基础回读，才能实现同一账号“拒绝新会话、允许旧会话”的双重语义。
+- Redis脚本使用服务器时间维护过期分数，并只延长、不缩短账号索引TTL；兼容期的短TTL旧绑定不会把主绑定对应的反向索引提前清掉。
+- 当前前端全量Vitest存在与本次无关的12项基线失败，集中在AccountUsageCell、两个分布图、EmailVerifyView和usePersistedPageSize；本次新增门禁专项测试没有失败。

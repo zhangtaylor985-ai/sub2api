@@ -680,6 +680,78 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionSticky(t *testin
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_DrainingAccountOnlyServesStickySession(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10)
+	draining := Account{
+		ID:          2101,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			openAIExternalQuotaGateDrainingKey: true,
+		},
+	}
+	available := Account{
+		ID:          2102,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    10,
+	}
+	cache := &schedulerTestGatewayCache{
+		sessionBindings: map[string]int64{
+			"openai:existing-session": draining.ID,
+		},
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{draining, available}},
+		cache:              cache,
+		cfg:                &config.Config{},
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	stickySelection, stickyDecision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"existing-session",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		false,
+	)
+	require.NoError(t, err)
+	require.Equal(t, draining.ID, stickySelection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerSessionSticky, stickyDecision.Layer)
+	if stickySelection.ReleaseFunc != nil {
+		stickySelection.ReleaseFunc()
+	}
+
+	freshSelection, freshDecision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"new-session",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		false,
+	)
+	require.NoError(t, err)
+	require.Equal(t, available.ID, freshSelection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, freshDecision.Layer)
+	if freshSelection.ReleaseFunc != nil {
+		freshSelection.ReleaseFunc()
+	}
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsSticky(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(10100)

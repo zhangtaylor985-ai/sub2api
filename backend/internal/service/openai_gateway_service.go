@@ -1499,7 +1499,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		if fresh == nil {
 			continue
 		}
-		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, false)
+		fresh = s.recheckFreshSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, false)
 		if fresh == nil {
 			continue
 		}
@@ -1786,7 +1786,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if fresh == nil {
 				continue
 			}
-			fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
+			fresh = s.recheckFreshSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 			if fresh == nil {
 				continue
 			}
@@ -1820,7 +1820,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if fresh == nil {
 				continue
 			}
-			fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
+			fresh = s.recheckFreshSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 			if fresh == nil {
 				continue
 			}
@@ -1865,7 +1865,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if fresh == nil {
 			continue
 		}
-		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
+		fresh = s.recheckFreshSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 		if fresh == nil {
 			continue
 		}
@@ -1930,6 +1930,9 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	if !isOpenAIAccountEligibleForRequest(fresh, requestedModel, requireCompact) {
 		return nil
 	}
+	if IsOpenAIExternalQuotaGateDraining(fresh) {
+		return nil
+	}
 	if s.isOpenAIAccountRuntimeBlocked(fresh) {
 		return nil
 	}
@@ -1955,6 +1958,17 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return nil
 	}
 	if s.isOpenAIAccountRuntimeBlocked(latest) {
+		return nil
+	}
+	return latest
+}
+
+// recheckFreshSelectedOpenAIAccountFromDB applies the final new-session guard
+// after the DB recheck. Sticky continuations intentionally use the base recheck
+// so draining accounts can finish their existing conversations.
+func (s *OpenAIGatewayService) recheckFreshSelectedOpenAIAccountFromDB(ctx context.Context, account *Account, requestedModel string, requireCompact bool) *Account {
+	latest := s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, requireCompact)
+	if latest == nil || IsOpenAIExternalQuotaGateDraining(latest) {
 		return nil
 	}
 	return latest

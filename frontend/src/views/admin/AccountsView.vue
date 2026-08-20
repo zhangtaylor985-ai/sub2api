@@ -1158,6 +1158,14 @@ const getExternalQuotaGateUsage = (account: Account) => {
 
 const getExternalQuotaGateBadge = (account: Account) => {
   const state = account.extra?.openai_external_quota_gate_state
+  if (account.extra?.openai_external_quota_gate_draining === true || state?.drain_started_at) {
+    return {
+      label: t('admin.accounts.externalQuotaGate.badgeDraining'),
+      title: t('admin.accounts.externalQuotaGate.badgeDrainingTitle', { count: state?.active_sticky_sessions ?? 0 }),
+      className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+      dotClass: 'bg-amber-500'
+    }
+  }
   if (account.schedulable) {
     return {
       label: t('admin.accounts.externalQuotaGate.badgeAvailable'),

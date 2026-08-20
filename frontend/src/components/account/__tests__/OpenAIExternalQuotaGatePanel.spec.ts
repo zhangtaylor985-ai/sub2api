@@ -42,6 +42,8 @@ const buildAccount = (enabled = true) => ({
   credentials: {},
   extra: enabled ? {
     openai_external_quota_gate_enabled: true,
+    openai_external_quota_gate_draining: false,
+    openai_external_quota_gate_grant_minutes: 120,
     openai_external_quota_gate_state: {
       allowed: true,
       limit_reached: false,
@@ -125,7 +127,39 @@ describe('OpenAIExternalQuotaGatePanel', () => {
     await wrapper.get('[role="switch"]').trigger('click')
     await flushPromises()
 
-    expect(configureMock).toHaveBeenCalledWith(19, true)
+    expect(configureMock).toHaveBeenCalledWith(19, true, 120)
     expect(wrapper.emitted('updated')).toHaveLength(1)
+  })
+
+  it('updates the configurable grant duration without toggling the gate', async () => {
+    const updated = buildAccount()
+    updated.extra.openai_external_quota_gate_grant_minutes = 180
+    configureMock.mockResolvedValue(updated)
+    const wrapper = mount(OpenAIExternalQuotaGatePanel, { props: { account: buildAccount() } })
+
+    await wrapper.get('[data-testid="external-quota-grant-minutes"]').setValue('180')
+    await wrapper.get('[data-testid="save-external-quota-grant"]').trigger('click')
+    await flushPromises()
+
+    expect(configureMock).toHaveBeenCalledWith(19, true, 180)
+    expect(wrapper.emitted('updated')?.[0]).toEqual([updated])
+  })
+
+  it('shows draining as existing-session-only with live counts', () => {
+    const account = buildAccount()
+    account.extra.openai_external_quota_gate_draining = true
+    account.extra.openai_external_quota_gate_state.decision = 'draining'
+    account.extra.openai_external_quota_gate_state.drain_started_at = '2026-08-19T13:00:00Z'
+    account.extra.openai_external_quota_gate_state.drain_empty_checks = 0
+    account.extra.openai_external_quota_gate_state.active_sticky_sessions = 3
+    account.extra.openai_external_quota_gate_state.active_requests = 1
+    account.extra.openai_external_quota_gate_state.waiting_requests = 2
+
+    const wrapper = mount(OpenAIExternalQuotaGatePanel, { props: { account } })
+
+    expect(wrapper.text()).toContain('admin.accounts.externalQuotaGate.drainingOnly')
+    expect(wrapper.text()).toContain('admin.accounts.externalQuotaGate.decisions.draining')
+    expect(wrapper.text()).toContain('3')
+    expect(wrapper.text()).toContain('1 / 2')
   })
 })

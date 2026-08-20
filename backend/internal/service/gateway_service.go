@@ -419,6 +419,14 @@ type GatewayCache interface {
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
 }
 
+// OpenAIStickySessionIndex exposes the account-side view of OpenAI sticky
+// bindings. Implementations must count both session_hash and response_id
+// continuations so a draining account is not closed while either binding is
+// still active.
+type OpenAIStickySessionIndex interface {
+	GetOpenAIActiveStickySessionCount(ctx context.Context, accountID int64) (int, error)
+}
+
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
 func derefGroupID(groupID *int64) int64 {
 	if groupID == nil {

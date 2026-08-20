@@ -18,15 +18,20 @@ import (
 )
 
 const (
-	openAIExternalQuotaGateEnabledKey = "openai_external_quota_gate_enabled"
-	openAIExternalQuotaGateStateKey   = "openai_external_quota_gate_state"
+	openAIExternalQuotaGateEnabledKey      = "openai_external_quota_gate_enabled"
+	openAIExternalQuotaGateStateKey        = "openai_external_quota_gate_state"
+	openAIExternalQuotaGateDrainingKey     = "openai_external_quota_gate_draining"
+	openAIExternalQuotaGateGrantMinutesKey = "openai_external_quota_gate_grant_minutes"
 
 	defaultOpenAIExternalQuotaGateInterval = time.Minute
-	defaultOpenAIExternalQuotaGateLease    = time.Hour
+	defaultOpenAIExternalQuotaGateLease    = 2 * time.Hour
 	defaultOpenAIExternalQuotaGateQuiet    = 2 * time.Minute
 	defaultOpenAIExternalQuotaGateDelta    = 0.01
 	defaultOpenAIExternalQuotaGateWorkers  = 4
 	defaultOpenAIExternalQuotaGateEvents   = 12
+	defaultOpenAIExternalQuotaDrainChecks  = 2
+	minOpenAIExternalQuotaGrantMinutes     = 30
+	maxOpenAIExternalQuotaGrantMinutes     = 720
 	openAIExternalQuotaUsageBodyLimit      = int64(1 << 20)
 )
 
@@ -49,10 +54,14 @@ type openAIExternalQuotaGateEvent struct {
 	OccurredAt           time.Time  `json:"occurred_at"`
 	Decision             string     `json:"decision"`
 	Schedulable          bool       `json:"schedulable"`
+	Draining             bool       `json:"draining,omitempty"`
 	UsedPercent          *float64   `json:"used_percent,omitempty"`
 	ExternalDeltaPercent float64    `json:"external_delta_percent,omitempty"`
 	LocalRequests        int64      `json:"local_requests,omitempty"`
 	LeaseUntil           *time.Time `json:"lease_until,omitempty"`
+	ActiveStickySessions int        `json:"active_sticky_sessions,omitempty"`
+	ActiveRequests       int        `json:"active_requests,omitempty"`
+	WaitingRequests      int        `json:"waiting_requests,omitempty"`
 }
 
 type openAIExternalQuotaGateState struct {
@@ -72,6 +81,11 @@ type openAIExternalQuotaGateState struct {
 	Decision             string                         `json:"decision"`
 	ExternalDeltaPercent float64                        `json:"external_delta_percent,omitempty"`
 	LocalRequests        int64                          `json:"local_requests,omitempty"`
+	DrainStartedAt       *time.Time                     `json:"drain_started_at,omitempty"`
+	DrainEmptyChecks     int                            `json:"drain_empty_checks,omitempty"`
+	ActiveStickySessions int                            `json:"active_sticky_sessions,omitempty"`
+	ActiveRequests       int                            `json:"active_requests,omitempty"`
+	WaitingRequests      int                            `json:"waiting_requests,omitempty"`
 	RecentEvents         []openAIExternalQuotaGateEvent `json:"recent_events,omitempty"`
 }
 
@@ -233,15 +247,18 @@ func convertOptionalOpenAIExternalQuotaWindow(raw *openAIExternalQuotaRawWindow)
 }
 
 type OpenAIExternalQuotaGateService struct {
-	accountRepo AccountRepository
-	usageRepo   openAIExternalQuotaWindowStatsReader
-	reader      openAIExternalQuotaUsageReader
+	accountRepo        AccountRepository
+	usageRepo          openAIExternalQuotaWindowStatsReader
+	reader             openAIExternalQuotaUsageReader
+	stickySessionIndex OpenAIStickySessionIndex
+	concurrencyService *ConcurrencyService
 
-	interval time.Duration
-	lease    time.Duration
-	quiet    time.Duration
-	minDelta float64
-	now      func() time.Time
+	interval            time.Duration
+	lease               time.Duration
+	quiet               time.Duration
+	minDelta            float64
+	drainChecksRequired int
+	now                 func() time.Time
 
 	startOnce sync.Once
 	stopOnce  sync.Once
@@ -268,15 +285,16 @@ func NewOpenAIExternalQuotaGateService(
 		minDelta = defaultOpenAIExternalQuotaGateDelta
 	}
 	return &OpenAIExternalQuotaGateService{
-		accountRepo: accountRepo,
-		usageRepo:   usageRepo,
-		reader:      reader,
-		interval:    interval,
-		lease:       lease,
-		quiet:       defaultOpenAIExternalQuotaGateQuiet,
-		minDelta:    minDelta,
-		now:         time.Now,
-		stopCh:      make(chan struct{}),
+		accountRepo:         accountRepo,
+		usageRepo:           usageRepo,
+		reader:              reader,
+		interval:            interval,
+		lease:               lease,
+		quiet:               defaultOpenAIExternalQuotaGateQuiet,
+		minDelta:            minDelta,
+		drainChecksRequired: defaultOpenAIExternalQuotaDrainChecks,
+		now:                 time.Now,
+		stopCh:              make(chan struct{}),
 	}
 }
 
@@ -284,6 +302,8 @@ func ProvideOpenAIExternalQuotaGateService(
 	accountRepo AccountRepository,
 	usageRepo UsageLogRepository,
 	tokenProvider *OpenAITokenProvider,
+	gatewayCache GatewayCache,
+	concurrencyService *ConcurrencyService,
 ) *OpenAIExternalQuotaGateService {
 	service := NewOpenAIExternalQuotaGateService(
 		accountRepo,
@@ -293,6 +313,10 @@ func ProvideOpenAIExternalQuotaGateService(
 		defaultOpenAIExternalQuotaGateLease,
 		defaultOpenAIExternalQuotaGateDelta,
 	)
+	if stickySessionIndex, ok := gatewayCache.(OpenAIStickySessionIndex); ok {
+		service.stickySessionIndex = stickySessionIndex
+	}
+	service.concurrencyService = concurrencyService
 	service.Start()
 	return service
 }
@@ -354,8 +378,9 @@ func (s *OpenAIExternalQuotaGateService) runOnce(ctx context.Context) {
 }
 
 // ConfigureAccount enables or disables external quota gate management for one OpenAI OAuth account.
-// Both transitions fail closed. Enabling also performs an immediate baseline observation.
-func (s *OpenAIExternalQuotaGateService) ConfigureAccount(ctx context.Context, accountID int64, enabled bool) (*Account, error) {
+// Enabling an account that is already schedulable starts a safe drain instead of
+// breaking existing sticky sessions. Enabling a closed account observes a baseline immediately.
+func (s *OpenAIExternalQuotaGateService) ConfigureAccount(ctx context.Context, accountID int64, enabled bool, grantMinutes *int) (*Account, error) {
 	if s == nil || s.accountRepo == nil {
 		return nil, infraerrors.ServiceUnavailable("OPENAI_EXTERNAL_QUOTA_GATE_UNAVAILABLE", "external quota gate is unavailable")
 	}
@@ -371,16 +396,64 @@ func (s *OpenAIExternalQuotaGateService) ConfigureAccount(ctx context.Context, a
 		lock.Unlock()
 		return nil, infraerrors.BadRequest("OPENAI_EXTERNAL_QUOTA_GATE_UNSUPPORTED_ACCOUNT", "external quota gate only supports OpenAI OAuth accounts")
 	}
+	if grantMinutes != nil && (*grantMinutes < minOpenAIExternalQuotaGrantMinutes || *grantMinutes > maxOpenAIExternalQuotaGrantMinutes) {
+		lock.Unlock()
+		return nil, infraerrors.BadRequest(
+			"OPENAI_EXTERNAL_QUOTA_GATE_INVALID_GRANT",
+			fmt.Sprintf("grant minutes must be between %d and %d", minOpenAIExternalQuotaGrantMinutes, maxOpenAIExternalQuotaGrantMinutes),
+		)
+	}
 
-	// Close scheduling before changing gate ownership so partial failures remain safe.
+	currentlyEnabled := IsOpenAIExternalQuotaGateEnabled(account)
+	if currentlyEnabled == enabled {
+		if grantMinutes != nil {
+			if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
+				openAIExternalQuotaGateGrantMinutesKey: *grantMinutes,
+			}); err != nil {
+				lock.Unlock()
+				return nil, err
+			}
+		}
+		lock.Unlock()
+		return s.accountRepo.GetByID(ctx, accountID)
+	}
+
+	if enabled && account.Schedulable {
+		now := s.now().UTC()
+		state := readOpenAIExternalQuotaGateState(account)
+		state.LastAttemptAt = now
+		state = s.beginDraining(state, state, now, "draining_started")
+		updates := map[string]any{
+			openAIExternalQuotaGateEnabledKey:  true,
+			openAIExternalQuotaGateStateKey:    state,
+			openAIExternalQuotaGateDrainingKey: true,
+		}
+		if grantMinutes != nil {
+			updates[openAIExternalQuotaGateGrantMinutesKey] = *grantMinutes
+		}
+		if err := s.accountRepo.UpdateExtra(ctx, accountID, updates); err != nil {
+			lock.Unlock()
+			return nil, err
+		}
+		lock.Unlock()
+		return s.accountRepo.GetByID(ctx, accountID)
+	}
+
+	// Closed accounts remain closed while gate ownership changes. Explicitly
+	// disabling the gate also leaves the account unavailable.
 	if err := s.accountRepo.SetSchedulable(ctx, accountID, false); err != nil {
 		lock.Unlock()
 		return nil, err
 	}
-	if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
-		openAIExternalQuotaGateEnabledKey: enabled,
-		openAIExternalQuotaGateStateKey:   nil,
-	}); err != nil {
+	updates := map[string]any{
+		openAIExternalQuotaGateEnabledKey:  enabled,
+		openAIExternalQuotaGateStateKey:    nil,
+		openAIExternalQuotaGateDrainingKey: false,
+	}
+	if grantMinutes != nil {
+		updates[openAIExternalQuotaGateGrantMinutesKey] = *grantMinutes
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, accountID, updates); err != nil {
 		lock.Unlock()
 		return nil, err
 	}
@@ -435,6 +508,7 @@ func (s *OpenAIExternalQuotaGateService) evaluateAccount(ctx context.Context, ac
 func (s *OpenAIExternalQuotaGateService) evaluateAccountUnlocked(ctx context.Context, account *Account) {
 	now := s.now().UTC()
 	previous := readOpenAIExternalQuotaGateState(account)
+	draining := previous.DrainStartedAt != nil || IsOpenAIExternalQuotaGateDraining(account)
 
 	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.Status != StatusActive {
 		s.persistDecision(ctx, account, previous.failureState(now, "invalid_account"), false)
@@ -448,6 +522,12 @@ func (s *OpenAIExternalQuotaGateService) evaluateAccountUnlocked(ctx context.Con
 			previous.LastAttemptAt = now
 			previous.Decision = "lease_active_upstream_error"
 			s.persistDecision(ctx, account, previous, true)
+			return
+		}
+		if account.Schedulable {
+			previous.LastAttemptAt = now
+			previous = s.beginDraining(previous, previous, now, "draining_upstream_error")
+			s.evaluateDrainingAccount(ctx, account, previous, false)
 			return
 		}
 		s.persistDecision(ctx, account, previous.failureState(now, "upstream_error"), false)
@@ -465,13 +545,28 @@ func (s *OpenAIExternalQuotaGateService) evaluateAccountUnlocked(ctx context.Con
 	}
 
 	if previous.ObservedAt == nil || previous.Primary == nil {
+		if draining || account.Schedulable {
+			current = s.beginDraining(previous, current, now, "draining_started")
+			s.evaluateDrainingAccount(ctx, account, current, true)
+			return
+		}
 		current = s.beginObservation(previous, current, now, "baseline_created", false)
 		s.persistDecision(ctx, account, current, false)
 		return
 	}
 	if !externalQuotaWindowsStable(previous, current) {
+		if draining || account.Schedulable {
+			current = s.beginDraining(previous, current, now, "draining_window_changed")
+			s.evaluateDrainingAccount(ctx, account, current, true)
+			return
+		}
 		current = s.beginObservation(previous, current, now, "window_changed", false)
 		s.persistDecision(ctx, account, current, false)
+		return
+	}
+	if draining {
+		current = s.beginDraining(previous, current, now, "draining")
+		s.evaluateDrainingAccount(ctx, account, current, true)
 		return
 	}
 
@@ -491,14 +586,14 @@ func (s *OpenAIExternalQuotaGateService) evaluateAccountUnlocked(ctx context.Con
 			s.persistDecision(ctx, account, current, true)
 			return
 		}
-		current = s.beginObservation(previous, current, now, "lease_expired", true)
-		s.persistDecision(ctx, account, current, false)
+		current = s.beginDraining(previous, current, now, "draining_started")
+		s.evaluateDrainingAccount(ctx, account, current, true)
 		return
 	}
 
 	if account.Schedulable {
-		current = s.beginObservation(previous, current, now, "schedulable_without_lease_closed", true)
-		s.persistDecision(ctx, account, current, false)
+		current = s.beginDraining(previous, current, now, "draining_without_lease")
+		s.evaluateDrainingAccount(ctx, account, current, true)
 		return
 	}
 
@@ -546,13 +641,123 @@ func (s *OpenAIExternalQuotaGateService) evaluateAccountUnlocked(ctx context.Con
 	}
 
 	detectedAt := now
-	leaseUntil := now.Add(s.lease)
+	leaseUntil := now.Add(s.grantDuration(account))
 	current.ExternalDetectedAt = &detectedAt
 	current.LeaseUntil = &leaseUntil
 	current.LastLeaseUntil = &leaseUntil
 	current.ExternalDeltaPercent = delta
 	current.Decision = "external_decrease_detected"
 	s.persistDecision(ctx, account, current, true)
+}
+
+func (s *OpenAIExternalQuotaGateService) grantDuration(account *Account) time.Duration {
+	if account != nil && account.Extra != nil {
+		minutes := parseExtraInt(account.Extra[openAIExternalQuotaGateGrantMinutesKey])
+		if minutes >= minOpenAIExternalQuotaGrantMinutes && minutes <= maxOpenAIExternalQuotaGrantMinutes {
+			return time.Duration(minutes) * time.Minute
+		}
+	}
+	if s != nil && s.lease > 0 {
+		return s.lease
+	}
+	return defaultOpenAIExternalQuotaGateLease
+}
+
+func (s *OpenAIExternalQuotaGateService) beginDraining(
+	previous openAIExternalQuotaGateState,
+	current openAIExternalQuotaGateState,
+	now time.Time,
+	decision string,
+) openAIExternalQuotaGateState {
+	current.Decision = decision
+	current.LeaseUntil = nil
+	current.BaselineObservedAt = nil
+	current.BaselinePrimary = nil
+	current.BaselineSecondary = nil
+	current.ObservationReadyAt = nil
+	current.DrainStartedAt = previous.DrainStartedAt
+	if current.DrainStartedAt == nil {
+		current.DrainStartedAt = timePointer(now)
+	}
+	current.DrainEmptyChecks = previous.DrainEmptyChecks
+	current.ActiveStickySessions = previous.ActiveStickySessions
+	current.ActiveRequests = previous.ActiveRequests
+	current.WaitingRequests = previous.WaitingRequests
+	carryOpenAIExternalQuotaSignal(previous, &current)
+	if current.LastLeaseUntil == nil {
+		current.LastLeaseUntil = previous.LeaseUntil
+	}
+	return current
+}
+
+func (s *OpenAIExternalQuotaGateService) evaluateDrainingAccount(
+	ctx context.Context,
+	account *Account,
+	state openAIExternalQuotaGateState,
+	hasFreshSnapshot bool,
+) {
+	if account == nil {
+		return
+	}
+	if state.DrainStartedAt == nil {
+		state.DrainStartedAt = timePointer(state.LastAttemptAt)
+	}
+
+	if s.stickySessionIndex == nil || s.concurrencyService == nil {
+		state.Decision = "draining_check_error"
+		state.DrainEmptyChecks = 0
+		s.persistDecision(ctx, account, state, true)
+		return
+	}
+
+	stickySessions, stickyErr := s.stickySessionIndex.GetOpenAIActiveStickySessionCount(ctx, account.ID)
+	concurrencyMap, concurrencyErr := s.concurrencyService.GetAccountConcurrencyBatch(ctx, []int64{account.ID})
+	waitingRequests, waitingErr := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+	if stickyErr != nil || concurrencyErr != nil || waitingErr != nil {
+		slog.Warn(
+			"openai_external_quota_gate_drain_check_failed",
+			"account_id", account.ID,
+			"sticky_error", stickyErr,
+			"concurrency_error", concurrencyErr,
+			"waiting_error", waitingErr,
+		)
+		state.Decision = "draining_check_error"
+		state.DrainEmptyChecks = 0
+		s.persistDecision(ctx, account, state, true)
+		return
+	}
+
+	state.ActiveStickySessions = stickySessions
+	state.ActiveRequests = concurrencyMap[account.ID]
+	state.WaitingRequests = waitingRequests
+	if state.ActiveStickySessions == 0 && state.ActiveRequests == 0 && state.WaitingRequests == 0 {
+		state.DrainEmptyChecks++
+	} else {
+		state.DrainEmptyChecks = 0
+	}
+
+	requiredChecks := s.drainChecksRequired
+	if requiredChecks <= 0 {
+		requiredChecks = defaultOpenAIExternalQuotaDrainChecks
+	}
+	if state.DrainEmptyChecks < requiredChecks {
+		s.persistDecision(ctx, account, state, true)
+		return
+	}
+
+	if hasFreshSnapshot && state.Primary != nil {
+		state = s.beginObservation(state, state, state.LastAttemptAt, "drain_complete", true)
+	} else {
+		state.Decision = "drain_complete"
+		state.LeaseUntil = nil
+		state.BaselineObservedAt = nil
+		state.BaselinePrimary = nil
+		state.BaselineSecondary = nil
+		state.ObservationReadyAt = nil
+		state.DrainStartedAt = nil
+		state.DrainEmptyChecks = 0
+	}
+	s.persistDecision(ctx, account, state, false)
 }
 
 func (s *OpenAIExternalQuotaGateService) beginObservation(
@@ -569,6 +774,11 @@ func (s *OpenAIExternalQuotaGateService) beginObservation(
 	readyAt := now.Add(s.quiet)
 	current.ObservationReadyAt = &readyAt
 	current.LeaseUntil = nil
+	current.DrainStartedAt = nil
+	current.DrainEmptyChecks = 0
+	current.ActiveStickySessions = 0
+	current.ActiveRequests = 0
+	current.WaitingRequests = 0
 	if preserveSignal {
 		carryOpenAIExternalQuotaSignal(previous, &current)
 		if current.LastLeaseUntil == nil {
@@ -606,6 +816,16 @@ func IsOpenAIExternalQuotaGateEnabled(account *Account) bool {
 	return ok && enabled
 }
 
+// IsOpenAIExternalQuotaGateDraining reports whether an otherwise schedulable
+// OpenAI account may only serve bindings that already point to it.
+func IsOpenAIExternalQuotaGateDraining(account *Account) bool {
+	if account == nil || account.Extra == nil {
+		return false
+	}
+	draining, ok := account.Extra[openAIExternalQuotaGateDrainingKey].(bool)
+	return ok && draining
+}
+
 func externalQuotaWindowsStable(previous, current openAIExternalQuotaGateState) bool {
 	if !sameOpenAIExternalQuotaWindow(previous.Primary, current.Primary) {
 		return false
@@ -637,7 +857,8 @@ func (s *OpenAIExternalQuotaGateService) persistDecision(
 		state.RecentEvents = appendOpenAIExternalQuotaGateEvent(state.RecentEvents, state, schedulable)
 	}
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-		openAIExternalQuotaGateStateKey: state,
+		openAIExternalQuotaGateStateKey:    state,
+		openAIExternalQuotaGateDrainingKey: state.DrainStartedAt != nil,
 	}); err != nil {
 		slog.Error("openai_external_quota_gate_state_update_failed", "account_id", account.ID, "error", err)
 		if schedulable {
@@ -660,16 +881,20 @@ func appendOpenAIExternalQuotaGateEvent(
 	schedulable bool,
 ) []openAIExternalQuotaGateEvent {
 	event := openAIExternalQuotaGateEvent{
-		OccurredAt:    state.LastAttemptAt,
-		Decision:      state.Decision,
-		Schedulable:   schedulable,
-		LocalRequests: state.LocalRequests,
+		OccurredAt:           state.LastAttemptAt,
+		Decision:             state.Decision,
+		Schedulable:          schedulable,
+		Draining:             state.DrainStartedAt != nil,
+		LocalRequests:        state.LocalRequests,
+		ActiveStickySessions: state.ActiveStickySessions,
+		ActiveRequests:       state.ActiveRequests,
+		WaitingRequests:      state.WaitingRequests,
 	}
 	if state.Primary != nil {
 		usedPercent := state.Primary.UsedPercent
 		event.UsedPercent = &usedPercent
 	}
-	if state.Decision == "external_decrease_detected" || state.Decision == "lease_active" || state.Decision == "lease_active_upstream_error" || state.Decision == "lease_expired" {
+	if state.Decision == "external_decrease_detected" || state.Decision == "lease_active" || state.Decision == "lease_active_upstream_error" || strings.HasPrefix(state.Decision, "draining") || state.Decision == "drain_complete" {
 		event.ExternalDeltaPercent = state.ExternalDeltaPercent
 		event.LeaseUntil = state.LeaseUntil
 		if event.LeaseUntil == nil {
@@ -725,6 +950,11 @@ func (s openAIExternalQuotaGateState) failureState(now time.Time, decision strin
 	s.BaselinePrimary = nil
 	s.BaselineSecondary = nil
 	s.ObservationReadyAt = nil
+	s.DrainStartedAt = nil
+	s.DrainEmptyChecks = 0
+	s.ActiveStickySessions = 0
+	s.ActiveRequests = 0
+	s.WaitingRequests = 0
 	s.Decision = decision
 	s.LocalRequests = 0
 	return s

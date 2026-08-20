@@ -1971,7 +1971,8 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 }
 
 type ConfigureExternalQuotaGateRequest struct {
-	Enabled *bool `json:"enabled" binding:"required"`
+	Enabled      *bool `json:"enabled" binding:"required"`
+	GrantMinutes *int  `json:"grant_minutes"`
 }
 
 // ConfigureExternalQuotaGate enables or disables automatic scheduling based on external quota use.
@@ -1991,7 +1992,7 @@ func (h *AccountHandler) ConfigureExternalQuotaGate(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.ServiceUnavailable("OPENAI_EXTERNAL_QUOTA_GATE_UNAVAILABLE", "external quota gate is unavailable"))
 		return
 	}
-	account, err := h.externalQuotaGate.ConfigureAccount(c.Request.Context(), accountID, *req.Enabled)
+	account, err := h.externalQuotaGate.ConfigureAccount(c.Request.Context(), accountID, *req.Enabled, req.GrantMinutes)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -832,10 +832,14 @@ export interface OpenAIExternalQuotaGateEvent {
   occurred_at: string
   decision: string
   schedulable: boolean
+  draining?: boolean
   used_percent?: number
   external_delta_percent?: number
   local_requests?: number
   lease_until?: string
+  active_sticky_sessions?: number
+  active_requests?: number
+  waiting_requests?: number
 }
 
 export interface OpenAIExternalQuotaGateState {
@@ -855,6 +859,11 @@ export interface OpenAIExternalQuotaGateState {
   decision: string
   external_delta_percent?: number
   local_requests?: number
+  drain_started_at?: string
+  drain_empty_checks?: number
+  active_sticky_sessions?: number
+  active_requests?: number
+  waiting_requests?: number
   recent_events?: OpenAIExternalQuotaGateEvent[]
 }
 
@@ -875,6 +884,8 @@ export interface Account {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     openai_external_quota_gate_enabled?: boolean
+    openai_external_quota_gate_draining?: boolean
+    openai_external_quota_gate_grant_minutes?: number
     openai_external_quota_gate_state?: OpenAIExternalQuotaGateState | null
   } & Record<string, unknown>)
   proxy_id: number | null

@@ -176,9 +176,10 @@ export async function toggleStatus(id: number, status: 'active' | 'inactive'): P
   return update(id, { status })
 }
 
-export async function configureExternalQuotaGate(id: number, enabled: boolean): Promise<Account> {
+export async function configureExternalQuotaGate(id: number, enabled: boolean, grantMinutes?: number): Promise<Account> {
   const { data } = await apiClient.put<Account>(`/admin/accounts/${id}/external-quota-gate`, {
-    enabled
+    enabled,
+    ...(typeof grantMinutes === 'number' ? { grant_minutes: grantMinutes } : {})
   })
   return data
 }

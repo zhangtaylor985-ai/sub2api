@@ -42,19 +42,49 @@
           {{ t('admin.accounts.externalQuotaGate.policyInterval') }}
         </span>
         <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
-          {{ t('admin.accounts.externalQuotaGate.policyLease') }}
+          {{ t('admin.accounts.externalQuotaGate.policyLease', { minutes: configuredGrantMinutes }) }}
         </span>
         <span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
-          {{ t('admin.accounts.externalQuotaGate.policyNoRenewal') }}
+          {{ t('admin.accounts.externalQuotaGate.policyDrain') }}
         </span>
+      </div>
+
+      <div class="mb-4 flex flex-col gap-3 rounded-lg border border-sky-100 bg-sky-50/70 p-3 dark:border-sky-900/50 dark:bg-sky-950/20 sm:flex-row sm:items-end sm:justify-between">
+        <label class="block min-w-0 flex-1">
+          <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+            {{ t('admin.accounts.externalQuotaGate.grantMinutes') }}
+          </span>
+          <span class="mt-0.5 block text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.externalQuotaGate.grantMinutesHint') }}
+          </span>
+          <input
+            v-model.number="grantMinutesInput"
+            data-testid="external-quota-grant-minutes"
+            type="number"
+            min="30"
+            max="720"
+            step="30"
+            :disabled="busy"
+            class="input mt-2 w-36 tabular-nums"
+          >
+        </label>
+        <button
+          type="button"
+          data-testid="save-external-quota-grant"
+          class="btn btn-primary shrink-0 px-3 py-1.5 text-xs"
+          :disabled="busy || !grantMinutesValid || grantMinutesInput === configuredGrantMinutes"
+          @click="saveGrantMinutes"
+        >
+          {{ t('admin.accounts.externalQuotaGate.savePolicy') }}
+        </button>
       </div>
 
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <span :class="['h-2 w-2 rounded-full', statusDotClass]" />
           <span :class="['text-sm font-semibold', statusTextClass]">{{ decisionLabel }}</span>
-          <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 dark:bg-dark-700 dark:text-gray-300">
-            {{ accountState?.schedulable ? t('admin.accounts.externalQuotaGate.available') : t('admin.accounts.externalQuotaGate.unavailable') }}
+          <span :class="['rounded-full px-2 py-0.5 text-[11px]', schedulingBadgeClass]">
+            {{ schedulingLabel }}
           </span>
         </div>
         <button type="button" class="btn btn-secondary px-3 py-1.5 text-xs" :disabled="busy" @click="refreshGate">
@@ -91,6 +121,18 @@
           <div class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('admin.accounts.externalQuotaGate.leaseUntil') }}</div>
           <div class="mt-1 text-xs font-medium leading-6 text-gray-700 dark:text-gray-200">{{ leaseUntil }}</div>
         </div>
+        <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800/70">
+          <div class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('admin.accounts.externalQuotaGate.activeStickySessions') }}</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ activeStickySessions }}</div>
+        </div>
+        <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800/70">
+          <div class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('admin.accounts.externalQuotaGate.inflightAndWaiting') }}</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ inflightAndWaiting }}</div>
+        </div>
+        <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800/70">
+          <div class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('admin.accounts.externalQuotaGate.drainProgress') }}</div>
+          <div class="mt-1 text-xs font-medium leading-6 text-gray-700 dark:text-gray-200">{{ drainProgress }}</div>
+        </div>
       </div>
 
       <div v-if="recentEvents.length" class="mt-4 rounded-lg border border-gray-100 bg-white/70 p-3 dark:border-dark-700 dark:bg-dark-800/40">
@@ -100,8 +142,11 @@
         <ul class="mt-2 space-y-2">
           <li v-for="(event, index) in recentEvents" :key="`${event.occurred_at}-${event.decision}-${index}`" class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]">
             <div class="flex min-w-0 items-center gap-2">
-              <span :class="['h-1.5 w-1.5 shrink-0 rounded-full', event.schedulable ? 'bg-emerald-500' : 'bg-gray-400']" />
+              <span :class="['h-1.5 w-1.5 shrink-0 rounded-full', event.draining ? 'bg-amber-500' : event.schedulable ? 'bg-emerald-500' : 'bg-gray-400']" />
               <span class="font-medium text-gray-700 dark:text-gray-200">{{ decisionText(event.decision) }}</span>
+              <span v-if="event.draining" class="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                {{ t('admin.accounts.externalQuotaGate.stickyCountShort', { count: event.active_sticky_sessions ?? 0 }) }}
+              </span>
               <span v-if="typeof event.used_percent === 'number'" class="tabular-nums text-gray-500 dark:text-gray-400">
                 {{ event.used_percent.toFixed(1) }}%
               </span>
@@ -138,12 +183,26 @@ const { t, locale } = useI18n()
 const appStore = useAppStore()
 const busy = ref(false)
 const accountState = ref<Account>(props.account)
+const configuredGrantMinutes = computed(() => {
+  const value = Number(accountState.value.extra?.openai_external_quota_gate_grant_minutes ?? 120)
+  return Number.isInteger(value) && value >= 30 && value <= 720 ? value : 120
+})
+const grantMinutesInput = ref(configuredGrantMinutes.value)
 
-watch(() => props.account, value => { accountState.value = value })
+watch(() => props.account, value => {
+  accountState.value = value
+  grantMinutesInput.value = Number(value.extra?.openai_external_quota_gate_grant_minutes ?? 120)
+})
 
 const enabled = computed(() => accountState.value.extra?.openai_external_quota_gate_enabled === true)
 const state = computed<OpenAIExternalQuotaGateState | null>(() =>
   accountState.value.extra?.openai_external_quota_gate_state ?? null
+)
+const draining = computed(() =>
+  accountState.value.extra?.openai_external_quota_gate_draining === true || Boolean(state.value?.drain_started_at)
+)
+const grantMinutesValid = computed(() =>
+  Number.isInteger(grantMinutesInput.value) && grantMinutesInput.value >= 30 && grantMinutesInput.value <= 720
 )
 
 const decisionLabels: Record<string, string> = {
@@ -151,6 +210,13 @@ const decisionLabels: Record<string, string> = {
   external_decrease_detected: 'externalDecrease',
   lease_active: 'leaseActive',
   lease_active_upstream_error: 'leaseActiveUpstreamError',
+  draining_started: 'drainingStarted',
+  draining: 'draining',
+  draining_without_lease: 'drainingWithoutLease',
+  draining_window_changed: 'drainingWindowChanged',
+  draining_upstream_error: 'drainingUpstreamError',
+  draining_check_error: 'drainingCheckError',
+  drain_complete: 'drainComplete',
   upstream_unavailable: 'upstreamUnavailable',
   baseline_created: 'baselineCreated',
   observing_external_usage: 'observingExternalUsage',
@@ -171,8 +237,18 @@ const decisionText = (decision?: string) =>
 
 const decisionLabel = computed(() => decisionText(state.value?.decision))
 
-const statusDotClass = computed(() => accountState.value.schedulable ? 'bg-emerald-500' : state.value?.decision?.includes('error') ? 'bg-rose-500' : 'bg-amber-500')
-const statusTextClass = computed(() => accountState.value.schedulable ? 'text-emerald-700 dark:text-emerald-300' : state.value?.decision?.includes('error') ? 'text-rose-700 dark:text-rose-300' : 'text-amber-700 dark:text-amber-300')
+const statusDotClass = computed(() => draining.value ? 'bg-amber-500' : accountState.value.schedulable ? 'bg-emerald-500' : state.value?.decision?.includes('error') ? 'bg-rose-500' : 'bg-gray-400')
+const statusTextClass = computed(() => draining.value ? 'text-amber-700 dark:text-amber-300' : accountState.value.schedulable ? 'text-emerald-700 dark:text-emerald-300' : state.value?.decision?.includes('error') ? 'text-rose-700 dark:text-rose-300' : 'text-gray-700 dark:text-gray-300')
+const schedulingLabel = computed(() => draining.value
+  ? t('admin.accounts.externalQuotaGate.drainingOnly')
+  : accountState.value.schedulable
+    ? t('admin.accounts.externalQuotaGate.available')
+    : t('admin.accounts.externalQuotaGate.unavailable'))
+const schedulingBadgeClass = computed(() => draining.value
+  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+  : accountState.value.schedulable
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+    : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300')
 const primaryUsage = computed(() => state.value?.primary_window ? `${state.value.primary_window.used_percent.toFixed(1)}%` : '—')
 const observationBaseline = computed(() => state.value?.baseline_primary_window ? `${state.value.baseline_primary_window.used_percent.toFixed(1)}%` : '—')
 const externalDelta = computed(() => state.value?.external_delta_percent ? `+${state.value.external_delta_percent.toFixed(1)}%` : '—')
@@ -186,6 +262,11 @@ const formatTimestamp = (value?: string) => {
 const lastCheck = computed(() => formatTimestamp(state.value?.last_attempt_at))
 const externalDetectedAt = computed(() => formatTimestamp(state.value?.external_detected_at))
 const leaseUntil = computed(() => formatTimestamp(state.value?.lease_until || state.value?.last_lease_until))
+const activeStickySessions = computed(() => state.value?.active_sticky_sessions ?? 0)
+const inflightAndWaiting = computed(() => `${state.value?.active_requests ?? 0} / ${state.value?.waiting_requests ?? 0}`)
+const drainProgress = computed(() => draining.value
+  ? t('admin.accounts.externalQuotaGate.drainChecks', { current: state.value?.drain_empty_checks ?? 0, required: 2 })
+  : '—')
 
 const applyUpdatedAccount = (account: Account) => {
   accountState.value = account
@@ -196,9 +277,24 @@ const toggleGate = async () => {
   if (busy.value) return
   busy.value = true
   try {
-    const updated = await adminAPI.accounts.configureExternalQuotaGate(accountState.value.id, !enabled.value)
+    const updated = await adminAPI.accounts.configureExternalQuotaGate(accountState.value.id, !enabled.value, grantMinutesInput.value)
     applyUpdatedAccount(updated)
     appStore.showSuccess(t(enabled.value ? 'admin.accounts.externalQuotaGate.enabledSuccess' : 'admin.accounts.externalQuotaGate.disabledSuccess'))
+  } catch (error: any) {
+    appStore.showError(error.message || t('admin.accounts.externalQuotaGate.updateFailed'))
+  } finally {
+    busy.value = false
+  }
+}
+
+const saveGrantMinutes = async () => {
+  if (busy.value || !enabled.value || !grantMinutesValid.value) return
+  busy.value = true
+  try {
+    const updated = await adminAPI.accounts.configureExternalQuotaGate(accountState.value.id, true, grantMinutesInput.value)
+    applyUpdatedAccount(updated)
+    grantMinutesInput.value = configuredGrantMinutes.value
+    appStore.showSuccess(t('admin.accounts.externalQuotaGate.policySaved'))
   } catch (error: any) {
     appStore.showError(error.message || t('admin.accounts.externalQuotaGate.updateFailed'))
   } finally {

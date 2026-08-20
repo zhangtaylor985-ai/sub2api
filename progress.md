@@ -946,3 +946,8 @@
 - 最终调度审查补充了DB回读后的新会话排空检查，减少账号刚进入排空时的竞态窗口；粘连与 `previous_response_id` 续链仍使用允许排空账号的原检查。
 - `git diff --check` 已通过；当前仍只在隔离worktree开发，没有生产写入、重启或发布。
 - 最终服务层完整回归与前端生产构建再次通过；构建仅有仓库既有的动态导入、Browserslist和大chunk警告。
+- 用户确认具备UI且回归无新增问题后上线；已切换到生产发布阶段，使用 `sub2api-deploy`、`sub2api-production-regression` 与 `sub2api-local-binary-deploy` 流程。
+- 发布前只读确认生产主机 `default`/`aarch64`，`sub2api.service=active`、`NRestarts=0`，内外 `/health` 均为ok；当前binary SHA256为 `facf843d35ee76b7b1448df5d535407d5c14748fa10c4d8f8b824df0f7115aa0`。
+- `git fetch origin --prune` 后确认 `origin/main` 没有新提交，本分支相对主线 `0 behind / 2 ahead`，工作树在记录发布计划前为干净状态。
+- 发布门禁复验通过：`go test ./... -count=1` 全量通过；GatewayCache真实Redis integration通过；前端 `lint:check`、`typecheck`、门禁组件5项专项测试与生产build均通过。
+- 本次不触达Claude协议转换、streaming、thinking、tool_use或web_search，因此按回归Skill分类不需要执行cc1黑盒；发布后重点验证调度、UI/API和健康状态。

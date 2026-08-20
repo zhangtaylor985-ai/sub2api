@@ -643,3 +643,24 @@
 | 2026-08-20 | `cmd/server` 首次编译仍使用旧Wire生成参数，缺少GatewayCache与ConcurrencyService | 使用仓库既有Wire命令刷新 `wire_gen.go`，等待复编译 |
 | 2026-08-20 | Redis integration测试夹具把接口构造结果直接赋给具体类型字段，带标签构建失败 | 测试同包直接构造 `gatewayCache`，重跑真实Redis integration通过 |
 | 2026-08-20 | 前端全量Vitest仍有5个文件共12项既有失败 | 与任务前基线一致；本次专项5项全部通过，未扩大范围修复无关基线 |
+| 2026-08-20 | 隔离worktree内不存在项目级Skill脚本路径，首次读取构建脚本失败 | 改读主工作树的项目级Skill脚本；构建时按同一参数在隔离worktree手动执行，避免误构建主工作树 |
+
+## 生产发布阶段
+
+用户已确认：功能具备UI且回归无新增问题后发布生产。本次只发布应用代码，不修改账号策略配置，也不执行数据库结构或数据写入。
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 生产与Git只读预检 | complete | 生产systemd/health/binary SHA、远端主线无漂移 |
+| 2. 发布门禁复验 | complete | Go全量、前端lint/typecheck/build、Redis integration均通过 |
+| 3. 推送正式主线并构建ARM64 binary | in_progress | origin/main、binary与压缩包SHA |
+| 4. 上传、备份、替换与重启 | pending | release路径、回滚binary、systemd状态 |
+| 5. 生产UI/API/调度状态验收 | pending | 内外health、静态资源、接口、日志与回滚结论 |
+
+### 发布边界与回滚
+
+- 生产目标：`opc@161.153.91.242` 的 `/opt/sub2api/sub2api`，由 `sub2api.service` 管理。
+- 预计影响：替换binary并重启服务，可能产生数秒连接抖动；PostgreSQL、Redis、Caddy和DNS不变。
+- 当前生产binary SHA256：`facf843d35ee76b7b1448df5d535407d5c14748fa10c4d8f8b824df0f7115aa0`。
+- 替换前创建 `/opt/sub2api/sub2api.bak.<timestamp>-before-external-quota-drain`；异常时原位恢复并重启。
+- 发布后不自动启用或修改四个账号的外部额度闸门，账号级配置由管理UI另行操作。

@@ -22,9 +22,11 @@ const (
 	openAIExternalQuotaGateStateKey   = "openai_external_quota_gate_state"
 
 	defaultOpenAIExternalQuotaGateInterval = time.Minute
-	defaultOpenAIExternalQuotaGateLease    = 10 * time.Minute
-	defaultOpenAIExternalQuotaGateDelta    = 1.0
+	defaultOpenAIExternalQuotaGateLease    = time.Hour
+	defaultOpenAIExternalQuotaGateQuiet    = 2 * time.Minute
+	defaultOpenAIExternalQuotaGateDelta    = 0.01
 	defaultOpenAIExternalQuotaGateWorkers  = 4
+	defaultOpenAIExternalQuotaGateEvents   = 12
 	openAIExternalQuotaUsageBodyLimit      = int64(1 << 20)
 )
 
@@ -43,17 +45,34 @@ type openAIExternalQuotaSnapshot struct {
 	Secondary    *openAIExternalQuotaWindow `json:"secondary_window,omitempty"`
 }
 
+type openAIExternalQuotaGateEvent struct {
+	OccurredAt           time.Time  `json:"occurred_at"`
+	Decision             string     `json:"decision"`
+	Schedulable          bool       `json:"schedulable"`
+	UsedPercent          *float64   `json:"used_percent,omitempty"`
+	ExternalDeltaPercent float64    `json:"external_delta_percent,omitempty"`
+	LocalRequests        int64      `json:"local_requests,omitempty"`
+	LeaseUntil           *time.Time `json:"lease_until,omitempty"`
+}
+
 type openAIExternalQuotaGateState struct {
-	ObservedAt           *time.Time                 `json:"observed_at,omitempty"`
-	LastAttemptAt        time.Time                  `json:"last_attempt_at"`
-	Allowed              bool                       `json:"allowed"`
-	LimitReached         bool                       `json:"limit_reached"`
-	Primary              *openAIExternalQuotaWindow `json:"primary_window,omitempty"`
-	Secondary            *openAIExternalQuotaWindow `json:"secondary_window,omitempty"`
-	LeaseUntil           *time.Time                 `json:"lease_until,omitempty"`
-	Decision             string                     `json:"decision"`
-	ExternalDeltaPercent float64                    `json:"external_delta_percent,omitempty"`
-	LocalRequests        int64                      `json:"local_requests,omitempty"`
+	ObservedAt           *time.Time                     `json:"observed_at,omitempty"`
+	LastAttemptAt        time.Time                      `json:"last_attempt_at"`
+	Allowed              bool                           `json:"allowed"`
+	LimitReached         bool                           `json:"limit_reached"`
+	Primary              *openAIExternalQuotaWindow     `json:"primary_window,omitempty"`
+	Secondary            *openAIExternalQuotaWindow     `json:"secondary_window,omitempty"`
+	BaselineObservedAt   *time.Time                     `json:"baseline_observed_at,omitempty"`
+	BaselinePrimary      *openAIExternalQuotaWindow     `json:"baseline_primary_window,omitempty"`
+	BaselineSecondary    *openAIExternalQuotaWindow     `json:"baseline_secondary_window,omitempty"`
+	ObservationReadyAt   *time.Time                     `json:"observation_ready_at,omitempty"`
+	ExternalDetectedAt   *time.Time                     `json:"external_detected_at,omitempty"`
+	LeaseUntil           *time.Time                     `json:"lease_until,omitempty"`
+	LastLeaseUntil       *time.Time                     `json:"last_lease_until,omitempty"`
+	Decision             string                         `json:"decision"`
+	ExternalDeltaPercent float64                        `json:"external_delta_percent,omitempty"`
+	LocalRequests        int64                          `json:"local_requests,omitempty"`
+	RecentEvents         []openAIExternalQuotaGateEvent `json:"recent_events,omitempty"`
 }
 
 type openAIExternalQuotaUsageReader interface {
@@ -220,6 +239,7 @@ type OpenAIExternalQuotaGateService struct {
 
 	interval time.Duration
 	lease    time.Duration
+	quiet    time.Duration
 	minDelta float64
 	now      func() time.Time
 
@@ -253,6 +273,7 @@ func NewOpenAIExternalQuotaGateService(
 		reader:      reader,
 		interval:    interval,
 		lease:       lease,
+		quiet:       defaultOpenAIExternalQuotaGateQuiet,
 		minDelta:    minDelta,
 		now:         time.Now,
 		stopCh:      make(chan struct{}),
@@ -423,23 +444,33 @@ func (s *OpenAIExternalQuotaGateService) evaluateAccountUnlocked(ctx context.Con
 	snapshot, err := s.reader.Fetch(ctx, account)
 	if err != nil {
 		slog.Warn("openai_external_quota_gate_fetch_failed", "account_id", account.ID, "error", err)
+		if previous.LeaseUntil != nil && now.Before(*previous.LeaseUntil) && account.Schedulable {
+			previous.LastAttemptAt = now
+			previous.Decision = "lease_active_upstream_error"
+			s.persistDecision(ctx, account, previous, true)
+			return
+		}
 		s.persistDecision(ctx, account, previous.failureState(now, "upstream_error"), false)
 		return
 	}
 	current := stateFromOpenAIExternalQuotaSnapshot(snapshot, now)
 	if !snapshot.Allowed || snapshot.LimitReached {
+		carryOpenAIExternalQuotaSignal(previous, &current)
+		if current.LastLeaseUntil == nil {
+			current.LastLeaseUntil = previous.LeaseUntil
+		}
 		current.Decision = "upstream_unavailable"
 		s.persistDecision(ctx, account, current, false)
 		return
 	}
 
 	if previous.ObservedAt == nil || previous.Primary == nil {
-		current.Decision = "baseline_created"
+		current = s.beginObservation(previous, current, now, "baseline_created", false)
 		s.persistDecision(ctx, account, current, false)
 		return
 	}
 	if !externalQuotaWindowsStable(previous, current) {
-		current.Decision = "window_changed"
+		current = s.beginObservation(previous, current, now, "window_changed", false)
 		s.persistDecision(ctx, account, current, false)
 		return
 	}
@@ -447,19 +478,37 @@ func (s *OpenAIExternalQuotaGateService) evaluateAccountUnlocked(ctx context.Con
 	if previous.LeaseUntil != nil {
 		if now.Before(*previous.LeaseUntil) {
 			if !account.Schedulable {
-				current.Decision = "inactive_lease_discarded"
+				current = s.beginObservation(previous, current, now, "inactive_lease_discarded", true)
 				s.persistDecision(ctx, account, current, false)
 				return
 			}
+			carryOpenAIExternalQuotaSignal(previous, &current)
 			current.LeaseUntil = previous.LeaseUntil
+			if current.LastLeaseUntil == nil {
+				current.LastLeaseUntil = previous.LeaseUntil
+			}
 			current.Decision = "lease_active"
 			s.persistDecision(ctx, account, current, true)
 			return
 		}
-		current.Decision = "lease_expired"
+		current = s.beginObservation(previous, current, now, "lease_expired", true)
 		s.persistDecision(ctx, account, current, false)
 		return
 	}
+
+	if account.Schedulable {
+		current = s.beginObservation(previous, current, now, "schedulable_without_lease_closed", true)
+		s.persistDecision(ctx, account, current, false)
+		return
+	}
+
+	if previous.BaselineObservedAt == nil || previous.BaselinePrimary == nil {
+		current = s.beginObservation(previous, current, now, "baseline_created", previous.ExternalDetectedAt != nil)
+		s.persistDecision(ctx, account, current, false)
+		return
+	}
+	carryOpenAIExternalQuotaObservation(previous, &current)
+	carryOpenAIExternalQuotaSignal(previous, &current)
 
 	stats, err := s.usageRepo.GetAccountWindowStats(ctx, account.ID, *previous.ObservedAt)
 	if err != nil {
@@ -472,28 +521,80 @@ func (s *OpenAIExternalQuotaGateService) evaluateAccountUnlocked(ctx context.Con
 	}
 	current.LocalRequests = stats.Requests
 	if stats.Requests > 0 {
-		current.Decision = "local_traffic_detected"
+		current = s.beginObservation(previous, current, now, "local_traffic_detected", true)
+		current.LocalRequests = stats.Requests
 		s.persistDecision(ctx, account, current, false)
 		return
 	}
 
-	delta, comparable := externalQuotaDelta(previous, current)
-	current.ExternalDeltaPercent = delta
+	if previous.ObservationReadyAt != nil && now.Before(*previous.ObservationReadyAt) {
+		current.Decision = "observation_cooldown"
+		s.persistDecision(ctx, account, current, false)
+		return
+	}
+
+	delta, comparable := externalQuotaDeltaFromObservation(current)
 	if !comparable {
-		current.Decision = "window_changed"
+		current = s.beginObservation(previous, current, now, "window_changed", false)
 		s.persistDecision(ctx, account, current, false)
 		return
 	}
 	if delta < s.minDelta {
-		current.Decision = "no_external_decrease"
+		current.Decision = "observing_external_usage"
 		s.persistDecision(ctx, account, current, false)
 		return
 	}
 
+	detectedAt := now
 	leaseUntil := now.Add(s.lease)
+	current.ExternalDetectedAt = &detectedAt
 	current.LeaseUntil = &leaseUntil
+	current.LastLeaseUntil = &leaseUntil
+	current.ExternalDeltaPercent = delta
 	current.Decision = "external_decrease_detected"
 	s.persistDecision(ctx, account, current, true)
+}
+
+func (s *OpenAIExternalQuotaGateService) beginObservation(
+	previous openAIExternalQuotaGateState,
+	current openAIExternalQuotaGateState,
+	now time.Time,
+	decision string,
+	preserveSignal bool,
+) openAIExternalQuotaGateState {
+	current.Decision = decision
+	current.BaselineObservedAt = timePointer(now)
+	current.BaselinePrimary = current.Primary
+	current.BaselineSecondary = current.Secondary
+	readyAt := now.Add(s.quiet)
+	current.ObservationReadyAt = &readyAt
+	current.LeaseUntil = nil
+	if preserveSignal {
+		carryOpenAIExternalQuotaSignal(previous, &current)
+		if current.LastLeaseUntil == nil {
+			current.LastLeaseUntil = previous.LeaseUntil
+		}
+	}
+	return current
+}
+
+func carryOpenAIExternalQuotaObservation(previous openAIExternalQuotaGateState, current *openAIExternalQuotaGateState) {
+	if current == nil {
+		return
+	}
+	current.BaselineObservedAt = previous.BaselineObservedAt
+	current.BaselinePrimary = previous.BaselinePrimary
+	current.BaselineSecondary = previous.BaselineSecondary
+	current.ObservationReadyAt = previous.ObservationReadyAt
+}
+
+func carryOpenAIExternalQuotaSignal(previous openAIExternalQuotaGateState, current *openAIExternalQuotaGateState) {
+	if current == nil {
+		return
+	}
+	current.ExternalDetectedAt = previous.ExternalDetectedAt
+	current.LastLeaseUntil = previous.LastLeaseUntil
+	current.ExternalDeltaPercent = previous.ExternalDeltaPercent
 }
 
 // IsOpenAIExternalQuotaGateEnabled reports whether account schedulability is owned by the gate.
@@ -530,6 +631,11 @@ func (s *OpenAIExternalQuotaGateService) persistDecision(
 	if account == nil {
 		return
 	}
+	previous := readOpenAIExternalQuotaGateState(account)
+	state.RecentEvents = append([]openAIExternalQuotaGateEvent(nil), previous.RecentEvents...)
+	if previous.Decision != state.Decision || account.Schedulable != schedulable {
+		state.RecentEvents = appendOpenAIExternalQuotaGateEvent(state.RecentEvents, state, schedulable)
+	}
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 		openAIExternalQuotaGateStateKey: state,
 	}); err != nil {
@@ -546,6 +652,35 @@ func (s *OpenAIExternalQuotaGateService) persistDecision(
 		return
 	}
 	account.Schedulable = schedulable
+}
+
+func appendOpenAIExternalQuotaGateEvent(
+	events []openAIExternalQuotaGateEvent,
+	state openAIExternalQuotaGateState,
+	schedulable bool,
+) []openAIExternalQuotaGateEvent {
+	event := openAIExternalQuotaGateEvent{
+		OccurredAt:    state.LastAttemptAt,
+		Decision:      state.Decision,
+		Schedulable:   schedulable,
+		LocalRequests: state.LocalRequests,
+	}
+	if state.Primary != nil {
+		usedPercent := state.Primary.UsedPercent
+		event.UsedPercent = &usedPercent
+	}
+	if state.Decision == "external_decrease_detected" || state.Decision == "lease_active" || state.Decision == "lease_active_upstream_error" || state.Decision == "lease_expired" {
+		event.ExternalDeltaPercent = state.ExternalDeltaPercent
+		event.LeaseUntil = state.LeaseUntil
+		if event.LeaseUntil == nil {
+			event.LeaseUntil = state.LastLeaseUntil
+		}
+	}
+	events = append(events, event)
+	if len(events) > defaultOpenAIExternalQuotaGateEvents {
+		events = events[len(events)-defaultOpenAIExternalQuotaGateEvents:]
+	}
+	return events
 }
 
 func readOpenAIExternalQuotaGateState(account *Account) openAIExternalQuotaGateState {
@@ -582,19 +717,25 @@ func stateFromOpenAIExternalQuotaSnapshot(snapshot *openAIExternalQuotaSnapshot,
 
 func (s openAIExternalQuotaGateState) failureState(now time.Time, decision string) openAIExternalQuotaGateState {
 	s.LastAttemptAt = now
+	if s.LastLeaseUntil == nil {
+		s.LastLeaseUntil = s.LeaseUntil
+	}
 	s.LeaseUntil = nil
+	s.BaselineObservedAt = nil
+	s.BaselinePrimary = nil
+	s.BaselineSecondary = nil
+	s.ObservationReadyAt = nil
 	s.Decision = decision
-	s.ExternalDeltaPercent = 0
 	s.LocalRequests = 0
 	return s
 }
 
-func externalQuotaDelta(previous, current openAIExternalQuotaGateState) (float64, bool) {
+func externalQuotaDeltaFromObservation(current openAIExternalQuotaGateState) (float64, bool) {
 	maxDelta := 0.0
 	comparable := false
 	for _, pair := range [][2]*openAIExternalQuotaWindow{
-		{previous.Primary, current.Primary},
-		{previous.Secondary, current.Secondary},
+		{current.BaselinePrimary, current.Primary},
+		{current.BaselineSecondary, current.Secondary},
 	} {
 		before, after := pair[0], pair[1]
 		if before == nil || after == nil ||

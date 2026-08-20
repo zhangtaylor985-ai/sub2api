@@ -37,6 +37,18 @@
     </div>
 
     <div v-if="enabled" class="border-t border-sky-100 bg-white/70 px-4 py-4 dark:border-sky-900/50 dark:bg-dark-900/20">
+      <div class="mb-4 flex flex-wrap gap-2 text-[11px] font-medium">
+        <span class="rounded-full bg-sky-100 px-2.5 py-1 text-sky-700 dark:bg-sky-900/50 dark:text-sky-200">
+          {{ t('admin.accounts.externalQuotaGate.policyInterval') }}
+        </span>
+        <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+          {{ t('admin.accounts.externalQuotaGate.policyLease') }}
+        </span>
+        <span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+          {{ t('admin.accounts.externalQuotaGate.policyNoRenewal') }}
+        </span>
+      </div>
+
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <span :class="['h-2 w-2 rounded-full', statusDotClass]" />
@@ -54,10 +66,14 @@
         </button>
       </div>
 
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800/70">
           <div class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('admin.accounts.externalQuotaGate.primaryUsage') }}</div>
           <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ primaryUsage }}</div>
+        </div>
+        <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800/70">
+          <div class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('admin.accounts.externalQuotaGate.observationBaseline') }}</div>
+          <div class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ observationBaseline }}</div>
         </div>
         <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800/70">
           <div class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('admin.accounts.externalQuotaGate.externalDelta') }}</div>
@@ -68,9 +84,34 @@
           <div class="mt-1 text-xs font-medium leading-6 text-gray-700 dark:text-gray-200">{{ lastCheck }}</div>
         </div>
         <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800/70">
+          <div class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('admin.accounts.externalQuotaGate.externalDetectedAt') }}</div>
+          <div class="mt-1 text-xs font-medium leading-6 text-gray-700 dark:text-gray-200">{{ externalDetectedAt }}</div>
+        </div>
+        <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800/70">
           <div class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('admin.accounts.externalQuotaGate.leaseUntil') }}</div>
           <div class="mt-1 text-xs font-medium leading-6 text-gray-700 dark:text-gray-200">{{ leaseUntil }}</div>
         </div>
+      </div>
+
+      <div v-if="recentEvents.length" class="mt-4 rounded-lg border border-gray-100 bg-white/70 p-3 dark:border-dark-700 dark:bg-dark-800/40">
+        <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+          {{ t('admin.accounts.externalQuotaGate.recentEvents') }}
+        </h4>
+        <ul class="mt-2 space-y-2">
+          <li v-for="(event, index) in recentEvents" :key="`${event.occurred_at}-${event.decision}-${index}`" class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]">
+            <div class="flex min-w-0 items-center gap-2">
+              <span :class="['h-1.5 w-1.5 shrink-0 rounded-full', event.schedulable ? 'bg-emerald-500' : 'bg-gray-400']" />
+              <span class="font-medium text-gray-700 dark:text-gray-200">{{ decisionText(event.decision) }}</span>
+              <span v-if="typeof event.used_percent === 'number'" class="tabular-nums text-gray-500 dark:text-gray-400">
+                {{ event.used_percent.toFixed(1) }}%
+              </span>
+              <span v-if="event.external_delta_percent" class="tabular-nums text-emerald-600 dark:text-emerald-300">
+                +{{ event.external_delta_percent.toFixed(1) }}%
+              </span>
+            </div>
+            <span class="shrink-0 text-gray-400">{{ formatTimestamp(event.occurred_at) }}</span>
+          </li>
+        </ul>
       </div>
 
       <p class="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
@@ -88,7 +129,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { Account, OpenAIExternalQuotaGateState } from '@/types'
+import type { Account, OpenAIExternalQuotaGateEvent, OpenAIExternalQuotaGateState } from '@/types'
 
 const props = defineProps<{ account: Account }>()
 const emit = defineEmits<{ updated: [account: Account] }>()
@@ -105,30 +146,37 @@ const state = computed<OpenAIExternalQuotaGateState | null>(() =>
   accountState.value.extra?.openai_external_quota_gate_state ?? null
 )
 
-const decisionLabel = computed(() => {
-  const key = state.value?.decision || 'initializing'
-  const labels: Record<string, string> = {
-    initializing: 'initializing',
-    external_decrease_detected: 'externalDecrease',
-    lease_active: 'leaseActive',
-    upstream_unavailable: 'upstreamUnavailable',
-    baseline_created: 'baselineCreated',
-    no_external_decrease: 'noExternalDecrease',
-    local_traffic_detected: 'localTraffic',
-    lease_expired: 'leaseExpired',
-    window_changed: 'windowChanged',
-    inactive_lease_discarded: 'inactiveLeaseDiscarded',
-    invalid_account: 'invalidAccount',
-    upstream_error: 'upstreamError',
-    local_usage_error: 'localUsageError'
-  }
-  return t(`admin.accounts.externalQuotaGate.decisions.${labels[key] || 'unknown'}`)
-})
+const decisionLabels: Record<string, string> = {
+  initializing: 'initializing',
+  external_decrease_detected: 'externalDecrease',
+  lease_active: 'leaseActive',
+  lease_active_upstream_error: 'leaseActiveUpstreamError',
+  upstream_unavailable: 'upstreamUnavailable',
+  baseline_created: 'baselineCreated',
+  observing_external_usage: 'observingExternalUsage',
+  observation_cooldown: 'observationCooldown',
+  no_external_decrease: 'noExternalDecrease',
+  local_traffic_detected: 'localTraffic',
+  lease_expired: 'leaseExpired',
+  window_changed: 'windowChanged',
+  inactive_lease_discarded: 'inactiveLeaseDiscarded',
+  schedulable_without_lease_closed: 'schedulableWithoutLeaseClosed',
+  invalid_account: 'invalidAccount',
+  upstream_error: 'upstreamError',
+  local_usage_error: 'localUsageError'
+}
+
+const decisionText = (decision?: string) =>
+  t(`admin.accounts.externalQuotaGate.decisions.${decisionLabels[decision || 'initializing'] || 'unknown'}`)
+
+const decisionLabel = computed(() => decisionText(state.value?.decision))
 
 const statusDotClass = computed(() => accountState.value.schedulable ? 'bg-emerald-500' : state.value?.decision?.includes('error') ? 'bg-rose-500' : 'bg-amber-500')
 const statusTextClass = computed(() => accountState.value.schedulable ? 'text-emerald-700 dark:text-emerald-300' : state.value?.decision?.includes('error') ? 'text-rose-700 dark:text-rose-300' : 'text-amber-700 dark:text-amber-300')
 const primaryUsage = computed(() => state.value?.primary_window ? `${state.value.primary_window.used_percent.toFixed(1)}%` : '—')
+const observationBaseline = computed(() => state.value?.baseline_primary_window ? `${state.value.baseline_primary_window.used_percent.toFixed(1)}%` : '—')
 const externalDelta = computed(() => state.value?.external_delta_percent ? `+${state.value.external_delta_percent.toFixed(1)}%` : '—')
+const recentEvents = computed<OpenAIExternalQuotaGateEvent[]>(() => [...(state.value?.recent_events ?? [])].reverse())
 
 const formatTimestamp = (value?: string) => {
   if (!value) return '—'
@@ -136,7 +184,8 @@ const formatTimestamp = (value?: string) => {
   return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString(locale.value)
 }
 const lastCheck = computed(() => formatTimestamp(state.value?.last_attempt_at))
-const leaseUntil = computed(() => formatTimestamp(state.value?.lease_until))
+const externalDetectedAt = computed(() => formatTimestamp(state.value?.external_detected_at))
+const leaseUntil = computed(() => formatTimestamp(state.value?.lease_until || state.value?.last_lease_until))
 
 const applyUpdatedAccount = (account: Account) => {
   accountState.value = account

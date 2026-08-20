@@ -828,6 +828,16 @@ export interface OpenAIExternalQuotaWindow {
   reset_at: number
 }
 
+export interface OpenAIExternalQuotaGateEvent {
+  occurred_at: string
+  decision: string
+  schedulable: boolean
+  used_percent?: number
+  external_delta_percent?: number
+  local_requests?: number
+  lease_until?: string
+}
+
 export interface OpenAIExternalQuotaGateState {
   observed_at?: string
   last_attempt_at?: string
@@ -835,10 +845,17 @@ export interface OpenAIExternalQuotaGateState {
   limit_reached: boolean
   primary_window?: OpenAIExternalQuotaWindow
   secondary_window?: OpenAIExternalQuotaWindow
+  baseline_observed_at?: string
+  baseline_primary_window?: OpenAIExternalQuotaWindow
+  baseline_secondary_window?: OpenAIExternalQuotaWindow
+  observation_ready_at?: string
+  external_detected_at?: string
   lease_until?: string
+  last_lease_until?: string
   decision: string
   external_delta_percent?: number
   local_requests?: number
+  recent_events?: OpenAIExternalQuotaGateEvent[]
 }
 
 export interface Account {

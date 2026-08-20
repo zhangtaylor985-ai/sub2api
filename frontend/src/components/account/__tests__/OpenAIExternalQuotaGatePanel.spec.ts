@@ -47,9 +47,22 @@ const buildAccount = (enabled = true) => ({
       limit_reached: false,
       decision: 'external_decrease_detected',
       primary_window: { used_percent: 42.5, limit_window_seconds: 604800, reset_at: 1787204531 },
+      baseline_primary_window: { used_percent: 41, limit_window_seconds: 604800, reset_at: 1787204531 },
       external_delta_percent: 1.5,
       last_attempt_at: '2026-08-19T12:00:00Z',
-      lease_until: '2026-08-19T12:10:00Z'
+      external_detected_at: '2026-08-19T12:00:00Z',
+      lease_until: '2026-08-19T13:00:00Z',
+      last_lease_until: '2026-08-19T13:00:00Z',
+      recent_events: [
+        {
+          occurred_at: '2026-08-19T12:00:00Z',
+          decision: 'external_decrease_detected',
+          schedulable: true,
+          used_percent: 42.5,
+          external_delta_percent: 1.5,
+          lease_until: '2026-08-19T13:00:00Z'
+        }
+      ]
     }
   } : {},
   proxy_id: null,
@@ -86,7 +99,10 @@ describe('OpenAIExternalQuotaGatePanel', () => {
 
     expect(wrapper.text()).toContain('admin.accounts.externalQuotaGate.decisions.externalDecrease')
     expect(wrapper.text()).toContain('42.5%')
+    expect(wrapper.text()).toContain('41.0%')
     expect(wrapper.text()).toContain('+1.5%')
+    expect(wrapper.text()).toContain('admin.accounts.externalQuotaGate.policyLease')
+    expect(wrapper.text()).toContain('admin.accounts.externalQuotaGate.recentEvents')
   })
 
   it('refreshes immediately and emits the updated account', async () => {

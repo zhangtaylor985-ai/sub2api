@@ -951,3 +951,12 @@
 - `git fetch origin --prune` 后确认 `origin/main` 没有新提交，本分支相对主线 `0 behind / 2 ahead`，工作树在记录发布计划前为干净状态。
 - 发布门禁复验通过：`go test ./... -count=1` 全量通过；GatewayCache真实Redis integration通过；前端 `lint:check`、`typecheck`、门禁组件5项专项测试与生产build均通过。
 - 本次不触达Claude协议转换、streaming、thinking、tool_use或web_search，因此按回归Skill分类不需要执行cc1黑盒；发布后重点验证调度、UI/API和健康状态。
+- 正式主线已快进推送到 `origin/main` commit `78320aef538e`。
+- Linux ARM64 embedded-frontend binary：`backend/bin/sub2api-linux-arm64-20260820T084040Z-external-quota-drain`，SHA256=`9587e789b3cfc21e18e5c3190c17b215ef0ba9b2bdd25da62ad0bb345e7bc17a`；zst SHA256=`9aefd5eed6ae7899c695ed497be597abdecaa71b73a91540161d59efe7b120b3`。
+- 远端release：`/opt/sub2api/releases/sub2api-linux-arm64-20260820T084040Z-external-quota-drain`，上传解压后的binary/zst SHA与本地一致。
+- 生产当前binary已替换为 `9587e789...bc17a`；回滚备份为 `/opt/sub2api/sub2api.bak.20260820T084153Z-before-external-quota-drain`，旧SHA=`facf843d...15aa0`。
+- `sub2api.service` 于 `2026-08-20 08:41:58 UTC` 启动新generation，当前active/running、Result=success、NRestarts=0；内网和公网 `/health` 均为ok。
+- 旧generation在5秒停止窗口内仍处理长流式请求，截止后被systemd强制结束并留下旧generation exit-code记录；新generation启动后error级日志为空，切换窗口未检出已记录的HTTP 5xx。
+- 生产管理页HTTP 200，实际AccountsView资源包含 `openai_external_quota_gate_draining`、时长输入和保存控件；新配置API未登录返回401，证明路由已注册且保持admin鉴权。
+- 四个目标账号均保持gate enabled、draining=false、schedulable=false；08:43:59 UTC后状态为3个 `observing_external_usage`、1个 `window_changed`，说明新服务的每分钟检查已运行。未修改账号extra；未配置时长按代码默认120分钟。
+- 回滚命令：`sudo install -m 0755 -o sub2api -g sub2api /opt/sub2api/sub2api.bak.20260820T084153Z-before-external-quota-drain /opt/sub2api/sub2api && sudo systemctl restart sub2api`。

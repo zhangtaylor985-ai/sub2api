@@ -644,6 +644,8 @@
 | 2026-08-20 | Redis integration测试夹具把接口构造结果直接赋给具体类型字段，带标签构建失败 | 测试同包直接构造 `gatewayCache`，重跑真实Redis integration通过 |
 | 2026-08-20 | 前端全量Vitest仍有5个文件共12项既有失败 | 与任务前基线一致；本次专项5项全部通过，未扩大范围修复无关基线 |
 | 2026-08-20 | 隔离worktree内不存在项目级Skill脚本路径，首次读取构建脚本失败 | 改读主工作树的项目级Skill脚本；构建时按同一参数在隔离worktree手动执行，避免误构建主工作树 |
+| 2026-08-20 | 首次生产账号只读SQL在SSH双层引号中丢失JSON键的单引号 | 该命令只读且未执行查询；改用quoted heredoc把SQL直接传给psql，避免继续嵌套转义 |
+| 2026-08-20 | 重启时旧进程因仍有长流式请求，5秒优雅关闭截止后以status=1退出 | 新generation正常启动；切换窗口未见已记录5xx，当前Result=success/NRestarts=0，后续error级日志为空 |
 
 ## 生产发布阶段
 
@@ -653,9 +655,9 @@
 | --- | --- | --- |
 | 1. 生产与Git只读预检 | complete | 生产systemd/health/binary SHA、远端主线无漂移 |
 | 2. 发布门禁复验 | complete | Go全量、前端lint/typecheck/build、Redis integration均通过 |
-| 3. 推送正式主线并构建ARM64 binary | in_progress | origin/main、binary与压缩包SHA |
-| 4. 上传、备份、替换与重启 | pending | release路径、回滚binary、systemd状态 |
-| 5. 生产UI/API/调度状态验收 | pending | 内外health、静态资源、接口、日志与回滚结论 |
+| 3. 推送正式主线并构建ARM64 binary | complete | origin/main=`78320aef5`、binary与压缩包SHA |
+| 4. 上传、备份、替换与重启 | complete | release路径、回滚binary、systemd active |
+| 5. 生产UI/API/调度状态验收 | complete | 内外health、静态资源、接口、四账号状态与日志均已核验 |
 
 ### 发布边界与回滚
 

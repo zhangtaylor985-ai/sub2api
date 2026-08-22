@@ -98,6 +98,47 @@ export interface ApiKeyTokenPackageSummary {
   remaining_usd: number
 }
 
+export interface ApiKeyPlanPackage {
+  id: number
+  api_key_id: number
+  group_id: number
+  package_name: string
+  daily_limit_usd: number
+  weekly_limit_usd: number
+  concurrency: number
+  months: number
+  starts_at: string
+  expires_at: string
+  source: 'admin' | 'legacy_baseline'
+  note?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+  is_active: boolean
+  is_upcoming: boolean
+}
+
+export interface ApiKeyPlanPackageSummary {
+  managed: boolean
+  active_count: number
+  daily_limit_usd: number
+  weekly_limit_usd: number
+  concurrency: number
+  latest_expires_at?: string
+  next_transition_at?: string
+}
+
+export interface ApiKeyPlanPackageSchedule {
+  packages: ApiKeyPlanPackage[]
+  summary: ApiKeyPlanPackageSummary
+}
+
+export interface AddApiKeyPlanPackageResult {
+  package: ApiKeyPlanPackage
+  summary: ApiKeyPlanPackageSummary
+  idempotent: boolean
+}
+
 export async function listApiKeys(
   page: number = 1,
   pageSize: number = 20,
@@ -157,13 +198,25 @@ export async function listTokenPackages(id: number): Promise<ApiKeyTokenPackageS
   return data
 }
 
+export async function addPlanPackage(id: number, payload: { group_id: number; request_id: string; months: number; note?: string }): Promise<AddApiKeyPlanPackageResult> {
+  const { data } = await apiClient.post<AddApiKeyPlanPackageResult>(`/admin/api-keys/${id}/plan-packages`, payload)
+  return data
+}
+
+export async function listPlanPackages(id: number): Promise<ApiKeyPlanPackageSchedule> {
+  const { data } = await apiClient.get<ApiKeyPlanPackageSchedule>(`/admin/api-keys/${id}/plan-packages`)
+  return data
+}
+
 export const apiKeysAPI = {
   list: listApiKeys,
   create: createApiKey,
   updateApiKeyGroup,
   updateApiKeyPolicy,
   addTokenPackage,
-  listTokenPackages
+  listTokenPackages,
+  addPlanPackage,
+  listPlanPackages
 }
 
 export default apiKeysAPI

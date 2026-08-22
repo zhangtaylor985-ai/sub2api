@@ -69,7 +69,9 @@ type stubAdminService struct {
 		sortOrder string
 		calls     int
 	}
-	mu sync.Mutex
+	lastPlanPackageInput *service.AddAPIKeyPlanPackageInput
+	planPackages         []service.APIKeyPlanPackage
+	mu                   sync.Mutex
 }
 
 func newStubAdminService() *stubAdminService {
@@ -721,6 +723,51 @@ func (s *stubAdminService) AdminListAPIKeyTokenPackages(ctx context.Context, key
 		}
 	}
 	return nil, service.ErrAPIKeyNotFound
+}
+
+func (s *stubAdminService) AdminAddAPIKeyPlanPackage(ctx context.Context, input service.AddAPIKeyPlanPackageInput) (*service.AddAPIKeyPlanPackageResult, error) {
+	for _, key := range s.apiKeys {
+		if key.ID != input.APIKeyID {
+			continue
+		}
+		inputCopy := input
+		s.lastPlanPackageInput = &inputCopy
+		pkg := service.APIKeyPlanPackage{
+			ID:             1,
+			APIKeyID:       input.APIKeyID,
+			GroupID:        input.GroupID,
+			PackageName:    "Double",
+			DailyLimitUSD:  150,
+			WeeklyLimitUSD: 500,
+			Concurrency:    2,
+			Months:         input.Months,
+			StartsAt:       input.Now,
+			ExpiresAt:      service.AddCalendarMonthsClamped(input.Now, input.Months),
+			Source:         "admin",
+			IsActive:       true,
+		}
+		s.planPackages = append(s.planPackages, pkg)
+		return &service.AddAPIKeyPlanPackageResult{
+			Package: pkg,
+			Summary: service.APIKeyPlanPackageSummary{
+				Managed:        true,
+				ActiveCount:    1,
+				DailyLimitUSD:  150,
+				WeeklyLimitUSD: 500,
+				Concurrency:    2,
+			},
+		}, nil
+	}
+	return nil, service.ErrAPIKeyNotFound
+}
+
+func (s *stubAdminService) AdminListAPIKeyPlanPackages(ctx context.Context, keyID int64) ([]service.APIKeyPlanPackage, *service.APIKeyPlanPackageSummary, error) {
+	for _, key := range s.apiKeys {
+		if key.ID == keyID {
+			return s.planPackages, &service.APIKeyPlanPackageSummary{Managed: len(s.planPackages) > 0}, nil
+		}
+	}
+	return nil, nil, service.ErrAPIKeyNotFound
 }
 
 func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) error {

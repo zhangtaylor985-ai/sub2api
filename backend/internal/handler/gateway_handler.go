@@ -1175,6 +1175,7 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	usageData := h.buildUsageData(ctx, apiKey.ID)
 	dailyUsage := h.buildAPIKeyDailyUsage(c, subject.UserID, apiKey.ID, days)
 	tokenPackages := h.buildAPIKeyTokenPackages(ctx, apiKey.ID)
+	planPackages := h.buildAPIKeyPlanPackages(ctx, apiKey.ID)
 
 	// Best-effort: 获取模型统计
 	var modelStats any
@@ -1185,7 +1186,7 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	}
 
 	if apiKey.Group != nil && apiKey.Group.IsDedicatedUnlimited() {
-		h.usageDedicatedUnlimited(c, apiKey, usageData, dailyUsage, modelStats, tokenPackages)
+		h.usageDedicatedUnlimited(c, apiKey, usageData, dailyUsage, modelStats, tokenPackages, planPackages)
 		return
 	}
 
@@ -1193,11 +1194,11 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	isQuotaLimited := apiKey.Quota > 0 || apiKey.HasRateLimits() || tokenPackages != nil
 
 	if isQuotaLimited {
-		h.usageQuotaLimited(c, ctx, apiKey, usageData, dailyUsage, modelStats, tokenPackages)
+		h.usageQuotaLimited(c, ctx, apiKey, usageData, dailyUsage, modelStats, tokenPackages, planPackages)
 		return
 	}
 
-	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, dailyUsage, modelStats, tokenPackages)
+	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, dailyUsage, modelStats, tokenPackages, planPackages)
 }
 
 // parseUsageDateRange 解析 start_date / end_date query params，默认返回近 30 天范围
@@ -1316,8 +1317,39 @@ func (h *GatewayHandler) buildAPIKeyTokenPackages(ctx context.Context, apiKeyID 
 	}
 }
 
+func (h *GatewayHandler) buildAPIKeyPlanPackages(ctx context.Context, apiKeyID int64) any {
+	if h.apiKeyService == nil {
+		return nil
+	}
+	packages, summary, err := h.apiKeyService.GetPlanPackageSchedule(ctx, apiKeyID, 100)
+	if err != nil || len(packages) == 0 {
+		return nil
+	}
+	if summary == nil || !summary.Managed {
+		return nil
+	}
+	items := make([]gin.H, 0, len(packages))
+	for i := range packages {
+		pkg := packages[i]
+		items = append(items, gin.H{
+			"id":               pkg.ID,
+			"group_id":         pkg.GroupID,
+			"package_name":     pkg.PackageName,
+			"daily_limit_usd":  pkg.DailyLimitUSD,
+			"weekly_limit_usd": pkg.WeeklyLimitUSD,
+			"concurrency":      pkg.Concurrency,
+			"months":           pkg.Months,
+			"starts_at":        pkg.StartsAt,
+			"expires_at":       pkg.ExpiresAt,
+			"is_active":        pkg.IsActive,
+			"is_upcoming":      pkg.IsUpcoming,
+		})
+	}
+	return gin.H{"summary": summary, "packages": items}
+}
+
 // usageQuotaLimited 处理 quota_limited 模式的响应
-func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any, tokenPackages any) {
+func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any, tokenPackages any, planPackages any) {
 	resp := gin.H{
 		"mode":    "quota_limited",
 		"isValid": apiKey.Status == service.StatusAPIKeyActive || apiKey.Status == service.StatusAPIKeyQuotaExhausted || apiKey.Status == service.StatusAPIKeyExpired,
@@ -1411,12 +1443,15 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 	if tokenPackages != nil {
 		resp["token_packages"] = tokenPackages
 	}
+	if planPackages != nil {
+		resp["plan_packages"] = planPackages
+	}
 
 	c.JSON(http.StatusOK, resp)
 }
 
 // usageDedicatedUnlimited 处理专享不限额模式的响应。
-func (h *GatewayHandler) usageDedicatedUnlimited(c *gin.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any, tokenPackages any) {
+func (h *GatewayHandler) usageDedicatedUnlimited(c *gin.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any, tokenPackages any, planPackages any) {
 	resp := gin.H{
 		"mode":                "dedicated_unlimited",
 		"isValid":             apiKey.Status == service.StatusAPIKeyActive || apiKey.Status == service.StatusAPIKeyQuotaExhausted || apiKey.Status == service.StatusAPIKeyExpired,
@@ -1443,11 +1478,14 @@ func (h *GatewayHandler) usageDedicatedUnlimited(c *gin.Context, apiKey *service
 	if tokenPackages != nil {
 		resp["token_packages"] = tokenPackages
 	}
+	if planPackages != nil {
+		resp["plan_packages"] = planPackages
+	}
 	c.JSON(http.StatusOK, resp)
 }
 
 // usageUnrestricted 处理 unrestricted 模式的响应（向后兼容）
-func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any, tokenPackages any) {
+func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any, tokenPackages any, planPackages any) {
 	// 订阅模式
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
 		resp := gin.H{
@@ -1485,6 +1523,9 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		if tokenPackages != nil {
 			resp["token_packages"] = tokenPackages
 		}
+		if planPackages != nil {
+			resp["plan_packages"] = planPackages
+		}
 		c.JSON(http.StatusOK, resp)
 		return
 	}
@@ -1515,6 +1556,9 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 	}
 	if tokenPackages != nil {
 		resp["token_packages"] = tokenPackages
+	}
+	if planPackages != nil {
+		resp["plan_packages"] = planPackages
 	}
 	c.JSON(http.StatusOK, resp)
 }

@@ -169,6 +169,8 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
 		apiKeys.GET("/:id/token-packages", h.Admin.APIKey.ListTokenPackages)
 		apiKeys.POST("/:id/token-packages", h.Admin.APIKey.AddTokenPackage)
+		apiKeys.GET("/:id/plan-packages", h.Admin.APIKey.ListPlanPackages)
+		apiKeys.POST("/:id/plan-packages", h.Admin.APIKey.AddPlanPackage)
 	}
 }
 

@@ -76,6 +76,59 @@ type APIKey struct {
 	Window5hStart *time.Time // Start of current 5h window
 	Window1dStart *time.Time // Start of current 1d window
 	Window7dStart *time.Time // Start of current 7d window
+
+	// PlanPackageSummary is populated on authentication reads after this key starts
+	// using independently expiring plan packages. Historical keys without package
+	// rows continue to use the legacy key/group fields above.
+	PlanPackageSummary *APIKeyPlanPackageSummary
+}
+
+type APIKeyPlanPackage struct {
+	ID             int64     `json:"id"`
+	APIKeyID       int64     `json:"api_key_id"`
+	GroupID        int64     `json:"group_id"`
+	RequestID      string    `json:"request_id,omitempty"`
+	PackageName    string    `json:"package_name"`
+	DailyLimitUSD  float64   `json:"daily_limit_usd"`
+	WeeklyLimitUSD float64   `json:"weekly_limit_usd"`
+	Concurrency    int       `json:"concurrency"`
+	Months         int       `json:"months"`
+	StartsAt       time.Time `json:"starts_at"`
+	ExpiresAt      time.Time `json:"expires_at"`
+	Source         string    `json:"source"`
+	Note           string    `json:"note,omitempty"`
+	CreatedBy      string    `json:"created_by,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	IsActive       bool      `json:"is_active"`
+	IsUpcoming     bool      `json:"is_upcoming"`
+}
+
+type APIKeyPlanPackageSummary struct {
+	Managed          bool       `json:"managed"`
+	ActiveCount      int        `json:"active_count"`
+	DailyLimitUSD    float64    `json:"daily_limit_usd"`
+	WeeklyLimitUSD   float64    `json:"weekly_limit_usd"`
+	Concurrency      int        `json:"concurrency"`
+	LatestExpiresAt  *time.Time `json:"latest_expires_at,omitempty"`
+	NextTransitionAt *time.Time `json:"next_transition_at,omitempty"`
+}
+
+type AddAPIKeyPlanPackageInput struct {
+	APIKeyID  int64
+	GroupID   int64
+	RequestID string
+	Months    int
+	Note      string
+	CreatedBy string
+	Now       time.Time
+}
+
+type AddAPIKeyPlanPackageResult struct {
+	Package    APIKeyPlanPackage
+	Summary    APIKeyPlanPackageSummary
+	Key        string
+	Idempotent bool
 }
 
 type APIKeyTokenPackage struct {
@@ -153,6 +206,9 @@ func (k *APIKey) EffectiveRateLimit1d() float64 {
 	if k == nil {
 		return 0
 	}
+	if k.PlanPackageSummary != nil && k.PlanPackageSummary.Managed {
+		return positiveLimit(k.PlanPackageSummary.DailyLimitUSD)
+	}
 	if limit := positiveLimit(k.RateLimit1d); limit > 0 {
 		return limit
 	}
@@ -169,6 +225,9 @@ func (k *APIKey) EffectiveRateLimit1d() float64 {
 func (k *APIKey) EffectiveRateLimit7d() float64 {
 	if k == nil {
 		return 0
+	}
+	if k.PlanPackageSummary != nil && k.PlanPackageSummary.Managed {
+		return positiveLimit(k.PlanPackageSummary.WeeklyLimitUSD)
 	}
 	if limit := positiveLimit(k.RateLimit7d); limit > 0 {
 		return limit
@@ -201,6 +260,12 @@ func (k *APIKey) EffectiveConcurrency() int {
 	if k == nil {
 		return 0
 	}
+	if k.PlanPackageSummary != nil && k.PlanPackageSummary.Managed {
+		if k.PlanPackageSummary.Concurrency > 0 {
+			return k.PlanPackageSummary.Concurrency
+		}
+		return 0
+	}
 	if k.Concurrency > 0 {
 		return k.Concurrency
 	}
@@ -211,6 +276,23 @@ func (k *APIKey) EffectiveConcurrency() int {
 		return k.User.Concurrency
 	}
 	return 0
+}
+
+func (k *APIKey) HasManagedPlanPackages() bool {
+	return k != nil && k.PlanPackageSummary != nil && k.PlanPackageSummary.Managed
+}
+
+// AddCalendarMonthsClamped adds calendar months while preserving the local
+// wall-clock time and clamps end-of-month dates (Jan 31 + 1 month = Feb 28/29).
+func AddCalendarMonthsClamped(value time.Time, months int) time.Time {
+	year, month, day := value.Date()
+	hour, minute, second := value.Clock()
+	targetFirst := time.Date(year, month+time.Month(months), 1, hour, minute, second, value.Nanosecond(), value.Location())
+	lastDay := time.Date(targetFirst.Year(), targetFirst.Month()+1, 0, hour, minute, second, value.Nanosecond(), value.Location()).Day()
+	if day > lastDay {
+		day = lastDay
+	}
+	return time.Date(targetFirst.Year(), targetFirst.Month(), day, hour, minute, second, value.Nanosecond(), value.Location())
 }
 
 // IsExpired checks if the API key has expired

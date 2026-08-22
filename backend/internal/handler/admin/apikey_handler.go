@@ -1,8 +1,10 @@
 package admin
 
 import (
+	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -68,6 +70,18 @@ type AdminCreateAPIKeyRequest struct {
 type AdminAddAPIKeyTokenPackageRequest struct {
 	AmountUSD float64 `json:"amount_usd" binding:"required"`
 	Note      string  `json:"note"`
+}
+
+type AdminAddAPIKeyPlanPackageRequest struct {
+	GroupID   int64  `json:"group_id" binding:"required"`
+	RequestID string `json:"request_id" binding:"required"`
+	Months    int    `json:"months" binding:"required"`
+	Note      string `json:"note"`
+}
+
+type adminAPIKeyPlanPackageService interface {
+	AdminAddAPIKeyPlanPackage(ctx context.Context, input service.AddAPIKeyPlanPackageInput) (*service.AddAPIKeyPlanPackageResult, error)
+	AdminListAPIKeyPlanPackages(ctx context.Context, keyID int64) ([]service.APIKeyPlanPackage, *service.APIKeyPlanPackageSummary, error)
 }
 
 // List handles listing API keys across all users.
@@ -269,6 +283,69 @@ func (h *AdminAPIKeyHandler) ListTokenPackages(c *gin.Context) {
 		"usages":        usages,
 		"remaining_usd": summary.Remaining,
 	})
+}
+
+// AddPlanPackage appends an independently expiring plan package to an API key.
+// POST /api/v1/admin/api-keys/:id/plan-packages
+func (h *AdminAPIKeyHandler) AddPlanPackage(c *gin.Context) {
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+	var req AdminAddAPIKeyPlanPackageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.GroupID <= 0 || req.Months < 1 || req.Months > 24 || strings.TrimSpace(req.RequestID) == "" {
+		response.BadRequest(c, "group_id, request_id and months (1-24) are required")
+		return
+	}
+	planService, ok := h.adminService.(adminAPIKeyPlanPackageService)
+	if !ok {
+		response.ErrorFrom(c, service.ErrAPIKeyPlanPackageUnavailable)
+		return
+	}
+	result, err := planService.AdminAddAPIKeyPlanPackage(c.Request.Context(), service.AddAPIKeyPlanPackageInput{
+		APIKeyID:  keyID,
+		GroupID:   req.GroupID,
+		RequestID: strings.TrimSpace(req.RequestID),
+		Months:    req.Months,
+		Note:      req.Note,
+		CreatedBy: "admin",
+		Now:       time.Now(),
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"package":    result.Package,
+		"summary":    result.Summary,
+		"idempotent": result.Idempotent,
+	})
+}
+
+// ListPlanPackages returns the complete package schedule for an API key.
+// GET /api/v1/admin/api-keys/:id/plan-packages
+func (h *AdminAPIKeyHandler) ListPlanPackages(c *gin.Context) {
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+	planService, ok := h.adminService.(adminAPIKeyPlanPackageService)
+	if !ok {
+		response.ErrorFrom(c, service.ErrAPIKeyPlanPackageUnavailable)
+		return
+	}
+	packages, summary, err := planService.AdminListAPIKeyPlanPackages(c.Request.Context(), keyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"packages": packages, "summary": summary})
 }
 
 func apiKeyTokenPackageResponse(pkg *service.APIKeyTokenPackage) any {

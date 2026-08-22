@@ -22,6 +22,7 @@ import (
 type apiKeyRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
+	db     *sql.DB
 }
 
 func NewAPIKeyRepository(client *dbent.Client, sqlDB *sql.DB) service.APIKeyRepository {
@@ -29,7 +30,11 @@ func NewAPIKeyRepository(client *dbent.Client, sqlDB *sql.DB) service.APIKeyRepo
 }
 
 func newAPIKeyRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *apiKeyRepository {
-	return &apiKeyRepository{client: client, sql: sqlq}
+	repo := &apiKeyRepository{client: client, sql: sqlq}
+	if db, ok := sqlq.(*sql.DB); ok {
+		repo.db = db
+	}
+	return repo
 }
 
 func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
@@ -214,7 +219,11 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	result := apiKeyEntityToService(m)
+	if err := r.hydratePlanPackageSummary(ctx, result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) error {
@@ -834,6 +843,306 @@ func (r *apiKeyRepository) ListTokenPackageUsage(ctx context.Context, id int64, 
 		usages = append(usages, usage)
 	}
 	return usages, rows.Err()
+}
+
+type apiKeyPlanPackageRowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanAPIKeyPlanPackage(scanner apiKeyPlanPackageRowScanner, pkg *service.APIKeyPlanPackage) error {
+	return scanner.Scan(
+		&pkg.ID,
+		&pkg.APIKeyID,
+		&pkg.GroupID,
+		&pkg.RequestID,
+		&pkg.PackageName,
+		&pkg.DailyLimitUSD,
+		&pkg.WeeklyLimitUSD,
+		&pkg.Concurrency,
+		&pkg.Months,
+		&pkg.StartsAt,
+		&pkg.ExpiresAt,
+		&pkg.Source,
+		&pkg.Note,
+		&pkg.CreatedBy,
+		&pkg.CreatedAt,
+		&pkg.UpdatedAt,
+		&pkg.IsActive,
+		&pkg.IsUpcoming,
+	)
+}
+
+const apiKeyPlanPackageBaseColumns = `
+	id, api_key_id, group_id, request_id, package_name,
+	daily_limit_usd, weekly_limit_usd, concurrency, months,
+	starts_at, expires_at, source, COALESCE(note, ''), COALESCE(created_by, ''),
+	created_at, updated_at`
+
+const apiKeyPlanPackageSelectColumns = apiKeyPlanPackageBaseColumns + `,
+	starts_at <= $2 AND expires_at > $2 AS is_active,
+	starts_at > $2 AS is_upcoming`
+
+func (r *apiKeyRepository) AddPlanPackage(ctx context.Context, input service.AddAPIKeyPlanPackageInput) (*service.AddAPIKeyPlanPackageResult, error) {
+	if r.db == nil {
+		return nil, service.ErrAPIKeyPlanPackageUnavailable
+	}
+	if input.APIKeyID <= 0 || input.GroupID <= 0 || strings.TrimSpace(input.RequestID) == "" || input.Months < 1 || input.Months > 24 {
+		return nil, service.ErrAPIKeyPlanPackageInvalid
+	}
+	now := input.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		keyValue      string
+		keyStatus     string
+		legacyGroupID sql.NullInt64
+		legacyExpires sql.NullTime
+		keyCreatedAt  time.Time
+	)
+	err = tx.QueryRowContext(ctx, `
+		SELECT key, status, group_id, expires_at, created_at
+		FROM api_keys
+		WHERE id = $1 AND deleted_at IS NULL
+		FOR UPDATE`, input.APIKeyID).Scan(&keyValue, &keyStatus, &legacyGroupID, &legacyExpires, &keyCreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		return nil, err
+	}
+
+	requestID := strings.TrimSpace(input.RequestID)
+	existing := &service.APIKeyPlanPackage{}
+	err = scanAPIKeyPlanPackage(tx.QueryRowContext(ctx, `SELECT `+apiKeyPlanPackageSelectColumns+`
+		FROM api_key_plan_packages
+		WHERE api_key_id = $1 AND request_id = $3`, input.APIKeyID, now, requestID), existing)
+	if err == nil {
+		if existing.GroupID != input.GroupID || existing.Months != input.Months {
+			return nil, service.ErrAPIKeyPlanPackageInvalid
+		}
+		summary, summaryErr := getAPIKeyPlanPackageSummary(ctx, tx, input.APIKeyID, now)
+		if summaryErr != nil {
+			return nil, summaryErr
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return &service.AddAPIKeyPlanPackageResult{Package: *existing, Summary: *summary, Key: keyValue, Idempotent: true}, nil
+	}
+	if err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	var (
+		packageName string
+		dailyLimit  float64
+		weeklyLimit float64
+		concurrency int
+		groupStatus string
+	)
+	err = tx.QueryRowContext(ctx, `
+		SELECT name, COALESCE(daily_limit_usd, 0), COALESCE(weekly_limit_usd, 0), concurrency, status
+		FROM groups
+		WHERE id = $1 AND deleted_at IS NULL
+		FOR SHARE`, input.GroupID).Scan(&packageName, &dailyLimit, &weeklyLimit, &concurrency, &groupStatus)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, service.ErrGroupNotFound
+		}
+		return nil, err
+	}
+	if groupStatus != service.StatusActive || (dailyLimit <= 0 && weeklyLimit <= 0 && concurrency <= 0) {
+		return nil, service.ErrAPIKeyPlanPackageInvalid
+	}
+
+	var packageCount int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_key_plan_packages WHERE api_key_id = $1`, input.APIKeyID).Scan(&packageCount); err != nil {
+		return nil, err
+	}
+	if packageCount == 0 && legacyGroupID.Valid && legacyExpires.Valid && legacyExpires.Time.After(now) {
+		var (
+			legacyName        string
+			legacyDaily       float64
+			legacyWeekly      float64
+			legacyConcurrency int
+		)
+		legacyErr := tx.QueryRowContext(ctx, `
+			SELECT name, COALESCE(daily_limit_usd, 0), COALESCE(weekly_limit_usd, 0), concurrency
+			FROM groups
+			WHERE id = $1 AND deleted_at IS NULL`, legacyGroupID.Int64).Scan(&legacyName, &legacyDaily, &legacyWeekly, &legacyConcurrency)
+		if legacyErr != nil && legacyErr != sql.ErrNoRows {
+			return nil, legacyErr
+		}
+		if legacyErr == nil {
+			legacyStart := service.AddCalendarMonthsClamped(legacyExpires.Time, -1)
+			if keyCreatedAt.After(legacyStart) && keyCreatedAt.Before(legacyExpires.Time) {
+				legacyStart = keyCreatedAt
+			}
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO api_key_plan_packages (
+					api_key_id, group_id, request_id, package_name,
+					daily_limit_usd, weekly_limit_usd, concurrency, months,
+					starts_at, expires_at, source, note, created_by
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, 'legacy_baseline', $10, 'system')
+				ON CONFLICT (api_key_id, request_id) DO NOTHING`,
+				input.APIKeyID, legacyGroupID.Int64, fmt.Sprintf("legacy-baseline:%d", input.APIKeyID), legacyName,
+				legacyDaily, legacyWeekly, legacyConcurrency, legacyStart, legacyExpires.Time,
+				"Imported from the API key state that existed before plan stacking was enabled.")
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	startsAt := now
+	var samePackageExpiry sql.NullTime
+	if err := tx.QueryRowContext(ctx, `
+		SELECT MAX(expires_at)
+		FROM api_key_plan_packages
+		WHERE api_key_id = $1 AND group_id = $2`, input.APIKeyID, input.GroupID).Scan(&samePackageExpiry); err != nil {
+		return nil, err
+	}
+	if samePackageExpiry.Valid && samePackageExpiry.Time.After(startsAt) {
+		startsAt = samePackageExpiry.Time
+	}
+	expiresAt := service.AddCalendarMonthsClamped(startsAt, input.Months)
+
+	pkg := &service.APIKeyPlanPackage{}
+	err = scanAPIKeyPlanPackage(tx.QueryRowContext(ctx, `
+		INSERT INTO api_key_plan_packages (
+			api_key_id, group_id, request_id, package_name,
+			daily_limit_usd, weekly_limit_usd, concurrency, months,
+			starts_at, expires_at, source, note, created_by
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'admin', NULLIF($11, ''), NULLIF($12, ''))
+		RETURNING `+apiKeyPlanPackageBaseColumns+`,
+			starts_at <= $13 AND expires_at > $13 AS is_active,
+			starts_at > $13 AS is_upcoming`,
+		input.APIKeyID, input.GroupID, requestID, packageName,
+		dailyLimit, weeklyLimit, concurrency, input.Months, startsAt, expiresAt,
+		strings.TrimSpace(input.Note), strings.TrimSpace(input.CreatedBy), now), pkg)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		UPDATE api_keys
+		SET expires_at = (
+				SELECT MAX(expires_at) FROM api_key_plan_packages WHERE api_key_id = $1
+			),
+			status = CASE WHEN status = $2 THEN $3 ELSE status END,
+			updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`, input.APIKeyID, service.StatusAPIKeyExpired, service.StatusAPIKeyActive)
+	if err != nil {
+		return nil, err
+	}
+
+	summary, err := getAPIKeyPlanPackageSummary(ctx, tx, input.APIKeyID, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &service.AddAPIKeyPlanPackageResult{Package: *pkg, Summary: *summary, Key: keyValue}, nil
+}
+
+func (r *apiKeyRepository) ListPlanPackages(ctx context.Context, id int64, limit int, now time.Time) ([]service.APIKeyPlanPackage, error) {
+	if r.sql == nil {
+		return nil, service.ErrAPIKeyPlanPackageUnavailable
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	rows, err := r.sql.QueryContext(ctx, `SELECT `+apiKeyPlanPackageSelectColumns+`
+		FROM api_key_plan_packages
+		WHERE api_key_id = $1
+		ORDER BY starts_at ASC, id ASC
+		LIMIT $3`, id, now, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]service.APIKeyPlanPackage, 0)
+	for rows.Next() {
+		var pkg service.APIKeyPlanPackage
+		if err := scanAPIKeyPlanPackage(rows, &pkg); err != nil {
+			return nil, err
+		}
+		items = append(items, pkg)
+	}
+	return items, rows.Err()
+}
+
+func (r *apiKeyRepository) GetPlanPackageSummary(ctx context.Context, id int64, now time.Time) (*service.APIKeyPlanPackageSummary, error) {
+	if r.sql == nil {
+		return nil, service.ErrAPIKeyPlanPackageUnavailable
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	return getAPIKeyPlanPackageSummary(ctx, r.sql, id, now)
+}
+
+func getAPIKeyPlanPackageSummary(ctx context.Context, executor sqlExecutor, id int64, now time.Time) (*service.APIKeyPlanPackageSummary, error) {
+	summary := &service.APIKeyPlanPackageSummary{}
+	err := scanSingleRow(ctx, executor, `
+		SELECT
+			COUNT(*) > 0 AS managed,
+			COUNT(*) FILTER (WHERE starts_at <= $2 AND expires_at > $2) AS active_count,
+			COALESCE(SUM(daily_limit_usd) FILTER (WHERE starts_at <= $2 AND expires_at > $2), 0),
+			COALESCE(SUM(weekly_limit_usd) FILTER (WHERE starts_at <= $2 AND expires_at > $2), 0),
+			COALESCE(SUM(concurrency) FILTER (WHERE starts_at <= $2 AND expires_at > $2), 0),
+			MAX(expires_at),
+			(
+				SELECT MIN(transition_at)
+				FROM (
+					SELECT starts_at AS transition_at
+					FROM api_key_plan_packages
+					WHERE api_key_id = $1 AND starts_at > $2
+					UNION ALL
+					SELECT expires_at AS transition_at
+					FROM api_key_plan_packages
+					WHERE api_key_id = $1 AND starts_at <= $2 AND expires_at > $2
+				) transitions
+			)
+		FROM api_key_plan_packages
+		WHERE api_key_id = $1`, []any{id, now},
+		&summary.Managed,
+		&summary.ActiveCount,
+		&summary.DailyLimitUSD,
+		&summary.WeeklyLimitUSD,
+		&summary.Concurrency,
+		&summary.LatestExpiresAt,
+		&summary.NextTransitionAt)
+	if err != nil {
+		return nil, err
+	}
+	return summary, nil
+}
+
+func (r *apiKeyRepository) hydratePlanPackageSummary(ctx context.Context, key *service.APIKey) error {
+	if key == nil || r.sql == nil {
+		return nil
+	}
+	summary, err := r.GetPlanPackageSummary(ctx, key.ID, time.Now())
+	if err != nil {
+		return err
+	}
+	if summary.Managed {
+		key.PlanPackageSummary = summary
+	}
+	return nil
 }
 
 func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {

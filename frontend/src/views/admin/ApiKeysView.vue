@@ -159,6 +159,13 @@
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
               <button
+                class="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-emerald-600 dark:hover:bg-dark-700 dark:hover:text-emerald-400"
+                :title="t('admin.apiKeys.addPlanPackage')"
+                @click="openPlanPackageDialog(row)"
+              >
+                <Icon name="calendar" size="sm" />
+              </button>
+              <button
                 class="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
                 :title="t('admin.apiKeys.addTokenPackage')"
                 @click="openTokenPackageDialog(row)"
@@ -596,6 +603,103 @@
         </div>
       </template>
     </BaseDialog>
+
+    <BaseDialog
+      :show="showPlanPackageDialog"
+      :title="t('admin.apiKeys.addPlanPackage')"
+      width="wide"
+      @close="closePlanPackageDialog"
+    >
+      <div v-if="planPackageKey" class="space-y-5">
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/40">
+          <div class="font-medium text-gray-900 dark:text-white">{{ planPackageKey.name }}</div>
+          <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">
+            {{ t('admin.apiKeys.currentExpiry') }}：{{ planPackageKey.expires_at ? formatDateTime(planPackageKey.expires_at) : t('admin.apiKeys.neverExpires') }}
+          </div>
+        </div>
+
+        <div v-if="planPackageSummary.managed" class="grid gap-3 sm:grid-cols-3">
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900 dark:bg-emerald-950/20">
+            <div class="text-xs text-emerald-700 dark:text-emerald-300">{{ t('admin.apiKeys.effectiveDailyLimit') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-emerald-900 dark:text-emerald-100">${{ formatMoney(planPackageSummary.daily_limit_usd) }}</div>
+          </div>
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900 dark:bg-emerald-950/20">
+            <div class="text-xs text-emerald-700 dark:text-emerald-300">{{ t('admin.apiKeys.effectiveWeeklyLimit') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-emerald-900 dark:text-emerald-100">${{ formatMoney(planPackageSummary.weekly_limit_usd) }}</div>
+          </div>
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900 dark:bg-emerald-950/20">
+            <div class="text-xs text-emerald-700 dark:text-emerald-300">{{ t('admin.apiKeys.effectiveConcurrency') }}</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums text-emerald-900 dark:text-emerald-100">{{ planPackageSummary.concurrency }}</div>
+          </div>
+        </div>
+
+        <form id="plan-package-form" class="space-y-4" @submit.prevent="handleAddPlanPackage">
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="space-y-1">
+              <span class="input-label">{{ t('admin.apiKeys.form.planPackage') }}</span>
+              <Select v-model="planPackageForm.group_id" :options="planPackageGroupOptions" searchable />
+            </label>
+            <label class="space-y-1">
+              <span class="input-label">{{ t('admin.apiKeys.form.planMonths') }}</span>
+              <input v-model.number="planPackageForm.months" type="number" min="1" max="24" step="1" class="input" required />
+            </label>
+            <label class="space-y-1 md:col-span-2">
+              <span class="input-label">{{ t('admin.apiKeys.form.planNote') }}</span>
+              <input v-model.trim="planPackageForm.note" type="text" class="input" :placeholder="t('admin.apiKeys.form.planNotePlaceholder')" />
+            </label>
+          </div>
+
+          <div v-if="planPackagePreview" class="rounded-xl border border-primary-200 bg-primary-50/70 p-4 text-sm dark:border-primary-900 dark:bg-primary-950/20">
+            <div class="font-semibold text-primary-900 dark:text-primary-100">{{ planPackagePreview.group.name }}</div>
+            <div class="mt-2 grid gap-2 text-primary-800 dark:text-primary-200 sm:grid-cols-2">
+              <div>{{ t('admin.apiKeys.planPeriod') }}：{{ formatDateTime(planPackagePreview.startsAt.toISOString()) }} → {{ formatDateTime(planPackagePreview.expiresAt.toISOString()) }}</div>
+              <div>{{ t('admin.apiKeys.planContribution') }}：${{ formatMoney(planPackagePreview.daily) }} / ${{ formatMoney(planPackagePreview.weekly) }} / {{ planPackagePreview.concurrency }} {{ t('admin.apiKeys.concurrentUnits') }}</div>
+            </div>
+            <div class="mt-2 text-xs text-primary-700 dark:text-primary-300">
+              {{ planPackagePreview.queued ? t('admin.apiKeys.samePlanQueuedHint') : t('admin.apiKeys.differentPlanImmediateHint') }}
+            </div>
+          </div>
+        </form>
+
+        <div v-if="planPackages.length > 0" class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700">
+          <div class="border-b border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 dark:border-dark-700 dark:text-dark-200">
+            {{ t('admin.apiKeys.planPackageHistory') }}
+          </div>
+          <div class="max-h-72 overflow-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-dark-900 dark:text-dark-400">
+                <tr>
+                  <th class="px-4 py-2 text-left">{{ t('admin.apiKeys.form.planPackage') }}</th>
+                  <th class="px-4 py-2 text-left">{{ t('admin.apiKeys.planPeriod') }}</th>
+                  <th class="px-4 py-2 text-right">{{ t('admin.apiKeys.columns.limits') }}</th>
+                  <th class="px-4 py-2 text-right">{{ t('admin.apiKeys.columns.status') }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-dark-800">
+                <tr v-for="pkg in planPackages" :key="pkg.id">
+                  <td class="px-4 py-2 font-medium text-gray-800 dark:text-gray-100">{{ pkg.package_name }}</td>
+                  <td class="px-4 py-2 text-xs text-gray-600 dark:text-dark-300">{{ formatDateTime(pkg.starts_at) }} → {{ formatDateTime(pkg.expires_at) }}</td>
+                  <td class="px-4 py-2 text-right text-xs tabular-nums text-gray-600 dark:text-dark-300">${{ formatMoney(pkg.daily_limit_usd) }} / ${{ formatMoney(pkg.weekly_limit_usd) }} / {{ pkg.concurrency }}</td>
+                  <td class="px-4 py-2 text-right">
+                    <span :class="['badge', pkg.is_active ? 'badge-success' : pkg.is_upcoming ? 'badge-info' : 'badge-gray']">
+                      {{ pkg.is_active ? t('admin.apiKeys.planActive') : pkg.is_upcoming ? t('admin.apiKeys.planUpcoming') : t('admin.apiKeys.planExpired') }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closePlanPackageDialog">{{ t('common.cancel') }}</button>
+          <button type="submit" form="plan-package-form" class="btn btn-primary" :disabled="submitting || !planPackagePreview">
+            {{ submitting ? t('common.saving') : t('admin.apiKeys.confirmPlanPackage') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -608,7 +712,12 @@ import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import type { AdminGroup, ApiKey, OpenAIMessagesDispatchModelConfig } from '@/types'
-import type { ApiKeyTokenPackage, ApiKeyTokenPackageUsage } from '@/api/admin/apiKeys'
+import type {
+  ApiKeyPlanPackage,
+  ApiKeyPlanPackageSummary,
+  ApiKeyTokenPackage,
+  ApiKeyTokenPackageUsage
+} from '@/api/admin/apiKeys'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -635,10 +744,20 @@ const searchQuery = ref('')
 const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
 const showTokenPackageDialog = ref(false)
+const showPlanPackageDialog = ref(false)
 const editingKey = ref<ApiKey | null>(null)
 const tokenPackageKey = ref<ApiKey | null>(null)
 const tokenPackages = ref<ApiKeyTokenPackage[]>([])
 const tokenPackageUsages = ref<ApiKeyTokenPackageUsage[]>([])
+const planPackageKey = ref<ApiKey | null>(null)
+const planPackages = ref<ApiKeyPlanPackage[]>([])
+const planPackageSummary = reactive<ApiKeyPlanPackageSummary>({
+  managed: false,
+  active_count: 0,
+  daily_limit_usd: 0,
+  weekly_limit_usd: 0,
+  concurrency: 0
+})
 
 const filters = reactive({
   status: '',
@@ -744,6 +863,18 @@ const tokenPackageForm = reactive({
   note: ''
 })
 
+const createPlanRequestID = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return `plan-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+const planPackageForm = reactive({
+  group_id: '' as string | number,
+  months: 1,
+  note: '',
+  request_id: createPlanRequestID()
+})
+
 const tokenPackageTotal = computed(() => tokenPackages.value.reduce((sum, pkg) => sum + Number(pkg.amount_usd || 0), 0))
 const tokenPackageUsed = computed(() => tokenPackages.value.reduce((sum, pkg) => sum + Number(pkg.used_usd || 0), 0))
 const tokenPackageRemaining = computed(() => tokenPackages.value.reduce((sum, pkg) => sum + Number(pkg.remaining_usd || 0), 0))
@@ -771,6 +902,19 @@ const groupFormOptions = computed(() => [
   { value: '', label: t('admin.apiKeys.ungrouped') },
   ...groups.value.map((group) => ({ value: group.id, label: `${group.name} · ${group.platform}` }))
 ])
+
+const eligiblePlanGroups = computed(() => groups.value.filter((group) =>
+  group.status === 'active' && (
+    Number(group.daily_limit_usd || 0) > 0 ||
+    Number(group.weekly_limit_usd || 0) > 0 ||
+    Number(group.concurrency || 0) > 0
+  )
+))
+
+const planPackageGroupOptions = computed(() => eligiblePlanGroups.value.map((group) => ({
+  value: group.id,
+  label: `${group.name} · $${formatMoney(Number(group.daily_limit_usd || 0))}/日 · $${formatMoney(Number(group.weekly_limit_usd || 0))}/周 · ${Number(group.concurrency || 0)} 并发`
+})))
 
 const columns = computed<Column[]>(() => [
   { key: 'key', label: t('admin.apiKeys.columns.key') },
@@ -882,6 +1026,52 @@ const maskKey = (key: string) => {
 }
 
 const formatMoney = (value: number) => Number(value || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
+
+const addCalendarMonthsClamped = (value: Date, months: number) => {
+  const result = new Date(value.getTime())
+  const originalDay = result.getDate()
+  result.setDate(1)
+  result.setMonth(result.getMonth() + months)
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate()
+  result.setDate(Math.min(originalDay, lastDay))
+  return result
+}
+
+const planPackagePreview = computed(() => {
+  const key = planPackageKey.value
+  const groupID = selectedGroupID(planPackageForm.group_id)
+  const group = eligiblePlanGroups.value.find((item) => item.id === groupID)
+  const months = Math.trunc(Number(planPackageForm.months))
+  if (!key || !group || months < 1 || months > 24) return null
+
+  const now = new Date()
+  let startsAt = now
+  let queued = false
+  const samePlanExpiries = planPackages.value
+    .filter((pkg) => pkg.group_id === group.id)
+    .map((pkg) => new Date(pkg.expires_at))
+    .filter((date) => !Number.isNaN(date.getTime()) && date.getTime() > now.getTime())
+  if (samePlanExpiries.length > 0) {
+    startsAt = new Date(Math.max(...samePlanExpiries.map((date) => date.getTime())))
+    queued = true
+  } else if (planPackages.value.length === 0 && key.group_id === group.id && key.expires_at) {
+    const legacyExpiry = new Date(key.expires_at)
+    if (!Number.isNaN(legacyExpiry.getTime()) && legacyExpiry.getTime() > now.getTime()) {
+      startsAt = legacyExpiry
+      queued = true
+    }
+  }
+
+  return {
+    group,
+    startsAt,
+    expiresAt: addCalendarMonthsClamped(startsAt, months),
+    queued,
+    daily: Number(group.daily_limit_usd || 0),
+    weekly: Number(group.weekly_limit_usd || 0),
+    concurrency: Number(group.concurrency || 0)
+  }
+})
 
 const formatMultiplier = (value?: number | null) => `${formatMoney(Number(value || 1))}x`
 
@@ -1118,6 +1308,81 @@ const closeTokenPackageDialog = () => {
   tokenPackageUsages.value = []
   tokenPackageForm.amount_usd = 0
   tokenPackageForm.note = ''
+}
+
+const resetPlanPackageSummary = () => {
+  Object.assign(planPackageSummary, {
+    managed: false,
+    active_count: 0,
+    daily_limit_usd: 0,
+    weekly_limit_usd: 0,
+    concurrency: 0,
+    latest_expires_at: undefined,
+    next_transition_at: undefined
+  })
+}
+
+const loadPlanPackages = async (keyID: number) => {
+  const schedule = await adminAPI.apiKeys.listPlanPackages(keyID)
+  planPackages.value = schedule.packages || []
+  resetPlanPackageSummary()
+  Object.assign(planPackageSummary, schedule.summary || {})
+}
+
+const openPlanPackageDialog = async (key: ApiKey) => {
+  planPackageKey.value = key
+  planPackages.value = []
+  resetPlanPackageSummary()
+  planPackageForm.group_id = eligiblePlanGroups.value.some((group) => group.id === key.group_id)
+    ? Number(key.group_id)
+    : (eligiblePlanGroups.value[0]?.id || '')
+  planPackageForm.months = 1
+  planPackageForm.note = ''
+  planPackageForm.request_id = createPlanRequestID()
+  showPlanPackageDialog.value = true
+  try {
+    await loadPlanPackages(key.id)
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.apiKeys.errors.loadPlanPackagesFailed'))
+  }
+}
+
+const closePlanPackageDialog = () => {
+  showPlanPackageDialog.value = false
+  planPackageKey.value = null
+  planPackages.value = []
+  resetPlanPackageSummary()
+}
+
+const handleAddPlanPackage = async () => {
+  if (!planPackageKey.value) return
+  const groupID = selectedGroupID(planPackageForm.group_id)
+  const months = Math.trunc(Number(planPackageForm.months))
+  if (!groupID || months < 1 || months > 24) {
+    appStore.showError(t('admin.apiKeys.errors.invalidPlanPackage'))
+    return
+  }
+  submitting.value = true
+  try {
+    const result = await adminAPI.apiKeys.addPlanPackage(planPackageKey.value.id, {
+      group_id: groupID,
+      request_id: planPackageForm.request_id,
+      months,
+      note: planPackageForm.note.trim() || undefined
+    })
+    Object.assign(planPackageSummary, result.summary)
+	if (result.summary.latest_expires_at) {
+		planPackageKey.value.expires_at = result.summary.latest_expires_at
+	}
+    planPackageForm.note = ''
+    planPackageForm.request_id = createPlanRequestID()
+    await Promise.all([loadPlanPackages(planPackageKey.value.id), loadApiKeys()])
+    appStore.showSuccess(result.idempotent ? t('admin.apiKeys.planPackageAlreadyAdded') : t('admin.apiKeys.planPackageAdded'))
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.apiKeys.errors.addPlanPackageFailed'))
+  } finally {
+    submitting.value = false
+  }
 }
 
 const handleAddTokenPackage = async () => {

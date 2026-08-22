@@ -188,6 +188,37 @@ func TestAPIKey_EffectiveRateLimits(t *testing.T) {
 		wantWeek  float64
 	}{
 		{
+			name: "managed plan packages override legacy key and group limits",
+			key: APIKey{
+				RateLimit1d: 1,
+				RateLimit7d: 2,
+				Group: &Group{
+					DailyLimitUSD:  &groupDaily,
+					WeeklyLimitUSD: &groupWeekly,
+				},
+				PlanPackageSummary: &APIKeyPlanPackageSummary{
+					Managed:        true,
+					DailyLimitUSD:  250,
+					WeeklyLimitUSD: 830,
+					Concurrency:    7,
+				},
+			},
+			wantHas:   true,
+			wantDaily: 250,
+			wantWeek:  830,
+		},
+		{
+			name: "managed schedule with no active packages has no rate limit",
+			key: APIKey{
+				RateLimit1d: 100,
+				RateLimit7d: 330,
+				PlanPackageSummary: &APIKeyPlanPackageSummary{
+					Managed: true,
+				},
+			},
+			wantHas: false,
+		},
+		{
 			name: "inherits daily and weekly limits from group",
 			key: APIKey{
 				Group: &Group{

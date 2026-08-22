@@ -167,6 +167,60 @@
             </div>
           </div>
 
+          <section
+            v-if="planPackageData"
+            class="fade-up fade-up-delay-1 overflow-hidden rounded-2xl border border-emerald-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-emerald-900 dark:bg-dark-900/90"
+          >
+            <div class="border-b border-emerald-100 bg-emerald-50/70 px-6 py-5 dark:border-emerald-900 dark:bg-emerald-950/20 sm:px-8">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">{{ t('keyUsage.stackedPlans') }}</p>
+                  <h3 class="mt-1 text-lg font-semibold text-gray-950 dark:text-white">{{ t('keyUsage.stackedPlansTitle', { count: planPackageData.summary.active_count }) }}</h3>
+                  <p class="mt-1 text-xs text-gray-600 dark:text-dark-300">{{ t('keyUsage.stackedPlansHint') }}</p>
+                </div>
+                <div v-if="planPackageData.summary.latest_expires_at" class="rounded-xl bg-white px-4 py-2 text-right shadow-sm dark:bg-dark-900">
+                  <div class="text-[11px] text-gray-500 dark:text-dark-400">{{ t('keyUsage.overallExpiry') }}</div>
+                  <div class="mt-0.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ formatDateTimeShort(planPackageData.summary.latest_expires_at) }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-px bg-gray-100 dark:bg-dark-800 sm:grid-cols-3">
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('keyUsage.effectiveDailyLimit') }}</div>
+                <div class="mt-1 text-xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{{ usd(planPackageData.summary.daily_limit_usd) }}</div>
+              </div>
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('keyUsage.effectiveWeeklyLimit') }}</div>
+                <div class="mt-1 text-xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{{ usd(planPackageData.summary.weekly_limit_usd) }}</div>
+              </div>
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('keyUsage.effectiveConcurrency') }}</div>
+                <div class="mt-1 text-xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{{ planPackageData.summary.concurrency }}</div>
+              </div>
+            </div>
+
+            <div class="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 sm:p-6">
+              <article
+                v-for="pkg in planPackageData.packages"
+                :key="pkg.id"
+                class="rounded-xl border p-4"
+                :class="pkg.is_active ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/10' : pkg.is_upcoming ? 'border-primary-200 bg-primary-50/50 dark:border-primary-900 dark:bg-primary-950/10' : 'border-gray-200 bg-gray-50/60 opacity-70 dark:border-dark-700 dark:bg-dark-950/30'"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="font-semibold text-gray-900 dark:text-white">{{ pkg.package_name }}</div>
+                  <span :class="['badge', pkg.is_active ? 'badge-success' : pkg.is_upcoming ? 'badge-info' : 'badge-gray']">
+                    {{ pkg.is_active ? t('keyUsage.planActive') : pkg.is_upcoming ? t('keyUsage.planUpcoming') : t('keyUsage.planExpired') }}
+                  </span>
+                </div>
+                <div class="mt-3 text-xs leading-5 text-gray-600 dark:text-dark-300">
+                  <div>{{ formatDateTimeShort(pkg.starts_at) }} → {{ formatDateTimeShort(pkg.expires_at) }}</div>
+                  <div class="mt-1 tabular-nums">{{ usd(pkg.daily_limit_usd) }} / {{ usd(pkg.weekly_limit_usd) }} / {{ pkg.concurrency }} {{ t('keyUsage.concurrentUnits') }}</div>
+                </div>
+              </article>
+            </div>
+          </section>
+
           <!-- Ring Cards Grid -->
           <div v-if="ringItems.length > 0" :class="ringGridClass">
             <div
@@ -709,6 +763,12 @@ const statusInfo = computed(() => {
     statusText: 'Active',
     isActive: true,
   }
+})
+
+const planPackageData = computed(() => {
+  const value = resultData.value?.plan_packages
+  if (!value?.summary?.managed || !Array.isArray(value.packages)) return null
+  return value
 })
 
 const ringItems = computed<RingItem[]>(() => {

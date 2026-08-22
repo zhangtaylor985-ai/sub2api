@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 17 // v17: include token package required policy
+const apiKeyAuthSnapshotVersion = 18 // v18: include dynamic plan package limits and transition expiry
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -136,7 +136,10 @@ func (s *APIKeyService) setAuthCacheL1(cacheKey string, entry *APIKeyAuthCacheEn
 	if entry.NotFound && s.authCfg.negativeTTL > 0 && s.authCfg.negativeTTL < ttl {
 		ttl = s.authCfg.negativeTTL
 	}
-	ttl = s.authCfg.jitterTTL(ttl)
+	ttl = s.authCacheEntryTTL(ttl, entry)
+	if ttl <= 0 {
+		return
+	}
 	_ = s.authCacheL1.SetWithTTL(cacheKey, entry, 1, ttl)
 }
 
@@ -148,7 +151,26 @@ func (s *APIKeyService) setAuthCacheEntry(ctx context.Context, cacheKey string, 
 	if s.cache == nil || !s.authCfg.l2Enabled() {
 		return
 	}
-	_ = s.cache.SetAuthCache(ctx, cacheKey, entry, s.authCfg.jitterTTL(ttl))
+	ttl = s.authCacheEntryTTL(ttl, entry)
+	if ttl <= 0 {
+		return
+	}
+	_ = s.cache.SetAuthCache(ctx, cacheKey, entry, ttl)
+}
+
+func (s *APIKeyService) authCacheEntryTTL(base time.Duration, entry *APIKeyAuthCacheEntry) time.Duration {
+	ttl := s.authCfg.jitterTTL(base)
+	if entry == nil || entry.Snapshot == nil || entry.Snapshot.PlanPackageSummary == nil || entry.Snapshot.PlanPackageSummary.NextTransitionAt == nil {
+		return ttl
+	}
+	transitionTTL := time.Until(*entry.Snapshot.PlanPackageSummary.NextTransitionAt)
+	if transitionTTL <= 0 {
+		return 0
+	}
+	if ttl <= 0 || transitionTTL < ttl {
+		return transitionTTL
+	}
+	return ttl
 }
 
 func (s *APIKeyService) deleteAuthCache(ctx context.Context, cacheKey string) {
@@ -227,6 +249,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		RateLimit5h:                 apiKey.RateLimit5h,
 		RateLimit1d:                 apiKey.RateLimit1d,
 		RateLimit7d:                 apiKey.RateLimit7d,
+		PlanPackageSummary:          apiKey.PlanPackageSummary,
 		User: APIKeyAuthUserSnapshot{
 			ID:                         apiKey.User.ID,
 			Status:                     apiKey.User.Status,
@@ -315,6 +338,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		RateLimit5h:                 snapshot.RateLimit5h,
 		RateLimit1d:                 snapshot.RateLimit1d,
 		RateLimit7d:                 snapshot.RateLimit7d,
+		PlanPackageSummary:          snapshot.PlanPackageSummary,
 		User: &User{
 			ID:                         snapshot.User.ID,
 			Status:                     snapshot.User.Status,

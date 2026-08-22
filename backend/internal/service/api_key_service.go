@@ -20,19 +20,22 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound              = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed             = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists                = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort              = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars          = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited           = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrInvalidIPPattern            = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
-	ErrAPIKeyExpired               = infraerrors.Forbidden("API_KEY_EXPIRED", "API key has expired")
-	ErrAPIKeyExpirationRequired    = infraerrors.BadRequest("API_KEY_EXPIRATION_REQUIRED", "API key expiration is required")
-	ErrAPIKeyExpirationInvalid     = infraerrors.BadRequest("API_KEY_EXPIRATION_INVALID", "API key expiration must be in the future")
-	ErrAPIKeyExpirationDaysInvalid = infraerrors.BadRequest("API_KEY_EXPIRATION_DAYS_INVALID", "API key expiration days must be between 1 and 3650")
-	ErrAPIKeyQuotaExhausted        = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
-	ErrAPIKeyTokenPackageExhausted = infraerrors.TooManyRequests("API_KEY_TOKEN_PACKAGE_EXHAUSTED", "API key token package has been exhausted")
+	ErrAPIKeyNotFound               = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed              = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrAPIKeyExists                 = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyTooShort               = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrAPIKeyInvalidChars           = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyRateLimited            = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrInvalidIPPattern             = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrAPIKeyExpired                = infraerrors.Forbidden("API_KEY_EXPIRED", "API key has expired")
+	ErrAPIKeyExpirationRequired     = infraerrors.BadRequest("API_KEY_EXPIRATION_REQUIRED", "API key expiration is required")
+	ErrAPIKeyExpirationInvalid      = infraerrors.BadRequest("API_KEY_EXPIRATION_INVALID", "API key expiration must be in the future")
+	ErrAPIKeyExpirationDaysInvalid  = infraerrors.BadRequest("API_KEY_EXPIRATION_DAYS_INVALID", "API key expiration days must be between 1 and 3650")
+	ErrAPIKeyQuotaExhausted         = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "API key quota has been exhausted")
+	ErrAPIKeyTokenPackageExhausted  = infraerrors.TooManyRequests("API_KEY_TOKEN_PACKAGE_EXHAUSTED", "API key token package has been exhausted")
+	ErrAPIKeyPlanPackageInvalid     = infraerrors.BadRequest("API_KEY_PLAN_PACKAGE_INVALID", "API key plan package is invalid")
+	ErrAPIKeyPlanPackageUnavailable = infraerrors.InternalServer("API_KEY_PLAN_PACKAGE_UNAVAILABLE", "API key plan package storage is unavailable")
+	ErrAPIKeyPlanExpiryManaged      = infraerrors.BadRequest("API_KEY_PLAN_EXPIRY_MANAGED", "API key expiration is managed by stacked plan packages")
 
 	// Rate limit errors
 	ErrAPIKeyRateLimit5hExceeded = infraerrors.TooManyRequests("API_KEY_RATE_5H_EXCEEDED", "API key 5-hour quota has been exhausted")
@@ -199,6 +202,11 @@ type UpdateAPIKeyRequest struct {
 // RateLimitCacheInvalidator invalidates rate limit cache entries on manual reset.
 type RateLimitCacheInvalidator interface {
 	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
+}
+
+type apiKeyPlanPackageReader interface {
+	ListPlanPackages(ctx context.Context, id int64, limit int, now time.Time) ([]APIKeyPlanPackage, error)
+	GetPlanPackageSummary(ctx context.Context, id int64, now time.Time) (*APIKeyPlanPackageSummary, error)
 }
 
 type APIKeyService struct {
@@ -530,6 +538,17 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	// 验证所有权
 	if apiKey.UserID != userID {
 		return nil, ErrInsufficientPerms
+	}
+	if req.ClearExpiration || req.ExpiresAt != nil {
+		if repo, ok := s.apiKeyRepo.(apiKeyPlanPackageReader); ok {
+			summary, summaryErr := repo.GetPlanPackageSummary(ctx, id, time.Now())
+			if summaryErr != nil {
+				return nil, summaryErr
+			}
+			if summary != nil && summary.Managed {
+				return nil, ErrAPIKeyPlanExpiryManaged
+			}
+		}
 	}
 
 	// 验证 IP 白名单格式
@@ -903,6 +922,36 @@ func (s *APIKeyService) ListTokenPackages(ctx context.Context, id int64, limit i
 
 func (s *APIKeyService) ListTokenPackageUsage(ctx context.Context, id int64, limit int) ([]APIKeyTokenPackageUsage, error) {
 	return s.apiKeyRepo.ListTokenPackageUsage(ctx, id, limit)
+}
+
+func (s *APIKeyService) ListPlanPackages(ctx context.Context, id int64, limit int) ([]APIKeyPlanPackage, error) {
+	packages, _, err := s.GetPlanPackageSchedule(ctx, id, limit)
+	return packages, err
+}
+
+func (s *APIKeyService) GetPlanPackageSchedule(ctx context.Context, id int64, limit int) ([]APIKeyPlanPackage, *APIKeyPlanPackageSummary, error) {
+	repo, ok := s.apiKeyRepo.(apiKeyPlanPackageReader)
+	if !ok {
+		return nil, nil, ErrAPIKeyPlanPackageUnavailable
+	}
+	now := time.Now()
+	packages, err := repo.ListPlanPackages(ctx, id, limit, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	summary, err := repo.GetPlanPackageSummary(ctx, id, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	return packages, summary, nil
+}
+
+func (s *APIKeyService) GetPlanPackageSummary(ctx context.Context, id int64) (*APIKeyPlanPackageSummary, error) {
+	repo, ok := s.apiKeyRepo.(apiKeyPlanPackageReader)
+	if !ok {
+		return nil, ErrAPIKeyPlanPackageUnavailable
+	}
+	return repo.GetPlanPackageSummary(ctx, id, time.Now())
 }
 
 // UpdateRateLimitUsage atomically increments rate limit usage counters in the DB.

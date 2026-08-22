@@ -238,7 +238,7 @@ func authSubjectFromAPIKey(apiKey *service.APIKey) AuthSubject {
 	if apiKey.GroupID != nil {
 		subject.GroupID = *apiKey.GroupID
 	}
-	if apiKey.Concurrency > 0 || (apiKey.Group != nil && apiKey.Group.Concurrency > 0) {
+	if apiKey.HasManagedPlanPackages() || apiKey.Concurrency > 0 || (apiKey.Group != nil && apiKey.Group.Concurrency > 0) {
 		subject.ConcurrencyScope = ConcurrencyScopeAPIKey
 		subject.ConcurrencyScopeID = apiKey.ID
 		return subject

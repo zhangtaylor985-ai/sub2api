@@ -21,7 +21,48 @@ func setupAPIKeyHandler(adminSvc service.AdminService) *gin.Engine {
 	router := gin.New()
 	h := NewAdminAPIKeyHandler(adminSvc)
 	router.PUT("/api/v1/admin/api-keys/:id", h.UpdateGroup)
+	router.GET("/api/v1/admin/api-keys/:id/plan-packages", h.ListPlanPackages)
+	router.POST("/api/v1/admin/api-keys/:id/plan-packages", h.AddPlanPackage)
 	return router
+}
+
+func TestAdminAPIKeyHandler_AddAndListPlanPackages(t *testing.T) {
+	svc := newStubAdminService()
+	router := setupAPIKeyHandler(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/api-keys/10/plan-packages", bytes.NewBufferString(`{"group_id":2,"request_id":"purchase-123","months":1,"note":"paid offline"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, svc.lastPlanPackageInput)
+	require.Equal(t, int64(10), svc.lastPlanPackageInput.APIKeyID)
+	require.Equal(t, int64(2), svc.lastPlanPackageInput.GroupID)
+	require.Equal(t, "purchase-123", svc.lastPlanPackageInput.RequestID)
+	require.Equal(t, "paid offline", svc.lastPlanPackageInput.Note)
+	require.Equal(t, "admin", svc.lastPlanPackageInput.CreatedBy)
+	require.Contains(t, rec.Body.String(), `"daily_limit_usd":150`)
+	require.Contains(t, rec.Body.String(), `"weekly_limit_usd":500`)
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/api-keys/10/plan-packages", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"package_name":"Double"`)
+	require.Contains(t, rec.Body.String(), `"managed":true`)
+}
+
+func TestAdminAPIKeyHandler_AddPlanPackageRejectsMissingIdempotencyKey(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/api-keys/10/plan-packages", bytes.NewBufferString(`{"group_id":2,"months":1}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "RequestID")
 }
 
 func TestAdminAPIKeyHandler_UpdateGroup_InvalidID(t *testing.T) {

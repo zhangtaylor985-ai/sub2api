@@ -419,6 +419,12 @@ type APIKeyTokenPackageSummary struct {
 	Remaining float64
 }
 
+type apiKeyPlanPackageWriter interface {
+	AddPlanPackage(ctx context.Context, input AddAPIKeyPlanPackageInput) (*AddAPIKeyPlanPackageResult, error)
+	ListPlanPackages(ctx context.Context, id int64, limit int, now time.Time) ([]APIKeyPlanPackage, error)
+	GetPlanPackageSummary(ctx context.Context, id int64, now time.Time) (*APIKeyPlanPackageSummary, error)
+}
+
 // ReplaceUserGroupResult 分组替换操作的结果
 type ReplaceUserGroupResult struct {
 	MigratedKeys int64 // 迁移的 Key 数量
@@ -2545,6 +2551,17 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyPolicy(ctx context.Context, keyID in
 	if err != nil {
 		return nil, err
 	}
+	if input.ClearExpires || input.ExpiresAt != nil {
+		if repo, ok := s.apiKeyRepo.(apiKeyPlanPackageReader); ok {
+			summary, summaryErr := repo.GetPlanPackageSummary(ctx, keyID, time.Now())
+			if summaryErr != nil {
+				return nil, summaryErr
+			}
+			if summary != nil && summary.Managed {
+				return nil, ErrAPIKeyPlanExpiryManaged
+			}
+		}
+	}
 
 	if input.Status != nil {
 		switch *input.Status {
@@ -2726,6 +2743,41 @@ func (s *adminServiceImpl) AdminListAPIKeyTokenPackages(ctx context.Context, key
 		return nil, err
 	}
 	return &APIKeyTokenPackageSummary{Packages: packages, Usages: usages, Remaining: remaining}, nil
+}
+
+func (s *adminServiceImpl) AdminAddAPIKeyPlanPackage(ctx context.Context, input AddAPIKeyPlanPackageInput) (*AddAPIKeyPlanPackageResult, error) {
+	repo, ok := s.apiKeyRepo.(apiKeyPlanPackageWriter)
+	if !ok {
+		return nil, ErrAPIKeyPlanPackageUnavailable
+	}
+	result, err := repo.AddPlanPackage(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if result != nil && strings.TrimSpace(result.Key) != "" && s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, result.Key)
+	}
+	return result, nil
+}
+
+func (s *adminServiceImpl) AdminListAPIKeyPlanPackages(ctx context.Context, keyID int64) ([]APIKeyPlanPackage, *APIKeyPlanPackageSummary, error) {
+	if _, err := s.apiKeyRepo.GetByID(ctx, keyID); err != nil {
+		return nil, nil, err
+	}
+	repo, ok := s.apiKeyRepo.(apiKeyPlanPackageWriter)
+	if !ok {
+		return nil, nil, ErrAPIKeyPlanPackageUnavailable
+	}
+	now := time.Now()
+	packages, err := repo.ListPlanPackages(ctx, keyID, 100, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	summary, err := repo.GetPlanPackageSummary(ctx, keyID, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	return packages, summary, nil
 }
 
 // ReplaceUserGroup 替换用户的专属分组

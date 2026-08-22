@@ -69,6 +69,17 @@ const messages: Record<string, string> = {
   'keyUsage.queryFailedRetry': 'Query failed, please try again later',
   'keyUsage.dedicatedUnlimitedMode': 'Dedicated Unlimited',
   'keyUsage.dedicatedUnlimitedStatus': 'Dedicated active',
+	'keyUsage.stackedPlans': 'Stacked Plans',
+	'keyUsage.stackedPlansTitle': '2 plans are currently active',
+	'keyUsage.stackedPlansHint': 'Expired contributions are removed automatically',
+	'keyUsage.overallExpiry': 'Overall API key expiry',
+	'keyUsage.effectiveDailyLimit': 'Effective daily limit',
+	'keyUsage.effectiveWeeklyLimit': 'Effective weekly limit',
+	'keyUsage.effectiveConcurrency': 'Effective concurrency',
+	'keyUsage.planActive': 'Active',
+	'keyUsage.planUpcoming': 'Upcoming',
+	'keyUsage.planExpired': 'Expired',
+	'keyUsage.concurrentUnits': 'concurrent',
   'keyUsage.todayUsage': 'Today Usage',
   'keyUsage.totalUsage': 'Total Usage',
   'keyUsage.limitPolicy': 'Limit Policy',
@@ -139,6 +150,40 @@ describe('KeyUsageView daily detail', () => {
             reset_at: '2026-06-04T22:14:00+08:00',
           },
         ],
+		plan_packages: {
+			summary: {
+				managed: true,
+				active_count: 2,
+				daily_limit_usd: 250,
+				weekly_limit_usd: 830,
+				concurrency: 5,
+				latest_expires_at: '2026-10-15T10:00:00+08:00',
+			},
+			packages: [
+				{
+					id: 1,
+					package_name: 'Double',
+					daily_limit_usd: 150,
+					weekly_limit_usd: 500,
+					concurrency: 2,
+					starts_at: '2026-08-15T10:00:00+08:00',
+					expires_at: '2026-09-15T10:00:00+08:00',
+					is_active: true,
+					is_upcoming: false,
+				},
+				{
+					id: 2,
+					package_name: 'Triple',
+					daily_limit_usd: 100,
+					weekly_limit_usd: 330,
+					concurrency: 3,
+					starts_at: '2026-08-22T10:00:00+08:00',
+					expires_at: '2026-10-15T10:00:00+08:00',
+					is_active: true,
+					is_upcoming: false,
+				},
+			],
+		},
         usage: {
           today: {
             requests: 1,
@@ -222,6 +267,12 @@ describe('KeyUsageView daily detail', () => {
     expect(text).toContain('Period')
     expect(text).toContain('05-28')
     expect(text).toContain('06-04')
+	expect(text).toContain('Stacked Plans')
+	expect(text).toContain('Effective daily limit')
+	expect(text).toContain('$250.00')
+	expect(text).toContain('$830.00')
+	expect(text).toContain('Double')
+	expect(text).toContain('Triple')
 
     wrapper.unmount()
   })

@@ -252,6 +252,13 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 		Key:     "k-roundtrip",
 		Name:    "Audit Key",
 		Status:  StatusActive,
+		PlanPackageSummary: &APIKeyPlanPackageSummary{
+			Managed:        true,
+			ActiveCount:    2,
+			DailyLimitUSD:  250,
+			WeeklyLimitUSD: 830,
+			Concurrency:    7,
+		},
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			OpusMappedModel:   "gpt-5.4",
 			SonnetMappedModel: "gpt-5.4",
@@ -290,8 +297,25 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	require.NotNil(t, roundTrip)
 	require.Equal(t, apiKey.Name, roundTrip.Name)
 	require.Equal(t, apiKey.MessagesDispatchModelConfig, roundTrip.MessagesDispatchModelConfig)
+	require.Equal(t, apiKey.PlanPackageSummary, roundTrip.PlanPackageSummary)
 	require.NotNil(t, roundTrip.Group)
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
+}
+
+func TestAPIKeyService_AuthCacheTTLStopsAtPlanTransition(t *testing.T) {
+	svc := &APIKeyService{authCfg: apiKeyAuthCacheConfig{}}
+	transition := time.Now().Add(250 * time.Millisecond)
+	entry := &APIKeyAuthCacheEntry{Snapshot: &APIKeyAuthSnapshot{
+		PlanPackageSummary: &APIKeyPlanPackageSummary{Managed: true, NextTransitionAt: &transition},
+	}}
+
+	ttl := svc.authCacheEntryTTL(time.Minute, entry)
+	require.Greater(t, ttl, time.Duration(0))
+	require.LessOrEqual(t, ttl, 250*time.Millisecond)
+
+	pastTransition := time.Now().Add(-time.Millisecond)
+	entry.Snapshot.PlanPackageSummary.NextTransitionAt = &pastTransition
+	require.Zero(t, svc.authCacheEntryTTL(time.Minute, entry))
 }
 
 func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDispatchConfig(t *testing.T) {

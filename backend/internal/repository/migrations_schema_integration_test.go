@@ -170,6 +170,21 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 		"anomaly_count >= 0",
 	)
 
+	// API key plan packages: immutable, independently expiring quota contributions (migration 158)
+	var planPackagesRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(
+		context.Background(),
+		"SELECT to_regclass('public.api_key_plan_packages')",
+	).Scan(&planPackagesRegclass))
+	require.True(t, planPackagesRegclass.Valid, "expected api_key_plan_packages table to exist")
+	requireColumn(t, tx, "api_key_plan_packages", "api_key_id", "bigint", 0, false)
+	requireColumn(t, tx, "api_key_plan_packages", "group_id", "bigint", 0, false)
+	requireColumn(t, tx, "api_key_plan_packages", "daily_limit_usd", "numeric", 0, false)
+	requireColumn(t, tx, "api_key_plan_packages", "weekly_limit_usd", "numeric", 0, false)
+	requireColumn(t, tx, "api_key_plan_packages", "starts_at", "timestamp with time zone", 0, false)
+	requireColumn(t, tx, "api_key_plan_packages", "expires_at", "timestamp with time zone", 0, false)
+	requireIndex(t, tx, "api_key_plan_packages", "api_key_plan_packages_api_key_period_idx")
+	requireIndex(t, tx, "api_key_plan_packages", "api_key_plan_packages_api_key_group_expiry_idx")
 	// orphan_allowed_groups_audit table should exist (migration 013)
 	var orphanAuditRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.orphan_allowed_groups_audit')").Scan(&orphanAuditRegclass))

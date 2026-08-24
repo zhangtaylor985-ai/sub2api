@@ -715,3 +715,39 @@
 | 2026-08-24 | ARM64 首次手动构建仍在 `backend/` 工作目录使用仓库根相对路径 | 嵌入资源检查阶段即停止，未生成 binary；改用 `internal/...` 与 `bin/...` 后构建成功 |
 | 2026-08-24 | 首次 canary 的 `--setenv SERVER_PORT=18080` 被 systemd `EnvironmentFile` 中的 8080 覆盖 | 候选因端口占用立即退出，正式服务未受影响；第二次在 ExecStart 的 `/usr/bin/env` 层覆盖后通过 |
 | 2026-08-24 | 生产资源检查在 `pipefail` 下用 `grep -q` 导致 curl/printf SIGPIPE 记为失败 | 资源实际存在；改为 shell 字符串匹配后前端资源验收通过 |
+
+---
+
+# 2026-08-24 API Key 叠加套餐计费链路修复
+
+## 目标与口径
+
+- 先恢复目标客户 API Key 的正常请求，不清零已消费用量，不影响其他 Key。
+- 叠加套餐同时生效时，计费事务、认证快照、`/v1/usage` 与 `/key-usage` 统一使用生效套餐的日额度、周额度和并发合计。
+- 套餐到期后通过生效时间谓词自动剔除该部分；已进入套餐管理的 Key 不再回退到原始 Key/分组限额。
+- 正式发布后撤销临时兼容桥接，确保长期运行仅依赖工程化逻辑。
+
+## 阶段计划
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 生产精确诊断与保客恢复 | complete | 定位 Redis/DB 限额口径不一致；仅对目标 Key 清缓存并写入有前置条件的临时桥接 |
+| 2. 隔离工作树工程修复 | complete | 计费 SQL 按生效套餐汇总；新增套餐同时失效认证与计费快缓 |
+| 3. 本地回归 | complete | Go 全量、service 专项、真实 PostgreSQL integration、前端 lint/typecheck/build 通过 |
+| 4. ARM64 canary 与正式发布 | complete | `127.0.0.1:18080` canary、回滚 binary、原子替换、systemd/health 验收 |
+| 5. 撤销临时桥接与生产验收 | complete | 原始限额恢复 0；公网 `/v1/usage` 回读 450/1500/9；成功请求持续且无 403 |
+
+## 风险与回滚
+
+- 数据库完整备份：`/opt/sub2api/backups/sub2api-pre-key89-rate-bridge-20260824T151049Z.dump`。
+- 正式替换前 binary：`/opt/sub2api/sub2api.bak.20260824T155004Z-before-api-key-plan-billing-fix`。
+- 新 binary SHA256：`c251a457e0c14968b96879e59ee8cc60cab46d4e2509068b5b99318d88fd5eb2`。
+- 本次无 schema migration、无 DNS/Caddy 修改；回滚仅需恢复旧 binary 并重启，数据库已恢复为无临时桥接状态。
+
+## 错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-08-24 | 首次 integration 未显式指定 OrbStack socket，Testcontainers 报 rootless Docker 不可用 | 显式传入 OrbStack `DOCKER_HOST` 与 socket override，真实 PostgreSQL 用例通过 |
+| 2026-08-24 | 首次前端命令使用 pnpm 11 触发 ignored builds 并产生工作区噪音 | 精确恢复非业务文件，改用现有 `node_modules/.bin`，lint/typecheck/build 通过 |
+| 2026-08-24 | 生产桥接清理的首次 PL/pgSQL 在 SSH 双层引号中丢失字符串引号 | 函数编译失败、未写入；改用带精确聚合前置条件的单语句 CTE，更新且仅更新 1 行 |

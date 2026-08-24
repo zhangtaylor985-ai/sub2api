@@ -985,3 +985,21 @@
 - 生产管理页HTTP 200，实际AccountsView资源包含 `openai_external_quota_gate_draining`、时长输入和保存控件；新配置API未登录返回401，证明路由已注册且保持admin鉴权。
 - 四个目标账号均保持gate enabled、draining=false、schedulable=false；08:43:59 UTC后状态为3个 `observing_external_usage`、1个 `window_changed`，说明新服务的每分钟检查已运行。未修改账号extra；未配置时长按代码默认120分钟。
 - 回滚命令：`sudo install -m 0755 -o sub2api -g sub2api /opt/sub2api/sub2api.bak.20260820T084153Z-before-external-quota-drain /opt/sub2api/sub2api && sudo systemctl restart sub2api`。
+
+---
+
+# 2026-08-24 API Key 叠加套餐计费链路修复
+
+- 生产只读诊断确认目标 Key 有 3 个同时生效双人车套餐，认证汇总为 450/1500/9；Redis billing usage 已超过 450，DB `usage_1d` 却停在 300。
+- 已备份目标 Key 旧 Redis rate cache 到 `/opt/sub2api/backups/apikey-rate-89-20260824T150445Z.txt`，只删除该 Key rate cache 后客户立即恢复成功请求。
+- 已创建完整 PostgreSQL 备份 `/opt/sub2api/backups/sub2api-pre-key89-rate-bridge-20260824T151049Z.dump`，随后以精确前置条件仅对目标 Key 写入 450/1500 临时兼容桥接，未重置用量。
+- 从最新 `origin/main=cb14c2eaf` 创建隔离工作树 `/Users/taylor/sdk/sub2api-plan-billing-fix-20260824`，实现计费 SQL 套餐汇总和新增套餐的 billing cache 失效。
+- 修复提交 `4aa089fd89219628861b2339afaac16cd4f4c330 fix(billing): honor stacked API key plan limits` 已推送功能分支，并在发布验收后快进推送 `origin/main`。
+- 本地 service 专项、`go test ./...`、OrbStack 真实 PostgreSQL integration、前端 lint/typecheck/build 全部通过；新 integration 复现“DB 已用 300/787、旧 token package 耗尽、3 个生效套餐”并确认计费可增长到 305/792。
+- Linux ARM64 embedded binary SHA256=`c251a457e0c14968b96879e59ee8cc60cab46d4e2509068b5b99318d88fd5eb2`，zst SHA256=`db3f8dac911864d2cf675c9027dcf9258b9b84411af4a208dd08bba2a04cb449`，本地与远端哈希一致。
+- `127.0.0.1:18080` canary 通过 health 200、`/key-usage` 200 和 admin 未认证 401；canary 已停止，无残留流量入口。
+- 正式旧 binary 备份为 `/opt/sub2api/sub2api.bak.20260824T155004Z-before-api-key-plan-billing-fix`；新服务 active/running、`Result=success`、`NRestarts=0`，内外 health 正常。
+- 发布后通过单语句 CTE 强校验 3/450/1500 套餐聚合和 450/1500 临时字段，仅更新 1 行并恢复原始限额为 0；认证与 billing cache 均已失效重建。
+- 北京时间 00:00 后公网 `/v1/usage` 显示 Key `active`、3 个生效套餐、日 450、周 1500、并发 9；公网 `/key-usage` 与 `/health` 均为 200。
+- 新日窗口中已持续产生成功 usage，Redis 与 DB 用量同步增长；发布后和跨日后均无目标 Key 403、无其他 ops error，journal 无 panic/fatal/migration/usage billing 错误。
+- 本次未修改 schema、DNS、Caddy 或其他 Key；临时兼容桥接已完全撤销，生产不存在为目标客户保留的特判配置。

@@ -1003,6 +1003,7 @@ func (r *apiKeyRepository) AddPlanPackage(ctx context.Context, input service.Add
 	}
 
 	startsAt := now
+	expiryBase := now
 	var samePackageExpiry sql.NullTime
 	if err := tx.QueryRowContext(ctx, `
 		SELECT MAX(expires_at)
@@ -1010,10 +1011,10 @@ func (r *apiKeyRepository) AddPlanPackage(ctx context.Context, input service.Add
 		WHERE api_key_id = $1 AND group_id = $2`, input.APIKeyID, input.GroupID).Scan(&samePackageExpiry); err != nil {
 		return nil, err
 	}
-	if samePackageExpiry.Valid && samePackageExpiry.Time.After(startsAt) {
-		startsAt = samePackageExpiry.Time
+	if samePackageExpiry.Valid && samePackageExpiry.Time.After(expiryBase) {
+		expiryBase = samePackageExpiry.Time
 	}
-	expiresAt := service.AddCalendarMonthsClamped(startsAt, input.Months)
+	expiresAt := service.AddCalendarMonthsClamped(expiryBase, input.Months)
 
 	pkg := &service.APIKeyPlanPackage{}
 	err = scanAPIKeyPlanPackage(tx.QueryRowContext(ctx, `

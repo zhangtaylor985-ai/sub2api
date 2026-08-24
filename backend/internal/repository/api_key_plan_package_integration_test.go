@@ -102,7 +102,7 @@ func TestAPIKeyPlanPackages_StackRenewExpireAndIdempotency(t *testing.T) {
 		require.True(t, storedKey.ExpiresAt.Equal(added.Package.ExpiresAt))
 	})
 
-	t.Run("same plan renewal is queued and duplicate request is idempotent", func(t *testing.T) {
+	t.Run("same plan renewal stacks immediately and extends existing expiry", func(t *testing.T) {
 		legacyExpiry := time.Now().UTC().Add(10 * 24 * time.Hour)
 		key := createLegacyDoubleKey(t, "same-plan", legacyExpiry)
 		now := time.Now().UTC()
@@ -117,12 +117,19 @@ func TestAPIKeyPlanPackages_StackRenewExpireAndIdempotency(t *testing.T) {
 
 		added, err := repo.AddPlanPackage(ctx, input)
 		require.NoError(t, err)
-		require.Equal(t, legacyExpiry, added.Package.StartsAt)
+		require.Equal(t, now, added.Package.StartsAt)
 		require.Equal(t, service.AddCalendarMonthsClamped(legacyExpiry, 1), added.Package.ExpiresAt)
-		require.Equal(t, 1, added.Summary.ActiveCount)
-		require.InDelta(t, 150, added.Summary.DailyLimitUSD, 0.000001)
-		require.InDelta(t, 500, added.Summary.WeeklyLimitUSD, 0.000001)
-		require.Equal(t, 2, added.Summary.Concurrency)
+		require.Equal(t, 2, added.Summary.ActiveCount)
+		require.InDelta(t, 300, added.Summary.DailyLimitUSD, 0.000001)
+		require.InDelta(t, 1000, added.Summary.WeeklyLimitUSD, 0.000001)
+		require.Equal(t, 4, added.Summary.Concurrency)
+
+		afterLegacyExpiry, err := repo.GetPlanPackageSummary(ctx, key.ID, legacyExpiry.Add(time.Second))
+		require.NoError(t, err)
+		require.Equal(t, 1, afterLegacyExpiry.ActiveCount)
+		require.InDelta(t, 150, afterLegacyExpiry.DailyLimitUSD, 0.000001)
+		require.InDelta(t, 500, afterLegacyExpiry.WeeklyLimitUSD, 0.000001)
+		require.Equal(t, 2, afterLegacyExpiry.Concurrency)
 
 		duplicate, err := repo.AddPlanPackage(ctx, input)
 		require.NoError(t, err)
@@ -138,6 +145,6 @@ func TestAPIKeyPlanPackages_StackRenewExpireAndIdempotency(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, packages, 2, "legacy baseline plus one renewal should exist")
 		require.True(t, packages[0].IsActive)
-		require.True(t, packages[1].IsUpcoming)
+		require.True(t, packages[1].IsActive)
 	})
 }

@@ -656,7 +656,7 @@
               <div>{{ t('admin.apiKeys.planContribution') }}：${{ formatMoney(planPackagePreview.daily) }} / ${{ formatMoney(planPackagePreview.weekly) }} / {{ planPackagePreview.concurrency }} {{ t('admin.apiKeys.concurrentUnits') }}</div>
             </div>
             <div class="mt-2 text-xs text-primary-700 dark:text-primary-300">
-              {{ planPackagePreview.queued ? t('admin.apiKeys.samePlanQueuedHint') : t('admin.apiKeys.differentPlanImmediateHint') }}
+              {{ planPackagePreview.extendsExistingPeriod ? t('admin.apiKeys.samePlanImmediateHint') : t('admin.apiKeys.planImmediateHint') }}
             </div>
           </div>
         </form>
@@ -711,6 +711,7 @@ import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
+import { calculatePlanPackagePeriod } from '@/utils/planPackageSchedule'
 import type { AdminGroup, ApiKey, OpenAIMessagesDispatchModelConfig } from '@/types'
 import type {
   ApiKeyPlanPackage,
@@ -1027,16 +1028,6 @@ const maskKey = (key: string) => {
 
 const formatMoney = (value: number) => Number(value || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
 
-const addCalendarMonthsClamped = (value: Date, months: number) => {
-  const result = new Date(value.getTime())
-  const originalDay = result.getDate()
-  result.setDate(1)
-  result.setMonth(result.getMonth() + months)
-  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate()
-  result.setDate(Math.min(originalDay, lastDay))
-  return result
-}
-
 const planPackagePreview = computed(() => {
   const key = planPackageKey.value
   const groupID = selectedGroupID(planPackageForm.group_id)
@@ -1045,28 +1036,17 @@ const planPackagePreview = computed(() => {
   if (!key || !group || months < 1 || months > 24) return null
 
   const now = new Date()
-  let startsAt = now
-  let queued = false
-  const samePlanExpiries = planPackages.value
+  const existingExpiresAt = planPackages.value
     .filter((pkg) => pkg.group_id === group.id)
     .map((pkg) => new Date(pkg.expires_at))
-    .filter((date) => !Number.isNaN(date.getTime()) && date.getTime() > now.getTime())
-  if (samePlanExpiries.length > 0) {
-    startsAt = new Date(Math.max(...samePlanExpiries.map((date) => date.getTime())))
-    queued = true
-  } else if (planPackages.value.length === 0 && key.group_id === group.id && key.expires_at) {
-    const legacyExpiry = new Date(key.expires_at)
-    if (!Number.isNaN(legacyExpiry.getTime()) && legacyExpiry.getTime() > now.getTime()) {
-      startsAt = legacyExpiry
-      queued = true
-    }
+  if (planPackages.value.length === 0 && key.group_id === group.id && key.expires_at) {
+    existingExpiresAt.push(new Date(key.expires_at))
   }
+  const period = calculatePlanPackagePeriod({ now, months, existingExpiresAt })
 
   return {
     group,
-    startsAt,
-    expiresAt: addCalendarMonthsClamped(startsAt, months),
-    queued,
+    ...period,
     daily: Number(group.daily_limit_usd || 0),
     weekly: Number(group.weekly_limit_usd || 0),
     concurrency: Number(group.concurrency || 0)

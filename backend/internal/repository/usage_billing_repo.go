@@ -233,15 +233,25 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, cmd *
 	state.resetExpired(now)
 
 	baseCovered := cost
-	if state.tokenPackageRequired {
+	if state.planManaged {
+		if state.limit1d > 0 {
+			baseCovered = math.Min(baseCovered, positiveRemaining(state.limit1d, state.usage1d))
+		}
+		if state.limit7d > 0 {
+			baseCovered = math.Min(baseCovered, positiveRemaining(state.limit7d, state.usage7d))
+		}
+		if state.limit1d <= 0 && state.limit7d <= 0 {
+			baseCovered = 0
+		}
+	} else if state.tokenPackageRequired {
 		baseCovered = 0
 	} else if state.limit1d > 0 {
 		baseCovered = math.Min(baseCovered, positiveRemaining(state.limit1d, state.usage1d))
 	}
-	if !state.tokenPackageRequired && state.limit7d > 0 {
+	if !state.planManaged && !state.tokenPackageRequired && state.limit7d > 0 {
 		baseCovered = math.Min(baseCovered, positiveRemaining(state.limit7d, state.usage7d))
 	}
-	if !state.tokenPackageRequired && state.limit1d <= 0 && state.limit7d <= 0 {
+	if !state.planManaged && !state.tokenPackageRequired && state.limit1d <= 0 && state.limit7d <= 0 {
 		hasTokenPackageLimit, err := hasAPIKeyTokenPackageLimit(ctx, tx, apiKeyID)
 		if err != nil {
 			return err
@@ -283,6 +293,7 @@ type apiKeyRateLimitSQLState struct {
 	usage7d              float64
 	limit1d              float64
 	limit7d              float64
+	planManaged          bool
 	tokenPackageRequired bool
 	w5h                  *time.Time
 	w1d                  *time.Time
@@ -294,6 +305,9 @@ func lockAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64) (
 		usage5h, usage1d, usage7d float64
 		limit1d, groupDailyLimit  sql.NullFloat64
 		limit7d, groupWeeklyLimit sql.NullFloat64
+		planDailyLimit            float64
+		planWeeklyLimit           float64
+		planManaged               bool
 		w5h, w1d, w7d             sql.NullTime
 		tokenPackageRequired      bool
 	)
@@ -309,13 +323,43 @@ func lockAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64) (
 			g.daily_limit_usd,
 			NULLIF(k.rate_limit_7d, 0),
 			g.weekly_limit_usd,
-			k.token_package_required
+			k.token_package_required,
+			COALESCE(pp.managed, FALSE),
+			COALESCE(pp.daily_limit_usd, 0),
+			COALESCE(pp.weekly_limit_usd, 0)
 		FROM api_keys k
 		LEFT JOIN groups g ON g.id = k.group_id AND g.deleted_at IS NULL
+		LEFT JOIN LATERAL (
+			SELECT
+				COUNT(*) > 0 AS managed,
+				COALESCE(SUM(daily_limit_usd) FILTER (
+					WHERE starts_at <= NOW() AND expires_at > NOW()
+				), 0) AS daily_limit_usd,
+				COALESCE(SUM(weekly_limit_usd) FILTER (
+					WHERE starts_at <= NOW() AND expires_at > NOW()
+				), 0) AS weekly_limit_usd
+			FROM api_key_plan_packages
+			WHERE api_key_id = k.id
+		) pp ON TRUE
 		WHERE k.id = $1 AND k.deleted_at IS NULL
 		FOR UPDATE OF k`,
 		apiKeyID,
-	).Scan(&usage5h, &usage1d, &usage7d, &w5h, &w1d, &w7d, &limit1d, &groupDailyLimit, &limit7d, &groupWeeklyLimit, &tokenPackageRequired)
+	).Scan(
+		&usage5h,
+		&usage1d,
+		&usage7d,
+		&w5h,
+		&w1d,
+		&w7d,
+		&limit1d,
+		&groupDailyLimit,
+		&limit7d,
+		&groupWeeklyLimit,
+		&tokenPackageRequired,
+		&planManaged,
+		&planDailyLimit,
+		&planWeeklyLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +369,13 @@ func lockAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64) (
 		usage7d:              usage7d,
 		limit1d:              nullableFloat(limit1d),
 		limit7d:              nullableFloat(limit7d),
+		planManaged:          planManaged,
 		tokenPackageRequired: tokenPackageRequired,
+	}
+	if state.planManaged {
+		state.limit1d = planDailyLimit
+		state.limit7d = planWeeklyLimit
+		return populateAPIKeyRateLimitWindows(state, w5h, w1d, w7d), nil
 	}
 	if !state.tokenPackageRequired && state.limit1d <= 0 {
 		state.limit1d = nullableFloat(groupDailyLimit)
@@ -333,6 +383,10 @@ func lockAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64) (
 	if !state.tokenPackageRequired && state.limit7d <= 0 {
 		state.limit7d = nullableFloat(groupWeeklyLimit)
 	}
+	return populateAPIKeyRateLimitWindows(state, w5h, w1d, w7d), nil
+}
+
+func populateAPIKeyRateLimitWindows(state *apiKeyRateLimitSQLState, w5h, w1d, w7d sql.NullTime) *apiKeyRateLimitSQLState {
 	if w5h.Valid {
 		state.w5h = &w5h.Time
 	}
@@ -342,7 +396,7 @@ func lockAPIKeyRateLimitState(ctx context.Context, tx *sql.Tx, apiKeyID int64) (
 	if w7d.Valid {
 		state.w7d = &w7d.Time
 	}
-	return state, nil
+	return state
 }
 
 func (s *apiKeyRateLimitSQLState) resetExpired(now time.Time) {

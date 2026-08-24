@@ -208,6 +208,99 @@ func TestUsageBillingRepositoryApply_ConsumesTokenPackageOnlyAfterInheritedDaily
 	require.Equal(t, int64(81), totalTokens)
 }
 
+func TestUsageBillingRepositoryApply_UsesActiveStackedPlanLimits(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	apiKeyRepo := NewAPIKeyRepository(client, integrationDB)
+
+	user := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("usage-billing-stacked-plan-user-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+	})
+	legacyDaily := 300.0
+	legacyWeekly := 1000.0
+	group := mustCreateGroup(t, client, &service.Group{
+		Name:             "usage-billing-stacked-plan-group-" + uuid.NewString(),
+		Platform:         service.PlatformAnthropic,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		DailyLimitUSD:    &legacyDaily,
+		WeeklyLimitUSD:   &legacyWeekly,
+	})
+	now := time.Now().UTC()
+	windowStart := now.Add(-time.Hour)
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID:        user.ID,
+		GroupID:       &group.ID,
+		Key:           "sk-usage-billing-stacked-plan-" + uuid.NewString(),
+		Name:          "billing-stacked-plan",
+		Usage1d:       300,
+		Usage7d:       787,
+		Window1dStart: &windowStart,
+		Window7dStart: &windowStart,
+	})
+
+	exhaustedPackage, err := apiKeyRepo.AddTokenPackage(ctx, apiKey.ID, 10, "exhausted legacy package", "test")
+	require.NoError(t, err)
+	_, err = integrationDB.ExecContext(ctx, `
+		UPDATE api_key_token_packages
+		SET used_usd = amount_usd
+		WHERE id = $1`, exhaustedPackage.ID)
+	require.NoError(t, err)
+
+	for i := 0; i < 3; i++ {
+		_, err = integrationDB.ExecContext(ctx, `
+			INSERT INTO api_key_plan_packages (
+				api_key_id, group_id, request_id, package_name,
+				daily_limit_usd, weekly_limit_usd, concurrency, months,
+				starts_at, expires_at, source, created_by
+			) VALUES ($1, $2, $3, 'Double', 150, 500, 3, 1, $4, $5, 'admin', 'integration-test')`,
+			apiKey.ID,
+			group.ID,
+			fmt.Sprintf("stacked-plan-%d-%s", i, uuid.NewString()),
+			now.Add(-time.Duration(i+1)*time.Hour),
+			now.Add(24*time.Hour),
+		)
+		require.NoError(t, err)
+	}
+	_, err = integrationDB.ExecContext(ctx, `
+		INSERT INTO api_key_plan_packages (
+			api_key_id, group_id, request_id, package_name,
+			daily_limit_usd, weekly_limit_usd, concurrency, months,
+			starts_at, expires_at, source, created_by
+		) VALUES ($1, $2, $3, 'Expired', 999, 999, 99, 1, $4, $5, 'admin', 'integration-test')`,
+		apiKey.ID,
+		group.ID,
+		"expired-plan-"+uuid.NewString(),
+		now.Add(-48*time.Hour),
+		now.Add(-24*time.Hour),
+	)
+	require.NoError(t, err)
+
+	result, err := repo.Apply(ctx, &service.UsageBillingCommand{
+		RequestID:           uuid.NewString(),
+		APIKeyID:            apiKey.ID,
+		UserID:              user.ID,
+		APIKeyRateLimitCost: 5,
+		Model:               "claude-opus-5",
+	})
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+
+	var usage1d, usage7d, packageUsed float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT usage_1d, usage_7d
+		FROM api_keys
+		WHERE id = $1`, apiKey.ID).Scan(&usage1d, &usage7d))
+	require.InDelta(t, 305, usage1d, 0.000001)
+	require.InDelta(t, 792, usage7d, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT used_usd
+		FROM api_key_token_packages
+		WHERE id = $1`, exhaustedPackage.ID).Scan(&packageUsed))
+	require.InDelta(t, 10, packageUsed, 0.000001, "active plan headroom must be consumed before legacy token packages")
+}
+
 func TestUsageBillingRepositoryApply_ConsumesTokenPackageWithoutBaseLimits(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)

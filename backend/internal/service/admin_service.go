@@ -2801,6 +2801,9 @@ func (s *adminServiceImpl) AdminAddAPIKeyPlanPackage(ctx context.Context, input 
 	if result != nil && strings.TrimSpace(result.Key) != "" && s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, result.Key)
 	}
+	if result != nil && s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateAPIKeyRateLimit(ctx, input.APIKeyID)
+	}
 	return result, nil
 }
 

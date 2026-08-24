@@ -21,6 +21,19 @@ const (
 	RateLimitWindow7d = 7 * 24 * time.Hour
 )
 
+// APIKeyRateLimitWindow identifies an admin-resettable API key rate-limit window.
+type APIKeyRateLimitWindow string
+
+const (
+	APIKeyRateLimitWindow1d APIKeyRateLimitWindow = "1d"
+	APIKeyRateLimitWindow7d APIKeyRateLimitWindow = "7d"
+)
+
+// IsValid reports whether the window supports an independent admin reset.
+func (w APIKeyRateLimitWindow) IsValid() bool {
+	return w == APIKeyRateLimitWindow1d || w == APIKeyRateLimitWindow7d
+}
+
 // IsWindowExpired returns true if the window starting at windowStart has exceeded the given duration.
 // A nil windowStart is treated as expired — no initialized window means any accumulated usage is stale.
 func IsWindowExpired(windowStart *time.Time, duration time.Duration) bool {

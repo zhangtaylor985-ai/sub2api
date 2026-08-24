@@ -666,3 +666,49 @@
 - 当前生产binary SHA256：`facf843d35ee76b7b1448df5d535407d5c14748fa10c4d8f8b824df0f7115aa0`。
 - 替换前创建 `/opt/sub2api/sub2api.bak.<timestamp>-before-external-quota-drain`；异常时原位恢复并重启。
 - 发布后不自动启用或修改四个账号的外部额度闸门，账号级配置由管理UI另行操作。
+
+---
+
+# 2026-08-24 API Key 日/周限额快捷重置
+
+## 目标与口径
+
+- 管理员可以对单个 API Key 独立重置日限额用量；只清零当天用量，保留北京时间每日 00:00 的自然周期边界。
+- 管理员可以快捷重置周限额；清零周用量，并以点击确认时的服务器时间作为新起点，下一次结束时间固定为起点后 7 天。
+- 两种重置都通过独立管理接口执行，不提交编辑弹窗内其他未保存字段。
+- 操作后失效认证缓存和限额缓存，并返回更新后的 API Key 状态。
+- 完成本地后端、前端和浏览器回归后发布 ARM64 生产 binary；不新增数据库迁移，不修改 DNS。
+
+## 阶段计划
+
+| 阶段 | 状态 | 输出 |
+| --- | --- | --- |
+| 1. 生产手工日限额重置 | complete | API Key ID 525 的 `usage_1d` 已清零并回读，缓存已失效 |
+| 2. 隔离工作树与基线审计 | complete | 基于 `origin/main=7228c24f2` 创建独立分支与工作树 |
+| 3. 后端窗口级重置 API | complete | 1d/7d 原子更新、鉴权路由、缓存失效和更新后响应 |
+| 4. 管理 UI 快捷按钮 | complete | 独立按钮、确认提示、执行状态、结果刷新和中英文文案 |
+| 5. 定向/全量/浏览器回归 | complete | Go 全量、PostgreSQL integration、专项 Vitest、lint/typecheck/build、本地真实 API E2E |
+| 6. Git、ARM64 canary 与生产发布 | in_progress | fetch/rebase、提交推送、binary、回滚、内外 smoke |
+
+## 风险与回滚
+
+- 周重置会改变下一次周限额结束时间；UI 必须在确认文案中明确“从现在起 7 天”。
+- 日重置不得顺带修改 5 小时或周窗口；周重置不得修改日窗口。
+- 重置 API 发生并发计费写入时必须由服务端单次更新并清缓存，响应以数据库更新结果为准。
+- 发布只替换应用 binary；替换前保留 `/opt/sub2api/sub2api.bak.<timestamp>-before-api-key-rate-limit-resets`，异常时原位恢复并重启。
+
+## 错误记录
+
+| 时间 | 错误 | 处理 |
+| --- | --- | --- |
+| 2026-08-24 | `planning-with-files` catchup 不支持 Codex 原生 session | 使用 Git 状态、远端主线和现有规划文件恢复；未覆盖主工作树改动 |
+| 2026-08-24 | 首次格式化命令在 `backend/` 中仍带 `backend/` 前缀，目标路径不存在 | 源码未受影响；改用相对 `internal/...` 路径重新格式化 |
+| 2026-08-24 | 原子仓储实现调用了轻量 `sqlExecutor` 未暴露的 `QueryRowContext` | 改用项目既有 `QueryContext` + 单行读取 + `Rows.Close` 模式 |
+| 2026-08-24 | handler 测试未给非目标窗口设置有效起点，DTO 将其视为过期并显示 0 | 给夹具补充真实有效窗口，继续验证非目标窗口不变 |
+| 2026-08-24 | `pnpm v11` 自动迁移旧锁文件并生成 workspace 文件 | 精确恢复锁文件、删除生成文件，后续直接使用项目现有 `node_modules/.bin`，未提交依赖噪音 |
+| 2026-08-24 | Testcontainers 未跟随 OrbStack Docker context，报 `rootless Docker not found` | 显式传入现有 OrbStack socket，真实 PostgreSQL integration 通过 |
+| 2026-08-24 | 前端全量 Vitest 有 12 个既有失败 | 684 项通过、12 项失败，失败集中在未改动模块；本功能专项 3 项全部通过 |
+| 2026-08-24 | 内置浏览器和 Chrome 连接层均拦截本机 HTTP | 补充真实挂载 `ApiKeysView` 组件交互测试，并用独立本地应用/数据库完成真实 HTTP E2E；生产发布后再做 HTTPS 可见验收 |
+| 2026-08-24 | 临时应用首次启动的测试 TOTP key 不是合法 hex | 初始化完成但应用未监听；改用合法测试 key 重启，未影响生产或既有本地服务 |
+| 2026-08-24 | 本地 E2E 首次 `psql -c` 未展开命名变量，第二次 jq 无法解析带时区偏移的 RFC3339 | 使用已验证整数 ID，并由 PostgreSQL 回读周起点与服务器当前时间差，最终 E2E 通过 |
+| 2026-08-24 | 临时目录永久删除命令被安全策略拒绝 | 停止临时容器并将精确目录移动到废纸篓，可恢复；源码与其他容器未受影响 |

@@ -21,6 +21,7 @@ func setupAPIKeyHandler(adminSvc service.AdminService) *gin.Engine {
 	router := gin.New()
 	h := NewAdminAPIKeyHandler(adminSvc)
 	router.PUT("/api/v1/admin/api-keys/:id", h.UpdateGroup)
+	router.POST("/api/v1/admin/api-keys/:id/rate-limit-windows/:window/reset", h.ResetRateLimitWindow)
 	router.GET("/api/v1/admin/api-keys/:id/plan-packages", h.ListPlanPackages)
 	router.POST("/api/v1/admin/api-keys/:id/plan-packages", h.AddPlanPackage)
 	return router
@@ -196,6 +197,79 @@ func TestAdminAPIKeyHandler_ResetRateLimitUsage(t *testing.T) {
 	require.Nil(t, resp.Data.APIKey.Window5hStart)
 	require.Nil(t, resp.Data.APIKey.Window1dStart)
 	require.Nil(t, resp.Data.APIKey.Window7dStart)
+}
+
+func TestAdminAPIKeyHandler_ResetDailyRateLimitWindow(t *testing.T) {
+	svc := newStubAdminService()
+	windowStart := time.Now().UTC().Add(-8 * time.Hour).Truncate(time.Second)
+	weeklyWindowStart := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
+	svc.apiKeys[0].Usage1d = 12.5
+	svc.apiKeys[0].Usage7d = 44
+	svc.apiKeys[0].Window1dStart = &windowStart
+	svc.apiKeys[0].Window7dStart = &weeklyWindowStart
+	router := setupAPIKeyHandler(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/api-keys/10/rate-limit-windows/1d/reset", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, service.APIKeyRateLimitWindow1d, svc.lastResetWindow)
+	require.False(t, svc.lastResetAt.IsZero())
+	var resp struct {
+		Data struct {
+			APIKey struct {
+				Usage1d       float64    `json:"usage_1d"`
+				Usage7d       float64    `json:"usage_7d"`
+				Window1dStart *time.Time `json:"window_1d_start"`
+			} `json:"api_key"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Zero(t, resp.Data.APIKey.Usage1d)
+	require.Equal(t, 44.0, resp.Data.APIKey.Usage7d)
+	require.NotNil(t, resp.Data.APIKey.Window1dStart)
+	require.True(t, resp.Data.APIKey.Window1dStart.Equal(windowStart))
+}
+
+func TestAdminAPIKeyHandler_ResetWeeklyRateLimitWindow(t *testing.T) {
+	svc := newStubAdminService()
+	dailyWindowStart := time.Now().UTC().Add(-8 * time.Hour).Truncate(time.Second)
+	svc.apiKeys[0].Usage1d = 8
+	svc.apiKeys[0].Usage7d = 90
+	svc.apiKeys[0].Window1dStart = &dailyWindowStart
+	router := setupAPIKeyHandler(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/api-keys/10/rate-limit-windows/7d/reset", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, service.APIKeyRateLimitWindow7d, svc.lastResetWindow)
+	var resp struct {
+		Data struct {
+			APIKey struct {
+				Usage1d       float64    `json:"usage_1d"`
+				Usage7d       float64    `json:"usage_7d"`
+				Window7dStart *time.Time `json:"window_7d_start"`
+			} `json:"api_key"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 8.0, resp.Data.APIKey.Usage1d)
+	require.Zero(t, resp.Data.APIKey.Usage7d)
+	require.NotNil(t, resp.Data.APIKey.Window7dStart)
+	require.WithinDuration(t, svc.lastResetAt, *resp.Data.APIKey.Window7dStart, time.Second)
+}
+
+func TestAdminAPIKeyHandler_ResetRateLimitWindowRejectsInvalidWindow(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/api-keys/10/rate-limit-windows/5h/reset", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "expected 1d or 7d")
 }
 
 func TestAdminAPIKeyHandler_UpdatePolicyFields(t *testing.T) {

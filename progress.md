@@ -893,6 +893,24 @@
 
 ---
 
+# 2026-08-24 API Key 日/周限额快捷重置
+
+- 已按用户明确授权在生产精确定位 API Key ID 525；`usage_1d` 从 125 清零为 0，日窗口保持北京时间 00:00，周字段未改，Redis 限速/认证缓存回读为 0。
+- 用户确认实施口径：日重置保留自然日边界；周重置以点击时刻为新起点并自动计算 7 天。
+- 已完整阅读 `planning-with-files`、`sub2api-production-inspection`、`sub2api-production-regression` 和 `sub2api-deploy`。
+- 主工作树存在大量未提交且与本任务无关的改动；已 `git fetch origin --prune`，从 `origin/main=7228c24f2` 创建独立分支 `codex/api-key-rate-limit-resets` 和工作树 `/Users/taylor/sdk/sub2api-api-key-rate-limit-resets`。
+- 当前进入后端窗口级重置 API 与测试实现；尚未修改生产 binary、服务或数据库结构。
+- 后端已新增窗口类型、独立重置管理接口、路由和仓储原子更新；日重置保留有效自然日边界，周重置使用服务器当前时间。
+- 首轮定向测试暴露格式化路径、轻量 SQL 接口和测试夹具三项问题；均已记录并改用项目现有模式修正，生产未受影响。
+- 后端 handler/service 定向测试和 `go test ./... -count=1` 全量通过；OrbStack socket 显式注入后，API Key repository 的真实 PostgreSQL integration 通过。
+- 前端相关 ESLint、`vue-tsc --noEmit` 和生产 build 通过；新增 API client 2 项、真实挂载 `ApiKeysView` 1 项专项测试全部通过。
+- 前端全量 Vitest 为 684 项通过、12 项既有失败；失败仍集中在 AccountUsageCell、分布图、EmailVerifyView 和持久页大小测试，本次改动文件无失败。
+- 浏览器连接层无法访问本机 HTTP；已用独立临时 PostgreSQL/Redis/候选应用完成真实 admin 登录、测试 Key 创建、日重置、周重置和数据库回读 E2E，所有断言通过。
+- 本地 E2E 确认日重置保留 5h/周窗口，周重置保留 5h/日窗口且起点为服务器当前时间；临时容器已停止并自动删除，临时目录已移入废纸篓。
+- 当前功能实现与本地发布门禁完成，进入最终 diff 审查、Git 远端同步、ARM64 binary 构建、canary 和生产发布。
+
+---
+
 # 2026-08-20 外部额度闸门一小时固定放行
 
 - 用户已确认新策略设计；当前授权范围为本地实现和验证，不包含生产发布。

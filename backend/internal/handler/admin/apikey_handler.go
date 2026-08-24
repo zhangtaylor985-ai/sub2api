@@ -219,6 +219,28 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 	response.Success(c, adminAPIKeyResultResponse(result))
 }
 
+// ResetRateLimitWindow resets one API key daily or weekly rate-limit window.
+// POST /api/v1/admin/api-keys/:id/rate-limit-windows/:window/reset
+func (h *AdminAPIKeyHandler) ResetRateLimitWindow(c *gin.Context) {
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+	window := service.APIKeyRateLimitWindow(c.Param("window"))
+	if !window.IsValid() {
+		response.BadRequest(c, "Invalid rate limit window: expected 1d or 7d")
+		return
+	}
+
+	key, err := h.adminService.AdminResetAPIKeyRateLimitWindow(c.Request.Context(), keyID, window, time.Now())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"api_key": dto.APIKeyFromServiceAdmin(key)})
+}
+
 func adminAPIKeyResultResponse(result *service.AdminUpdateAPIKeyGroupIDResult) any {
 	if result == nil {
 		return gin.H{"api_key": nil}

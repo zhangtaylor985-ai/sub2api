@@ -13,6 +13,8 @@ export interface UpdateApiKeyGroupResult {
   granted_group_name?: string
 }
 
+export type APIKeyRateLimitWindow = '1d' | '7d'
+
 export interface AdminUpdateApiKeyPolicyPayload {
   group_id?: number | null
   status?: 'active' | 'inactive'
@@ -188,6 +190,13 @@ export async function updateApiKeyPolicy(id: number, payload: AdminUpdateApiKeyP
   return data
 }
 
+export async function resetRateLimitWindow(id: number, window: APIKeyRateLimitWindow): Promise<Pick<UpdateApiKeyGroupResult, 'api_key'>> {
+  const { data } = await apiClient.post<Pick<UpdateApiKeyGroupResult, 'api_key'>>(
+    `/admin/api-keys/${id}/rate-limit-windows/${window}/reset`
+  )
+  return data
+}
+
 export async function addTokenPackage(id: number, payload: { amount_usd: number; note?: string }): Promise<ApiKeyTokenPackage> {
   const { data } = await apiClient.post<ApiKeyTokenPackage>(`/admin/api-keys/${id}/token-packages`, payload)
   return data
@@ -213,6 +222,7 @@ export const apiKeysAPI = {
   create: createApiKey,
   updateApiKeyGroup,
   updateApiKeyPolicy,
+  resetRateLimitWindow,
   addTokenPackage,
   listTokenPackages,
   addPlanPackage,

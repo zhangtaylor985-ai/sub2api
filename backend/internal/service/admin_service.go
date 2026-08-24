@@ -69,6 +69,7 @@ type AdminService interface {
 	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
 	AdminUpdateAPIKeyPolicy(ctx context.Context, keyID int64, input AdminUpdateAPIKeyPolicyInput) (*APIKey, error)
 	AdminResetAPIKeyRateLimitUsage(ctx context.Context, keyID int64) (*APIKey, error)
+	AdminResetAPIKeyRateLimitWindow(ctx context.Context, keyID int64, window APIKeyRateLimitWindow, now time.Time) (*APIKey, error)
 	AdminAddAPIKeyTokenPackage(ctx context.Context, keyID int64, amount float64, note, createdBy string) (*APIKeyTokenPackage, error)
 	AdminListAPIKeyTokenPackages(ctx context.Context, keyID int64) (*APIKeyTokenPackageSummary, error)
 
@@ -423,6 +424,10 @@ type apiKeyPlanPackageWriter interface {
 	AddPlanPackage(ctx context.Context, input AddAPIKeyPlanPackageInput) (*AddAPIKeyPlanPackageResult, error)
 	ListPlanPackages(ctx context.Context, id int64, limit int, now time.Time) ([]APIKeyPlanPackage, error)
 	GetPlanPackageSummary(ctx context.Context, id int64, now time.Time) (*APIKeyPlanPackageSummary, error)
+}
+
+type apiKeyRateLimitWindowResetter interface {
+	ResetRateLimitWindow(ctx context.Context, id int64, window APIKeyRateLimitWindow, now time.Time) (*APIKeyRateLimitData, error)
 }
 
 // ReplaceUserGroupResult 分组替换操作的结果
@@ -2703,6 +2708,45 @@ func (s *adminServiceImpl) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
 		return nil, fmt.Errorf("reset api key rate limit usage: %w", err)
 	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	}
+	if s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateAPIKeyRateLimit(ctx, apiKey.ID)
+	}
+	return apiKey, nil
+}
+
+// AdminResetAPIKeyRateLimitWindow resets one API key rate-limit window without
+// modifying the other windows. Daily resets retain the active natural-day
+// boundary; weekly resets start a fresh seven-day period at now.
+func (s *adminServiceImpl) AdminResetAPIKeyRateLimitWindow(ctx context.Context, keyID int64, window APIKeyRateLimitWindow, now time.Time) (*APIKey, error) {
+	if !window.IsValid() {
+		return nil, infraerrors.BadRequest("INVALID_RATE_LIMIT_WINDOW", "window must be 1d or 7d")
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	resetter, ok := s.apiKeyRepo.(apiKeyRateLimitWindowResetter)
+	if !ok {
+		return nil, infraerrors.InternalServer("RATE_LIMIT_WINDOW_RESET_UNAVAILABLE", "api key repository does not support window reset")
+	}
+
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
+	if err != nil {
+		return nil, err
+	}
+	data, err := resetter.ResetRateLimitWindow(ctx, keyID, window, now.UTC())
+	if err != nil {
+		return nil, fmt.Errorf("reset api key %s rate limit window: %w", window, err)
+	}
+	apiKey.Usage5h = data.Usage5h
+	apiKey.Usage1d = data.Usage1d
+	apiKey.Usage7d = data.Usage7d
+	apiKey.Window5hStart = data.Window5hStart
+	apiKey.Window1dStart = data.Window1dStart
+	apiKey.Window7dStart = data.Window7dStart
+
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
 	}

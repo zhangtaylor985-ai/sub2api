@@ -118,6 +118,10 @@ type apiKeyRepoStubForGroupUpdate struct {
 	listUsages        []APIKeyTokenPackageUsage
 	tokenRemaining    float64
 	tokenRemainingErr error
+	resetWindow       APIKeyRateLimitWindow
+	resetAt           time.Time
+	resetData         *APIKeyRateLimitData
+	resetErr          error
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {
@@ -134,6 +138,19 @@ func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey) er
 	clone := *key
 	s.updated = &clone
 	return nil
+}
+
+func (s *apiKeyRepoStubForGroupUpdate) ResetRateLimitWindow(_ context.Context, _ int64, window APIKeyRateLimitWindow, now time.Time) (*APIKeyRateLimitData, error) {
+	s.resetWindow = window
+	s.resetAt = now
+	if s.resetErr != nil {
+		return nil, s.resetErr
+	}
+	if s.resetData == nil {
+		panic("reset data is required")
+	}
+	data := *s.resetData
+	return &data, nil
 }
 
 // Unused methods – panic on unexpected call.
@@ -578,6 +595,67 @@ func TestAdminService_AdminUpdateAPIKeyPolicy_RejectsExpiredWeeklyWindowStart(t 
 	require.Error(t, err)
 	require.Equal(t, "INVALID_RATE_LIMIT_WINDOW", infraerrors.Reason(err))
 	require.Nil(t, apiKeyRepo.updated)
+}
+
+func TestAdminService_AdminResetAPIKeyRateLimitWindow_DailyPreservesOtherWindows(t *testing.T) {
+	now := time.Date(2026, 8, 24, 7, 15, 0, 0, time.FixedZone("CST", 8*60*60))
+	dailyStart := time.Date(2026, 8, 24, 0, 0, 0, 0, time.FixedZone("CST", 8*60*60)).UTC()
+	weeklyStart := now.Add(-48 * time.Hour).UTC()
+	repo := &apiKeyRepoStubForGroupUpdate{
+		key: &APIKey{ID: 9, Key: "sk-test", Usage1d: 20, Usage7d: 40, Window1dStart: &dailyStart, Window7dStart: &weeklyStart},
+		resetData: &APIKeyRateLimitData{
+			Usage1d:       0,
+			Usage7d:       40,
+			Window1dStart: &dailyStart,
+			Window7dStart: &weeklyStart,
+		},
+	}
+	cache := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{apiKeyRepo: repo, authCacheInvalidator: cache}
+
+	got, err := svc.AdminResetAPIKeyRateLimitWindow(context.Background(), 9, APIKeyRateLimitWindow1d, now)
+
+	require.NoError(t, err)
+	require.Equal(t, APIKeyRateLimitWindow1d, repo.resetWindow)
+	require.Equal(t, now.UTC(), repo.resetAt)
+	require.Zero(t, got.Usage1d)
+	require.Equal(t, 40.0, got.Usage7d)
+	require.Equal(t, dailyStart, got.Window1dStart.UTC())
+	require.Equal(t, weeklyStart, got.Window7dStart.UTC())
+	require.Equal(t, []string{"sk-test"}, cache.keys)
+}
+
+func TestAdminService_AdminResetAPIKeyRateLimitWindow_WeeklyStartsAtNow(t *testing.T) {
+	now := time.Date(2026, 8, 24, 7, 30, 45, 0, time.FixedZone("CST", 8*60*60))
+	dailyStart := time.Date(2026, 8, 24, 0, 0, 0, 0, time.FixedZone("CST", 8*60*60)).UTC()
+	weeklyStart := now.UTC()
+	repo := &apiKeyRepoStubForGroupUpdate{
+		key: &APIKey{ID: 9, Key: "sk-test", Usage1d: 12, Usage7d: 80, Window1dStart: &dailyStart},
+		resetData: &APIKeyRateLimitData{
+			Usage1d:       12,
+			Usage7d:       0,
+			Window1dStart: &dailyStart,
+			Window7dStart: &weeklyStart,
+		},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: repo}
+
+	got, err := svc.AdminResetAPIKeyRateLimitWindow(context.Background(), 9, APIKeyRateLimitWindow7d, now)
+
+	require.NoError(t, err)
+	require.Equal(t, APIKeyRateLimitWindow7d, repo.resetWindow)
+	require.Equal(t, 12.0, got.Usage1d)
+	require.Zero(t, got.Usage7d)
+	require.Equal(t, weeklyStart, got.Window7dStart.UTC())
+}
+
+func TestAdminService_AdminResetAPIKeyRateLimitWindow_RejectsInvalidWindow(t *testing.T) {
+	svc := &adminServiceImpl{apiKeyRepo: &apiKeyRepoStubForGroupUpdate{key: &APIKey{ID: 9, Key: "sk-test"}}}
+
+	_, err := svc.AdminResetAPIKeyRateLimitWindow(context.Background(), 9, APIKeyRateLimitWindow("5h"), time.Now())
+
+	require.Error(t, err)
+	require.Equal(t, "INVALID_RATE_LIMIT_WINDOW", infraerrors.Reason(err))
 }
 
 func TestAdminService_AdminAddAPIKeyTokenPackage_AppendsPackageAndInvalidatesAuthCache(t *testing.T) {

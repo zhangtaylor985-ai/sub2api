@@ -71,6 +71,8 @@ type stubAdminService struct {
 	}
 	lastPlanPackageInput *service.AddAPIKeyPlanPackageInput
 	planPackages         []service.APIKeyPlanPackage
+	lastResetWindow      service.APIKeyRateLimitWindow
+	lastResetAt          time.Time
 	mu                   sync.Mutex
 }
 
@@ -689,6 +691,31 @@ func (s *stubAdminService) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 			k := s.apiKeys[i]
 			return &k, nil
 		}
+	}
+	return nil, service.ErrAPIKeyNotFound
+}
+
+func (s *stubAdminService) AdminResetAPIKeyRateLimitWindow(_ context.Context, keyID int64, window service.APIKeyRateLimitWindow, now time.Time) (*service.APIKey, error) {
+	s.lastResetWindow = window
+	s.lastResetAt = now
+	for i := range s.apiKeys {
+		if s.apiKeys[i].ID != keyID {
+			continue
+		}
+		switch window {
+		case service.APIKeyRateLimitWindow1d:
+			s.apiKeys[i].Usage1d = 0
+			if s.apiKeys[i].Window1dStart == nil {
+				start := now.Truncate(24 * time.Hour)
+				s.apiKeys[i].Window1dStart = &start
+			}
+		case service.APIKeyRateLimitWindow7d:
+			s.apiKeys[i].Usage7d = 0
+			start := now.UTC()
+			s.apiKeys[i].Window7dStart = &start
+		}
+		key := s.apiKeys[i]
+		return &key, nil
 	}
 	return nil, service.ErrAPIKeyNotFound
 }

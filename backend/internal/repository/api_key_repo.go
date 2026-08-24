@@ -691,6 +691,60 @@ func (r *apiKeyRepository) ResetRateLimitWindows(ctx context.Context, id int64) 
 	return err
 }
 
+// ResetRateLimitWindow atomically resets one admin-selected rate-limit window.
+// The daily window keeps its active natural-day boundary. The weekly window
+// starts a fresh seven-day period at the supplied server timestamp.
+func (r *apiKeyRepository) ResetRateLimitWindow(ctx context.Context, id int64, window service.APIKeyRateLimitWindow, now time.Time) (*service.APIKeyRateLimitData, error) {
+	var query string
+	switch window {
+	case service.APIKeyRateLimitWindow1d:
+		query = `
+			UPDATE api_keys SET
+				usage_1d = 0,
+				window_1d_start = CASE
+					WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= $2
+					THEN date_trunc('day', $2::timestamptz)
+					ELSE window_1d_start
+				END,
+				updated_at = $2
+			WHERE id = $1 AND deleted_at IS NULL
+			RETURNING usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start`
+	case service.APIKeyRateLimitWindow7d:
+		query = `
+			UPDATE api_keys SET
+				usage_7d = 0,
+				window_7d_start = $2,
+				updated_at = $2
+			WHERE id = $1 AND deleted_at IS NULL
+			RETURNING usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start`
+	default:
+		return nil, fmt.Errorf("unsupported rate limit window %q", window)
+	}
+
+	rows, err := r.sql.QueryContext(ctx, query, id, now.UTC())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, service.ErrAPIKeyNotFound
+	}
+
+	data := &service.APIKeyRateLimitData{}
+	err = rows.Scan(
+		&data.Usage5h,
+		&data.Usage1d,
+		&data.Usage7d,
+		&data.Window5hStart,
+		&data.Window1dStart,
+		&data.Window7dStart,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return data, rows.Err()
+}
+
 // GetRateLimitData returns the current rate limit usage and window start times for an API key.
 func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (result *service.APIKeyRateLimitData, err error) {
 	rows, err := r.sql.QueryContext(ctx, `

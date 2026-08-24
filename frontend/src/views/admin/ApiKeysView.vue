@@ -391,16 +391,46 @@
             </span>
             <span class="input-hint">{{ t('admin.apiKeys.form.tokenPackageRequiredHint') }}</span>
           </label>
-          <label class="space-y-1">
-            <span class="input-label">{{ t('admin.apiKeys.form.dailyLimit') }}</span>
+          <div class="space-y-1">
+            <div class="flex items-center justify-between gap-3">
+              <span class="input-label">{{ t('admin.apiKeys.form.dailyLimit') }}</span>
+              <button
+                type="button"
+                class="rounded-md border border-primary-200 px-2.5 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-primary-800 dark:text-primary-300 dark:hover:bg-primary-950/30"
+                :disabled="submitting || resettingWindow !== null"
+                @click="handleResetRateLimitWindow('1d')"
+              >
+                {{ resettingWindow === '1d' ? t('admin.apiKeys.resettingWindow') : t('admin.apiKeys.resetDailyWindow') }}
+              </button>
+            </div>
             <input v-model.number="editForm.rate_limit_1d" type="number" min="0" step="0.0001" class="input" />
-            <span class="input-hint">{{ t('admin.apiKeys.form.zeroInheritGroupLimit') }}</span>
-          </label>
-          <label class="space-y-1">
-            <span class="input-label">{{ t('admin.apiKeys.form.weeklyLimit') }}</span>
+            <span class="input-hint">
+              {{ t('admin.apiKeys.form.zeroInheritGroupLimit') }}
+              <template v-if="editingKey">
+                · {{ t('admin.apiKeys.currentDailyUsage', { used: formatMoney(editingKey.usage_1d) }) }}
+              </template>
+            </span>
+          </div>
+          <div class="space-y-1">
+            <div class="flex items-center justify-between gap-3">
+              <span class="input-label">{{ t('admin.apiKeys.form.weeklyLimit') }}</span>
+              <button
+                type="button"
+                class="rounded-md border border-primary-200 px-2.5 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-primary-800 dark:text-primary-300 dark:hover:bg-primary-950/30"
+                :disabled="submitting || resettingWindow !== null"
+                @click="handleResetRateLimitWindow('7d')"
+              >
+                {{ resettingWindow === '7d' ? t('admin.apiKeys.resettingWindow') : t('admin.apiKeys.resetWeeklyWindow') }}
+              </button>
+            </div>
             <input v-model.number="editForm.rate_limit_7d" type="number" min="0" step="0.0001" class="input" />
-            <span class="input-hint">{{ t('admin.apiKeys.form.zeroInheritGroupLimit') }}</span>
-          </label>
+            <span class="input-hint">
+              {{ t('admin.apiKeys.form.zeroInheritGroupLimit') }}
+              <template v-if="editingKey">
+                · {{ t('admin.apiKeys.currentWeeklyUsage', { used: formatMoney(editingKey.usage_7d) }) }}
+              </template>
+            </span>
+          </div>
           <label class="space-y-1">
             <span class="input-label">{{ t('admin.apiKeys.form.fiveHourLimit') }}</span>
             <input v-model.number="editForm.rate_limit_5h" type="number" min="0" step="0.0001" class="input" />
@@ -502,7 +532,7 @@
           <button type="button" class="btn btn-secondary" @click="closeEditDialog">
             {{ t('common.cancel') }}
           </button>
-          <button type="submit" form="edit-api-key-form" class="btn btn-primary" :disabled="submitting">
+          <button type="submit" form="edit-api-key-form" class="btn btn-primary" :disabled="submitting || resettingWindow !== null">
             {{ submitting ? t('common.saving') : t('common.save') }}
           </button>
         </div>
@@ -714,6 +744,7 @@ import { formatDateTime } from '@/utils/format'
 import { calculatePlanPackagePeriod } from '@/utils/planPackageSchedule'
 import type { AdminGroup, ApiKey, OpenAIMessagesDispatchModelConfig } from '@/types'
 import type {
+  APIKeyRateLimitWindow,
   ApiKeyPlanPackage,
   ApiKeyPlanPackageSummary,
   ApiKeyTokenPackage,
@@ -741,6 +772,7 @@ const apiKeys = ref<ApiKey[]>([])
 const groups = ref<AdminGroup[]>([])
 const loading = ref(false)
 const submitting = ref(false)
+const resettingWindow = ref<APIKeyRateLimitWindow | null>(null)
 const searchQuery = ref('')
 const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
@@ -1257,8 +1289,46 @@ const openEditDialog = (key: ApiKey) => {
 }
 
 const closeEditDialog = () => {
+  if (resettingWindow.value !== null) return
   showEditDialog.value = false
   editingKey.value = null
+}
+
+const handleResetRateLimitWindow = async (limitWindow: APIKeyRateLimitWindow) => {
+  if (!editingKey.value || resettingWindow.value !== null || submitting.value) return
+  const key = editingKey.value
+  const confirmation = limitWindow === '1d'
+    ? t('admin.apiKeys.confirmDailyReset', {
+        name: key.name,
+        used: formatMoney(key.usage_1d)
+      })
+    : t('admin.apiKeys.confirmWeeklyReset', {
+        name: key.name,
+        used: formatMoney(key.usage_7d),
+        end: formatDateTime(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())
+      })
+  if (!window.confirm(confirmation)) return
+
+  resettingWindow.value = limitWindow
+  try {
+    const result = await adminAPI.apiKeys.resetRateLimitWindow(key.id, limitWindow)
+    const updatedKey = result.api_key
+    const idx = apiKeys.value.findIndex((item) => item.id === updatedKey.id)
+    if (idx !== -1) apiKeys.value[idx] = updatedKey
+    editingKey.value = updatedKey
+    if (limitWindow === '7d') {
+      editForm.window_7d_start_local = toDateTimeLocal(updatedKey.window_7d_start)
+    }
+    appStore.showSuccess(
+      limitWindow === '1d'
+        ? t('admin.apiKeys.dailyWindowResetSuccess')
+        : t('admin.apiKeys.weeklyWindowResetSuccess')
+    )
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.apiKeys.errors.resetWindowFailed'))
+  } finally {
+    resettingWindow.value = null
+  }
 }
 
 const loadTokenPackages = async (keyID: number) => {

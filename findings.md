@@ -859,4 +859,22 @@
 - 新binary自报版本 `Sub2API 0.1.131 (commit: 78320aef538e-external-quota-drain, built: 20260820T084040Z)`，与已推送主线和本地构建时间一致。
 - 生产四个目标账号已有旧版gate配置且均未显式保存时长；升级后自然继承120分钟默认，不需要额外写库。当前状态均在关闭观察阶段，没有因发布被错误开放。
 - 管理UI资源已从生产公网读取并命中新排空标志、时长输入和保存控件；未经认证的新策略接口返回401，路由发布和权限边界均符合预期。
+
+---
+
+# 2026-08-24 API Key 日/周限额快捷重置调查
+
+- 当前管理编辑接口 `PUT /api/v1/admin/api-keys/:id` 支持 `reset_rate_limit_usage=true`，但语义会同时清零 5h/1d/7d 并清空三个窗口，不适合作为独立日/周快捷操作。
+- 当前周限额可通过 `window_7d_start` 手工输入 RFC3339 起点；服务会清零 `usage_7d`，但 UI 要求管理员自行选择时间。
+- 当前仓储计费窗口：日窗口自然初始化为 `date_trunc('day', NOW())`，周窗口一般在首次计费或过期时初始化；独立日重置应保留现有 `window_1d_start`。
+- 管理服务已有统一的认证缓存失效和 `billingCacheService.InvalidateAPIKeyRateLimit` 路径，可复用于窗口级重置。
+- 最安全的 API 形态是独立 `POST /api/v1/admin/api-keys/:id/rate-limit-windows/:window/reset`，`window` 仅允许 `1d` 与 `7d`；避免误提交编辑框中的分组、权限、额度或模型映射。
+- 当前生产 binary 包含主线的经营管理、外部额度闸门和 API Key 套餐叠加功能；本任务从最新 `origin/main` 隔离开发，不能从主工作树旧 HEAD 构建。
 - systemd旧generation的exit-code来自应用5秒优雅停机超时，不是新binary启动失败；这是高流量重启的既有运维风险，后续发布可评估延长shutdown timeout或先做连接排空。
+- 窗口级重置必须是独立 POST；这样管理员在编辑弹窗里改动但未保存的分组、额度、权限或模型映射不会被一起提交。
+- 日重置 SQL 只清零 `usage_1d`；当前日窗口有效时保留原起点，失效或为空时按数据库会话时区的自然日零点重建。生产 DSN 使用 `Asia/Shanghai`，符合北京时间边界。
+- 周重置 SQL 只清零 `usage_7d` 并把 `window_7d_start` 设为 handler 注入的服务器当前时间；下一次结束时间继续由既有 DTO 以起点加 7 天计算。
+- 服务层在数据库原子更新后同时失效 API Key 认证缓存和 billing rate-limit cache，响应直接使用 `RETURNING` 的三窗口状态，避免前端展示旧值。
+- 本地真实 PostgreSQL integration 覆盖目标窗口独立更新以及过期日窗口自然日重建；真实 HTTP E2E 进一步覆盖 admin 鉴权路由、日/周响应和周起点接近服务器时间。
+- 管理 UI 的日/周按钮在保存操作之外独立执行，按钮互斥禁用，确认文案明确非目标窗口不变；周重置成功后使用服务器返回的实际起点回填编辑框。
+- 前端全量 Vitest 仍为 684 通过、12 个既有失败；新增 API client 2 项与真实挂载 `ApiKeysView` 1 项均通过，未引入新的失败文件。

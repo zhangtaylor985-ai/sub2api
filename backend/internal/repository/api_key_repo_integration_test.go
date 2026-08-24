@@ -89,6 +89,71 @@ func (s *APIKeyRepoSuite) TestGetByKey_NotFound() {
 	s.Require().Error(err, "expected error for non-existent key")
 }
 
+func (s *APIKeyRepoSuite) TestResetRateLimitWindow_ResetsOnlySelectedWindow() {
+	user := s.mustCreateUser("reset-window@test.com")
+	key := &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-reset-window",
+		Name:   "Reset Window",
+		Status: service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+
+	now := time.Date(2026, 8, 24, 7, 30, 0, 0, time.UTC)
+	dailyStart := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
+	weeklyStart := time.Date(2026, 8, 22, 3, 0, 0, 0, time.UTC)
+	_, err := s.repo.sql.ExecContext(s.ctx, `
+		UPDATE api_keys
+		SET usage_5h = 5, usage_1d = 12, usage_7d = 44,
+		    window_5h_start = $2, window_1d_start = $3, window_7d_start = $4
+		WHERE id = $1`, key.ID, now.Add(-time.Hour), dailyStart, weeklyStart)
+	s.Require().NoError(err)
+
+	daily, err := s.repo.ResetRateLimitWindow(s.ctx, key.ID, service.APIKeyRateLimitWindow1d, now)
+	s.Require().NoError(err)
+	s.Require().Equal(5.0, daily.Usage5h)
+	s.Require().Zero(daily.Usage1d)
+	s.Require().Equal(44.0, daily.Usage7d)
+	s.Require().NotNil(daily.Window1dStart)
+	s.Require().Equal(dailyStart, daily.Window1dStart.UTC())
+	s.Require().NotNil(daily.Window7dStart)
+	s.Require().Equal(weeklyStart, daily.Window7dStart.UTC())
+
+	weeklyResetAt := now.Add(15 * time.Minute)
+	weekly, err := s.repo.ResetRateLimitWindow(s.ctx, key.ID, service.APIKeyRateLimitWindow7d, weeklyResetAt)
+	s.Require().NoError(err)
+	s.Require().Zero(weekly.Usage1d)
+	s.Require().Zero(weekly.Usage7d)
+	s.Require().NotNil(weekly.Window1dStart)
+	s.Require().Equal(dailyStart, weekly.Window1dStart.UTC())
+	s.Require().NotNil(weekly.Window7dStart)
+	s.Require().Equal(weeklyResetAt, weekly.Window7dStart.UTC())
+}
+
+func (s *APIKeyRepoSuite) TestResetRateLimitWindow_DailyReinitializesExpiredNaturalDay() {
+	user := s.mustCreateUser("reset-expired-daily@test.com")
+	key := &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-reset-expired-daily",
+		Name:   "Reset Expired Daily",
+		Status: service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+
+	now := time.Date(2026, 8, 24, 18, 45, 0, 0, time.UTC)
+	_, err := s.repo.sql.ExecContext(s.ctx, `
+		UPDATE api_keys
+		SET usage_1d = 18, window_1d_start = $2
+		WHERE id = $1`, key.ID, now.Add(-48*time.Hour))
+	s.Require().NoError(err)
+
+	data, err := s.repo.ResetRateLimitWindow(s.ctx, key.ID, service.APIKeyRateLimitWindow1d, now)
+	s.Require().NoError(err)
+	s.Require().Zero(data.Usage1d)
+	s.Require().NotNil(data.Window1dStart)
+	s.Require().Equal(time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC), data.Window1dStart.UTC())
+}
+
 func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesMessagesDispatchModelConfig() {
 	user := s.mustCreateUser("getbykey-auth-dispatch@test.com")
 	group, err := s.client.Group.Create().

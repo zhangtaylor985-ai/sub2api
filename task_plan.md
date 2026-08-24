@@ -688,7 +688,7 @@
 | 3. 后端窗口级重置 API | complete | 1d/7d 原子更新、鉴权路由、缓存失效和更新后响应 |
 | 4. 管理 UI 快捷按钮 | complete | 独立按钮、确认提示、执行状态、结果刷新和中英文文案 |
 | 5. 定向/全量/浏览器回归 | complete | Go 全量、PostgreSQL integration、专项 Vitest、lint/typecheck/build、本地真实 API E2E |
-| 6. Git、ARM64 canary 与生产发布 | in_progress | fetch/rebase、提交推送、binary、回滚、内外 smoke |
+| 6. Git、ARM64 canary 与生产发布 | complete | 主线提交、ARM64 release、canary、备份替换、内外 health、HTTPS UI 验收 |
 
 ## 风险与回滚
 
@@ -712,3 +712,6 @@
 | 2026-08-24 | 临时应用首次启动的测试 TOTP key 不是合法 hex | 初始化完成但应用未监听；改用合法测试 key 重启，未影响生产或既有本地服务 |
 | 2026-08-24 | 本地 E2E 首次 `psql -c` 未展开命名变量，第二次 jq 无法解析带时区偏移的 RFC3339 | 使用已验证整数 ID，并由 PostgreSQL 回读周起点与服务器当前时间差，最终 E2E 通过 |
 | 2026-08-24 | 临时目录永久删除命令被安全策略拒绝 | 停止临时容器并将精确目录移动到废纸篓，可恢复；源码与其他容器未受影响 |
+| 2026-08-24 | ARM64 首次手动构建仍在 `backend/` 工作目录使用仓库根相对路径 | 嵌入资源检查阶段即停止，未生成 binary；改用 `internal/...` 与 `bin/...` 后构建成功 |
+| 2026-08-24 | 首次 canary 的 `--setenv SERVER_PORT=18080` 被 systemd `EnvironmentFile` 中的 8080 覆盖 | 候选因端口占用立即退出，正式服务未受影响；第二次在 ExecStart 的 `/usr/bin/env` 层覆盖后通过 |
+| 2026-08-24 | 生产资源检查在 `pipefail` 下用 `grep -q` 导致 curl/printf SIGPIPE 记为失败 | 资源实际存在；改为 shell 字符串匹配后前端资源验收通过 |

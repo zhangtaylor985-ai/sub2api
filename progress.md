@@ -908,6 +908,13 @@
 - 浏览器连接层无法访问本机 HTTP；已用独立临时 PostgreSQL/Redis/候选应用完成真实 admin 登录、测试 Key 创建、日重置、周重置和数据库回读 E2E，所有断言通过。
 - 本地 E2E 确认日重置保留 5h/周窗口，周重置保留 5h/日窗口且起点为服务器当前时间；临时容器已停止并自动删除，临时目录已移入废纸篓。
 - 当前功能实现与本地发布门禁完成，进入最终 diff 审查、Git 远端同步、ARM64 binary 构建、canary 和生产发布。
+- 功能提交 `fe6fcdeb8 feat(admin): add API key rate limit reset shortcuts` 已推送到 `origin/codex/api-key-rate-limit-resets` 与 `origin/main`；推送前后主线无远端漂移。
+- ARM64 embedded-frontend binary 为 `sub2api-linux-arm64-20260824T083615Z-api-key-rate-limit-resets`，SHA256=`c87f1fa7506934fc167db6507c633d2a6dd572dd6505cb63721a12e8f6da8cd5`；zst SHA256=`ac2c42f9859e16bd2fb4b90342b259474a3af11461bac83b31c8afd94bbb3cfe`，远端 release 哈希一致。
+- 第二次短时 canary 在 `127.0.0.1:18080` 通过 health、新路由 401 和 `Asia/Shanghai` 时区检查；canary 已停止，18080 无残留监听。
+- 正式旧 binary 备份为 `/opt/sub2api/sub2api.bak.20260824T083956Z-before-api-key-rate-limit-resets`，旧 SHA256=`dc9d6e4933ab113574a8b67afcd9b46dd3d413288dbcaf4cf526235e21d0ebca`。
+- 正式服务已切换到 SHA256=`c87f1fa7506934fc167db6507c633d2a6dd572dd6505cb63721a12e8f6da8cd5`；`Result=success`、`NRestarts=0`，内网/公网 health 正常，新路由内外未认证均为 401，日志无 panic/fatal/OOM/migration failed。
+- 公网前端资源包含新路径与中英文按钮文案；Chrome 正式 HTTPS 验收确认桌面和 720px 窄屏编辑弹窗均显示“重置日限额”“重置周限额”，未点击重置或保存，验收后已清空筛选。
+- API Key ID 525 最初人工日重置的 0 用量已完成并有当时回读证据；发布后因后续 97 条真实请求，当前日/周用量重新增长到约 31.60，窗口起点保持不变，未执行第二次重置。
 
 ---
 

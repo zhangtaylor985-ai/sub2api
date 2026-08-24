@@ -5,9 +5,11 @@ package service
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -118,6 +120,8 @@ type apiKeyRepoStubForGroupUpdate struct {
 	listUsages        []APIKeyTokenPackageUsage
 	tokenRemaining    float64
 	tokenRemainingErr error
+	planResult        *AddAPIKeyPlanPackageResult
+	planInputs        []AddAPIKeyPlanPackageInput
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {
@@ -230,6 +234,20 @@ func (s *apiKeyRepoStubForGroupUpdate) ListTokenPackages(context.Context, int64,
 }
 func (s *apiKeyRepoStubForGroupUpdate) ListTokenPackageUsage(context.Context, int64, int) ([]APIKeyTokenPackageUsage, error) {
 	return append([]APIKeyTokenPackageUsage(nil), s.listUsages...), nil
+}
+func (s *apiKeyRepoStubForGroupUpdate) AddPlanPackage(_ context.Context, input AddAPIKeyPlanPackageInput) (*AddAPIKeyPlanPackageResult, error) {
+	s.planInputs = append(s.planInputs, input)
+	if s.planResult == nil {
+		return nil, ErrAPIKeyPlanPackageUnavailable
+	}
+	result := *s.planResult
+	return &result, nil
+}
+func (s *apiKeyRepoStubForGroupUpdate) ListPlanPackages(context.Context, int64, int, time.Time) ([]APIKeyPlanPackage, error) {
+	return nil, nil
+}
+func (s *apiKeyRepoStubForGroupUpdate) GetPlanPackageSummary(context.Context, int64, time.Time) (*APIKeyPlanPackageSummary, error) {
+	return &APIKeyPlanPackageSummary{}, nil
 }
 
 // groupRepoStubForGroupUpdate implements GroupRepository for AdminUpdateAPIKeyGroupID tests.
@@ -605,6 +623,36 @@ func TestAdminService_AdminAddAPIKeyTokenPackage_RejectsInvalidAmount(t *testing
 
 	require.Error(t, err)
 	require.Equal(t, "INVALID_TOKEN_PACKAGE_AMOUNT", infraerrors.Reason(err))
+}
+
+func TestAdminService_AdminAddAPIKeyPlanPackage_InvalidatesAuthAndRateLimitCaches(t *testing.T) {
+	cache := &billingCacheWorkerStub{}
+	billingService := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	t.Cleanup(billingService.Stop)
+	authCache := &authCacheInvalidatorStub{}
+	repo := &apiKeyRepoStubForGroupUpdate{planResult: &AddAPIKeyPlanPackageResult{
+		Package: APIKeyPlanPackage{APIKeyID: 89},
+		Summary: APIKeyPlanPackageSummary{Managed: true, ActiveCount: 3, DailyLimitUSD: 450, WeeklyLimitUSD: 1500},
+		Key:     "sk-test",
+	}}
+	svc := &adminServiceImpl{
+		apiKeyRepo:           repo,
+		authCacheInvalidator: authCache,
+		billingCacheService:  billingService,
+	}
+
+	result, err := svc.AdminAddAPIKeyPlanPackage(context.Background(), AddAPIKeyPlanPackageInput{
+		APIKeyID:  89,
+		GroupID:   14,
+		RequestID: "purchase-3",
+		Months:    1,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, []string{"sk-test"}, authCache.keys)
+	require.Equal(t, int64(1), atomic.LoadInt64(&cache.rateLimitInvalidations))
+	require.Len(t, repo.planInputs, 1)
 }
 
 func TestAdminService_AdminListAPIKeyTokenPackages_ReturnsLedger(t *testing.T) {
